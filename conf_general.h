@@ -85,6 +85,8 @@
 //#include "er/app_erockit_conf_v2.h"
 //#include "finn/app_finn_az_conf.h"
 
+#include "regen/app_regen_conf.h"
+
 #include "hw.h"
 #include "mcconf_default.h"
 #include "appconf_default.h"
