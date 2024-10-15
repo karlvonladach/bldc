@@ -49,6 +49,7 @@ static void update_pedal_torque(void);
 static void update_pedal_speed(void);
 static void update_wheel_speed(void);
 static void update_motor_speed(void);
+//static void enable_interrupt(void);
 
 // Private variables
 static volatile custom_config_type config;
@@ -218,3 +219,19 @@ static void update_motor_speed(void)
 	//TODO
 }
 
+	// Example of setting up pin interrupt
+// void enable_interrupt()
+// {
+// 	// Connect EXTI Line to pin
+// 	SYSCFG_EXTILineConfig(cfg->exti_portsrc, cfg->exti_pinsrc);
+
+// 	// Configure EXTI Line
+// 	EXTI_InitStructure.EXTI_Line = cfg->exti_line;
+// 	EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
+// 	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
+// 	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+// 	EXTI_Init(&EXTI_InitStructure);
+
+// 	// Enable and set EXTI Line Interrupt to the highest priority
+// 	nvicEnableVector(cfg->exti_ch, 0);
+// }
