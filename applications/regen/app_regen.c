@@ -21,6 +21,9 @@
 #include "ch.h"
 #include "hal.h"
 
+#include "app_regen_types.h"
+#include "app_regen_conf.h"
+
 // Some useful includes
 #include "mc_interface.h"
 #include "utils_math.h"
@@ -42,11 +45,22 @@ static THD_WORKING_AREA(my_thread_wa, 1024);
 // Private functions
 static void pwm_callback(void);
 static void terminal_test(int argc, const char **argv);
+static void update_pedal_torque(void);
+static void update_pedal_speed(void);
+static void update_wheel_speed(void);
+static void update_motor_speed(void);
 
 // Private variables
+static volatile custom_config_type config;
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
-static volatile float speed = 0;
+static volatile float pedal_torque = 0;
+static volatile float pedal_speed  = 0;
+static volatile float wheel_speed  = 0;
+static volatile float motor_speed  = 0;
+static volatile float output_speed = 0;
+static volatile float command_line_speed = -1;
+static volatile float ms_without_power = 0.0;
 
 // Called when the custom application is started. Start our
 // threads here and set up callbacks.
@@ -79,6 +93,23 @@ void app_custom_stop(void) {
 
 void app_custom_configure(app_configuration *conf) {
 	(void)conf;
+	config.pedal_sensor.sensor_type   = APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE;
+	config.pedal_sensor.magnets       = APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS;
+	config.pedal_sensor.use_filter    = APP_CUSTOM_CONF_PEDAL_SENSOR_USE_FILTER;
+	config.pedal_sensor.rpm_start     = APP_CUSTOM_CONF_PEDAL_RPM_START;
+	config.pedal_sensor.rpm_end       = APP_CUSTOM_CONF_PEDAL_RPM_END;
+	config.pedal_sensor.ramp_time_pos = APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS;
+	config.pedal_sensor.ramp_time_neg = APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG;
+
+	config.wheel_sensor.sensor_type   = APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE;
+	config.wheel_sensor.magnets       = APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS;
+	config.wheel_sensor.use_filter    = APP_CUSTOM_CONF_WHEEL_SENSOR_USE_FILTER;
+	config.wheel_sensor.rpm_start     = APP_CUSTOM_CONF_WHEEL_RPM_START;
+	config.wheel_sensor.rpm_end       = APP_CUSTOM_CONF_WHEEL_RPM_END;
+	config.wheel_sensor.ramp_time_pos = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS;
+	config.wheel_sensor.ramp_time_neg = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG;
+
+	config.update_rate_hz = APP_CUSTOM_CONF_UPDATE_RATE_HZ;
 }
 
 static THD_FUNCTION(my_thread, arg) {
@@ -105,18 +136,49 @@ static THD_FUNCTION(my_thread, arg) {
 //	}
 
 	for(;;) {
-		// Check if it is time to stop.
+		// Sleep for a time according to the specified rate
+		systime_t sleep_time = CH_CFG_ST_FREQUENCY / config.update_rate_hz;
+
+		// At least one tick should be slept to not block the other threads
+		if (sleep_time == 0) {
+			sleep_time = 1;
+		}
+		chThdSleep(sleep_time); //TODO: enable exiting sleep when encoder interrupt happens??
+
 		if (stop_now) {
 			is_running = false;
 			return;
 		}
 
-		timeout_reset(); // Reset timeout if everything is OK.
+		// For safe start when fault codes occur
+		if (mc_interface_get_fault() != FAULT_CODE_NONE) {
+			ms_without_power = 0;
+		}
 
-		// Run your logic here. A lot of functionality is available in mc_interface.h.
-		mc_interface_set_pid_speed(speed);
+		// Reset timeout if everything is OK.
+		timeout_reset(); 
 
-		chThdSleepMilliseconds(10);
+		//measure torque
+		update_pedal_torque();
+		//measure pedal speed
+		update_pedal_speed();
+		//measure wheel speed
+		update_wheel_speed();
+		//get motor speed
+		update_motor_speed();
+
+		//TODO: if pedal speed = 0 then disconnect clutch after N seconds
+		//TODO: if pedal speed > 0 or < 0 then make sure clutch is connected
+		//         if disconnected then sync motor speed with wheel speed and connect clutch
+		//         start pedal position tracking
+		//TODO: if pedal speed > 0 then set power based on torque (and pedal speed)
+		//TODO: if pedal speed < 0 then set breaking power based on pedal position
+
+		if (command_line_speed >= 0){
+			mc_interface_set_pid_speed(command_line_speed);
+		} else {
+			mc_interface_set_pid_speed(output_speed);
+		}
 	}
 }
 
@@ -129,9 +191,30 @@ static void terminal_test(int argc, const char **argv) {
 	if (argc == 2) {
 		int d = -1;
 		sscanf(argv[1], "%d", &d);
-		speed = d;
+		command_line_speed = d;
 		commands_printf("RPM set to %d", d);
 	} else {
 		commands_printf("This command requires one argument.\n");
 	}
 }
+
+static void update_pedal_torque(void)
+{
+	//TODO
+}
+
+static void update_pedal_speed(void)
+{
+	//TODO
+}
+
+static void update_wheel_speed(void)
+{
+	//TODO
+}
+
+static void update_motor_speed(void)
+{
+	//TODO
+}
+

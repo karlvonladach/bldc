@@ -27,23 +27,28 @@ typedef enum {
 } clutch_state_type;
 
 typedef enum {
-    SPEED_SENSOR_TYPE_SINGLE = 0,
+    SPEED_SENSOR_TYPE_NONE = 0,
+    SPEED_SENSOR_TYPE_SINGLE,
 	SPEED_SENSOR_TYPE_QUADRATURE
 } speed_sensor_type;
 
 typedef struct {
+    speed_sensor_type sensor_type;
+    uint8_t magnets; 
+	bool use_filter;
+	float rpm_start;
+	float rpm_end;
+	float ramp_time_pos;
+	float ramp_time_neg;
+	//bool invert_direction;
+} speed_sensor_config_type;
+
+typedef struct {
 	//pas_control_type ctrl_type;
-	speed_sensor_type pedal_sensor_type;
-    speed_sensor_type wheel_sensor_type;
+    speed_sensor_config_type pedal_sensor;
+    speed_sensor_config_type wheel_sensor;
 	//float current_scaling;
-	//float pedal_rpm_start;
-	//float pedal_rpm_end;
-	//bool invert_pedal_direction;
-	//uint8_t magnets;
-	//bool use_filter;
-	//float ramp_time_pos;
-	//float ramp_time_neg;
 	uint32_t update_rate_hz;
 } custom_config_type;
 
-#endif #endif /* APP_REGEN_TYPES_H_ */
+#endif /* APP_REGEN_TYPES_H_ */
