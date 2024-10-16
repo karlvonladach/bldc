@@ -20,6 +20,8 @@
 #ifndef APP_REGEN_CONF_H_
 #define APP_REGEN_CONF_H_
 
+#define DEBUG_PLOT
+
 #define APP_CUSTOM_TO_USE				"regen/app_regen.c"
 
 //uncomment to use custom app by default, regardless of settings:

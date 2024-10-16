@@ -43,7 +43,6 @@ static THD_FUNCTION(my_thread, arg);
 static THD_WORKING_AREA(my_thread_wa, 1024);
 
 // Private functions
-static void pwm_callback(void);
 static void terminal_test(int argc, const char **argv);
 static void update_pedal_torque(void);
 static void update_pedal_speed(void);
@@ -62,11 +61,22 @@ static volatile float motor_speed  = 0;
 static volatile float output_speed = 0;
 static volatile float command_line_speed = -1;
 static volatile float ms_without_power = 0.0;
+static volatile float max_pedal_period = 0.0;
+static volatile float min_pedal_period = 0.0;
 
 // Called when the custom application is started. Start our
 // threads here and set up callbacks.
 void app_custom_start(void) {
-	mc_interface_set_pwm_callback(pwm_callback);
+#ifdef APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1
+	palSetPadMode(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN1, PAL_MODE_INPUT_PULLUP);
+#endif
+#ifdef APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2
+	palSetPadMode(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2, PAL_MODE_INPUT_PULLUP);
+#endif
+
+#ifdef APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1
+	palSetPadMode(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1, PAL_MODE_INPUT_PULLUP);
+#endif
 
 	stop_now = false;
 	chThdCreateStatic(my_thread_wa, sizeof(my_thread_wa),
@@ -83,7 +93,6 @@ void app_custom_start(void) {
 // Called when the custom application is stopped. Stop our threads
 // and release callbacks.
 void app_custom_stop(void) {
-	mc_interface_set_pwm_callback(0);
 	terminal_unregister_callback(terminal_test);
 
 	stop_now = true;
@@ -111,30 +120,34 @@ void app_custom_configure(app_configuration *conf) {
 	config.wheel_sensor.ramp_time_neg = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG;
 
 	config.update_rate_hz = APP_CUSTOM_CONF_UPDATE_RATE_HZ;
+
+	ms_without_power = 0.0;
+
+	// a period longer than this should immediately reduce power to zero
+	max_pedal_period = 1.0 / ((config.pedal_sensor.rpm_start / 60.0) * config.pedal_sensor.magnets) * 1.2;
+
+	// if pedal spins at x3 the end rpm, assume its beyond limits
+	min_pedal_period = 1.0 / ((config.pedal_sensor.rpm_end * 3.0 / 60.0));
 }
 
 static THD_FUNCTION(my_thread, arg) {
 	(void)arg;
+	float timestamp = 0;
 
 	chRegSetThreadName("App Custom");
 
 	is_running = true;
 
 	// Example of using the experiment plot
-//	chThdSleepMilliseconds(8000);
-//	commands_init_plot("Sample", "Voltage");
-//	commands_plot_add_graph("Temp Fet");
-//	commands_plot_add_graph("Input Voltage");
-//	float samp = 0.0;
-//
-//	for(;;) {
-//		commands_plot_set_graph(0);
-//		commands_send_plot_points(samp, mc_interface_temp_fet_filtered());
-//		commands_plot_set_graph(1);
-//		commands_send_plot_points(samp, GET_INPUT_VOLTAGE());
-//		samp++;
-//		chThdSleepMilliseconds(10);
-//	}
+#ifdef DEBUG_PLOT
+	chThdSleepMilliseconds(1000);
+	commands_init_plot("Time", "RPM");
+	commands_plot_add_graph("Pedal RPM");
+	commands_plot_add_graph("Wheel RPM");
+	commands_plot_add_graph("Motor RPM");
+	commands_plot_add_graph("HALL1");
+	commands_plot_add_graph("HALL2");
+#endif
 
 	for(;;) {
 		// Sleep for a time according to the specified rate
@@ -159,14 +172,31 @@ static THD_FUNCTION(my_thread, arg) {
 		// Reset timeout if everything is OK.
 		timeout_reset(); 
 
+		timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+
 		//measure torque
 		update_pedal_torque();
+
 		//measure pedal speed
 		update_pedal_speed();
+#ifdef DEBUG_PLOT
+		commands_plot_set_graph(0);
+		commands_send_plot_points(timestamp, pedal_speed);
+#endif
+
 		//measure wheel speed
 		update_wheel_speed();
+#ifdef DEBUG_PLOT
+		commands_plot_set_graph(1);
+		commands_send_plot_points(timestamp, wheel_speed);
+#endif
+
 		//get motor speed
 		update_motor_speed();
+#ifdef DEBUG_PLOT
+		commands_plot_set_graph(2);
+		commands_send_plot_points(timestamp, motor_speed);
+#endif
 
 		//TODO: if pedal speed = 0 then disconnect clutch after N seconds
 		//TODO: if pedal speed > 0 or < 0 then make sure clutch is connected
@@ -181,10 +211,6 @@ static THD_FUNCTION(my_thread, arg) {
 			mc_interface_set_pid_speed(output_speed);
 		}
 	}
-}
-
-static void pwm_callback(void) {
-	// Called for every control iteration in interrupt context.
 }
 
 // Callback function for the terminal command with arguments.
@@ -206,7 +232,75 @@ static void update_pedal_torque(void)
 
 static void update_pedal_speed(void)
 {
-	//TODO
+#ifdef APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1
+	// Quadrature Encoder Matrix
+	const int8_t QEM[] = {  0, -1,  1,  2,
+	                        1,  0,  2, -1,
+						   -1,  2,  0,  1,
+						    2,  1, -1,  0};
+	int8_t direction;
+	uint8_t new_state;
+	static uint8_t old_state = 0;
+	static float old_timestamp = 0;
+	static float inactivity_time = 0;
+	static float period_filtered = 0;
+	static int32_t forward_direction_counter = 0;
+	static int32_t backward_direction_counter = 0;
+
+	uint8_t HALL1_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN1);
+	uint8_t HALL2_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2);
+
+	new_state = HALL2_level * 2 + HALL1_level;
+	direction = (float) QEM[old_state * 4 + new_state];
+	old_state = new_state;
+
+	if (direction == 1){
+		forward_direction_counter++;
+		backward_direction_counter = 0;
+	} 
+	else if (direction == -1) {
+		backward_direction_counter++;
+		forward_direction_counter = 0;
+	}
+	
+	const float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+
+#ifdef DEBUG_PLOT
+	commands_plot_set_graph(3);
+	commands_send_plot_points(timestamp, HALL1_level*20);
+	commands_plot_set_graph(4);
+	commands_send_plot_points(timestamp, HALL2_level*20);
+#endif
+
+	// sensors are poorly placed, so use only one rising edge as reference
+	if( (new_state == 3) && ((forward_direction_counter >= 4) || backward_direction_counter >= 4) ) {
+		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets;
+		old_timestamp = timestamp;
+
+		UTILS_LP_FAST(period_filtered, period, 0.8);
+
+#ifdef DEBUG_PRINT
+		commands_printf("%d - %d \r\n", forward_direction_counter, backward_direction_counter);
+#endif
+
+		if(period_filtered < min_pedal_period) { //can't be that short, abort
+			return;
+		}
+		pedal_speed = 60.0 / period_filtered;
+		pedal_speed *= (float)direction;
+		inactivity_time = 0.0;
+		forward_direction_counter = 0;
+		backward_direction_counter = 0;
+	}
+	else {
+		inactivity_time += 1.0 / (float)config.update_rate_hz;
+
+		//if no pedal activity, set RPM as zero
+		if(inactivity_time > max_pedal_period) {
+			pedal_speed = 0.0;
+		}
+	}
+#endif
 }
 
 static void update_wheel_speed(void)
