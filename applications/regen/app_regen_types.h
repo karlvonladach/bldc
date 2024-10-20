@@ -44,9 +44,15 @@ typedef struct {
 } speed_sensor_config_type;
 
 typedef struct {
+    float start_pos;
+    float end_pos;
+} brake_config_type;
+
+typedef struct {
 	//pas_control_type ctrl_type;
     speed_sensor_config_type pedal_sensor;
     speed_sensor_config_type wheel_sensor;
+    brake_config_type back_pedal_brake;
 	//float current_scaling;
 	uint32_t update_rate_hz;
 } custom_config_type;
