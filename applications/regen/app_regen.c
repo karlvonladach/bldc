@@ -48,7 +48,7 @@ static void update_pedal_torque(void);
 static void update_pedal_speed_and_position(void);
 static void update_wheel_speed(void);
 static void update_motor_speed(void);
-//static void enable_interrupt(void);
+static void enable_interrupt(void);
 
 // Private variables
 static volatile custom_config_type config;
@@ -64,8 +64,11 @@ static volatile float command_line_speed = -1;
 static volatile float ms_without_power = 0.0;
 static volatile float max_pedal_period = 0.0;
 static volatile float min_pedal_period = 0.0;
+static volatile float max_wheel_period = 0.0;
+static volatile float min_wheel_period = 0.0;
 static volatile int32_t min_backward_counter = 0;
 static volatile int32_t max_backward_counter = 0;
+static volatile float wheel_sensor_timestamp = 0;
 
 // Called when the custom application is started. Start our
 // threads here and set up callbacks.
@@ -104,6 +107,10 @@ void app_custom_stop(void) {
 	}
 }
 
+bool app_custom_is_running(void) {
+	return is_running;
+}
+
 void app_custom_configure(app_configuration *conf) {
 	(void)conf;
 	config.pedal_sensor.sensor_type   = APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE;
@@ -135,9 +142,21 @@ void app_custom_configure(app_configuration *conf) {
 	// if pedal spins at x3 the end rpm, assume its beyond limits
 	min_pedal_period = 1.0 / ((config.pedal_sensor.rpm_end * 3.0 / 60.0));
 
+	// a period longer than this should immediately reduce measurements to zero
+	max_wheel_period = 1.0 / ((config.wheel_sensor.rpm_start / 60.0) * config.wheel_sensor.magnets) * 1.2;
+
+	// if wheel spins at x3 the end rpm, assume its beyond limits
+	min_wheel_period = 1.0 / ((config.wheel_sensor.rpm_end * 3.0 / 60.0));
+
 	// convert pedal angles to quadrature counter
 	min_backward_counter = floor((float)(config.back_pedal_brake.start_pos) / (360.0f / (float)(4.0 * config.pedal_sensor.magnets)));
 	max_backward_counter = ceil((float)(config.back_pedal_brake.end_pos) / (360.0f / (float)(4.0 * config.pedal_sensor.magnets)));
+
+	enable_interrupt();
+}
+
+void app_custom_pin_isr(void){
+	wheel_sensor_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 }
 
 static THD_FUNCTION(my_thread, arg) {
@@ -314,7 +333,7 @@ static void update_pedal_speed_and_position(void)
 		if (forward_direction_counter == 4) {
 			// apply simple low pass filtering.
 			// 1.0 means no filtering, 0.0 means infinitely strong filtering
-			UTILS_LP_FAST(period_filtered, period, 0.8);
+			UTILS_LP_FAST(period_filtered, period, 1.0);
 
 #ifdef DEBUG_PRINT
 			commands_printf("%d - %d \r\n", forward_direction_counter, backward_direction_counter);
@@ -358,7 +377,28 @@ static void update_pedal_speed_and_position(void)
 
 static void update_wheel_speed(void)
 {
-	//TODO
+	static float period_filtered = 0;
+	static float wheel_sensor_timestamp_old = 0;
+	static float inactivity_time = 0;
+
+	if (wheel_sensor_timestamp != 0){
+		float period = (wheel_sensor_timestamp - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
+		UTILS_LP_FAST(period_filtered, period, 1.0);
+		wheel_speed = 60.0 / period_filtered;
+		wheel_sensor_timestamp_old = wheel_sensor_timestamp;
+		wheel_sensor_timestamp = 0;
+		inactivity_time = 0.0;
+	} else {
+		// increase inactivity time whenever we are between two measurements
+		// does not necessarily mean that the wheel is not rotating, we just
+		// don't know when the next measurement will happen
+		inactivity_time += 1.0 / (float)config.update_rate_hz;
+
+		//if no wheel measurement for a given, long enough period, set RPM as zero
+		if(inactivity_time > max_wheel_period) {
+			wheel_speed = 0.0;
+		}
+	}
 }
 
 static void update_motor_speed(void)
@@ -367,18 +407,22 @@ static void update_motor_speed(void)
 }
 
 	// Example of setting up pin interrupt
-// void enable_interrupt()
-// {
-// 	// Connect EXTI Line to pin
-// 	SYSCFG_EXTILineConfig(cfg->exti_portsrc, cfg->exti_pinsrc);
+void enable_interrupt()
+{
+#ifdef HW_ENC_EXTI_PORTSRC
+	EXTI_InitTypeDef EXTI_InitStructure;
+	
+	// Connect EXTI Line to pin
+	SYSCFG_EXTILineConfig(HW_ENC_EXTI_PORTSRC, HW_ENC_EXTI_PINSRC);
 
-// 	// Configure EXTI Line
-// 	EXTI_InitStructure.EXTI_Line = cfg->exti_line;
-// 	EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
-// 	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
-// 	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
-// 	EXTI_Init(&EXTI_InitStructure);
+	// Configure EXTI Line
+	EXTI_InitStructure.EXTI_Line = HW_ENC_EXTI_LINE;
+	EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
+	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
+	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+	EXTI_Init(&EXTI_InitStructure);
 
-// 	// Enable and set EXTI Line Interrupt to the highest priority
-// 	nvicEnableVector(cfg->exti_ch, 0);
-// }
+	// Enable and set EXTI Line Interrupt to the highest priority
+	nvicEnableVector(HW_ENC_EXTI_CH, 0);
+#endif
+}
