@@ -276,8 +276,10 @@ static void update_pedal_speed_and_position(void)
 						    2,  1, -1,  0};
 	int8_t direction;
 	uint8_t new_state;
+	float avg_period;
 	static uint8_t old_state = 0;
 	static float old_timestamp = 0;
+	static float old_period = 0;
 	static float inactivity_time = 0;
 	static float period_filtered = 0;
 	static int32_t forward_direction_counter = 0;
@@ -331,9 +333,13 @@ static void update_pedal_speed_and_position(void)
 		// quadrature encoder has 4 states, so we should observe 4 phase changes 
 		// in the same direction before we reach a specific state again. 
 		if (forward_direction_counter == 4) {
+			// average last 2 periods due to differences between the upward and downward magnet orientation
+			avg_period = 0.5 * (period + old_period);
+			old_period = period;
+
 			// apply simple low pass filtering.
 			// 1.0 means no filtering, 0.0 means infinitely strong filtering
-			UTILS_LP_FAST(period_filtered, period, 1.0);
+			UTILS_LP_FAST(period_filtered, avg_period, 0.8);
 
 #ifdef DEBUG_PRINT
 			commands_printf("%d - %d \r\n", forward_direction_counter, backward_direction_counter);
@@ -377,13 +383,16 @@ static void update_pedal_speed_and_position(void)
 
 static void update_wheel_speed(void)
 {
+	static float old_period = 0;
 	static float period_filtered = 0;
 	static float wheel_sensor_timestamp_old = 0;
 	static float inactivity_time = 0;
 
 	if (wheel_sensor_timestamp != 0){
 		float period = (wheel_sensor_timestamp - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
-		UTILS_LP_FAST(period_filtered, period, 1.0);
+		float avg_period = 0.5 * (period + old_period);
+		old_period = period;		
+		UTILS_LP_FAST(period_filtered, avg_period, 0.8);
 		wheel_speed = 60.0 / period_filtered;
 		wheel_sensor_timestamp_old = wheel_sensor_timestamp;
 		wheel_sensor_timestamp = 0;
