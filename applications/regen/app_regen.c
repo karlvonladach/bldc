@@ -39,6 +39,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// App settings
+#define FILTER_SAMPLES					5
+
 // Threads
 static THD_FUNCTION(my_thread, arg);
 static THD_WORKING_AREA(my_thread_wa, 1024);
@@ -58,7 +61,10 @@ static void close_clutch(void);
 static void enable_interrupt(void);
 
 // Private variables
+//// Config variables
 static volatile custom_config_type config;
+static volatile adc_config config_adc;
+
 static volatile float max_pedal_period = 0.0;
 static volatile float min_pedal_period = 0.0;
 static volatile float max_wheel_period = 0.0;
@@ -66,16 +72,23 @@ static volatile float min_wheel_period = 0.0;
 static volatile int32_t min_backward_counter = 0;
 static volatile int32_t max_backward_counter = 0;
 
+//// Control variables
+static volatile float command_line_speed = -1;
+
+//// State variables
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
 static volatile float pedal_torque = 0;
+static volatile float pedal_torque_rel = 0;
 static volatile float pedal_speed  = 0;
+static volatile float pedal_speed_rel = 0;
 static volatile float pedal_brake_position = 0;
+static volatile float pedal_brake_position_rel = 0;
 static volatile float wheel_speed  = 0;
 static volatile float motor_speed  = 0;
-static volatile float command_line_speed = -1;
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
 
+//// Other variables
 static volatile float ms_without_power = 0.0;
 static volatile float wheel_sensor_timestamp = 0;
 static volatile float clutch_timestamp = 0;
@@ -96,6 +109,12 @@ void app_custom_start(void) {
 
 #ifdef APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1
 	palSetPadMode(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, PAL_MODE_OUTPUT_OPENDRAIN);
+#endif
+
+#ifdef APP_CUSTOM_CONF_TORQUE_SENSOR_PORT1
+    if (APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC) {
+	    palSetPadMode(APP_CUSTOM_CONF_TORQUE_SENSOR_PORT1, APP_CUSTOM_CONF_TORQUE_SENSOR_PIN1, PAL_MODE_INPUT_ANALOG);
+	}
 #endif
 
 	stop_now = false;
@@ -126,7 +145,8 @@ bool app_custom_is_running(void) {
 }
 
 void app_custom_configure(app_configuration *conf) {
-	(void)conf;
+	config.ctrl_type                  = APP_CUSTOM_CONF_CTRL_TYPE;
+
 	config.pedal_sensor.sensor_type   = APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE;
 	config.pedal_sensor.magnets       = APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS;
 	config.pedal_sensor.use_filter    = APP_CUSTOM_CONF_PEDAL_SENSOR_USE_FILTER;
@@ -143,6 +163,8 @@ void app_custom_configure(app_configuration *conf) {
 	config.wheel_sensor.ramp_time_pos = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS;
 	config.wheel_sensor.ramp_time_neg = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG;
 
+	config.torque_sensor.sensor_type  = APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE;
+
 	config.back_pedal_brake.start_pos = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS;
 	config.back_pedal_brake.end_pos   = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS;
 
@@ -153,6 +175,10 @@ void app_custom_configure(app_configuration *conf) {
 	config.clutch.check_rpm_diff      = APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF;
 
 	config.update_rate_hz = APP_CUSTOM_CONF_UPDATE_RATE_HZ;
+
+	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC) {
+		config_adc = conf->app_adc_conf;
+	}
 
 	ms_without_power = 0.0;
 
@@ -296,10 +322,26 @@ static THD_FUNCTION(my_thread, arg) {
 					commands_printf("[%4.2f] BREAK set to %d%%", (double)timestamp, (int)floor(brake_force*100));
 				}
 			} else if (pedal_speed > 0){
-				//TODO: set power based on torque (and pedal speed)
-				mc_interface_set_pid_speed(20*pedal_speed);
-				if (cnt % (config.update_rate_hz / 10) == 0){
-					commands_printf("[%4.2f] RPM set to %4.0f (tmp solution)", (double)timestamp, (double)(20*pedal_speed));
+				switch (config.ctrl_type){
+					case CUSTOM_CTRL_TYPE_NONE:
+					    break;
+					case CUSTOM_CTRL_TYPE_PID:
+						mc_interface_set_pid_speed(20*pedal_speed);
+						if (cnt % (config.update_rate_hz / 10) == 0){
+							commands_printf("[%4.2f] RPM set to %4.0f (tmp solution)", (double)timestamp, (double)(20*pedal_speed));
+						}
+					    break;
+					case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED: 
+						mc_interface_set_current_rel(pedal_speed_rel);
+					    break;
+					case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE: 
+						mc_interface_set_current_rel(pedal_torque_rel);
+					    break;
+					case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE:
+						mc_interface_set_current_rel(pedal_speed_rel * pedal_torque_rel);
+					    break;
+					default: 
+					    break;
 				}
 			}
 		} else { //clutch open
@@ -325,7 +367,49 @@ static void terminal_test(int argc, const char **argv) {
 
 static void update_pedal_torque(void)
 {
-	//TODO
+    if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC) {
+		// Read the external ADC pin voltage
+		float torque = ADC_VOLTS(ADC_IND_EXT);
+
+		float torque_rel = utils_map(torque, config_adc.voltage_start, config_adc.voltage_end, 0.0, 1.0);
+		
+		// Optionally apply a filter
+		static float torque_rel_filter = 0.0;
+		UTILS_LP_MOVING_AVG_APPROX(torque_rel_filter, torque_rel, FILTER_SAMPLES);
+
+		if (config_adc.use_filter) {
+			torque_rel = torque_rel_filter;
+		}
+
+		// Truncate the read voltage
+		utils_truncate_number(&torque_rel, 0.0, 1.0);
+
+		// Optionally invert the read voltage
+		if (config_adc.voltage_inverted) {
+			torque_rel = 1.0 - torque_rel;
+		}
+
+		// Apply deadband
+		utils_deadband(&torque_rel, config_adc.hyst, 1.0);
+
+		// Apply throttle curve
+		torque_rel = utils_throttle_curve(torque_rel, config_adc.throttle_exp, config_adc.throttle_exp_brake, config_adc.throttle_exp_mode);
+
+		// Apply ramping
+		static systime_t last_time = 0;
+		static float torque_rel_ramp = 0.0;
+		float ramp_time = fabsf(torque_rel) > fabsf(torque_rel_ramp) ? config_adc.ramp_time_pos : config_adc.ramp_time_neg;
+
+		if (ramp_time > 0.01) {
+			const float ramp_step = (float)ST2MS(chVTTimeElapsedSinceX(last_time)) / (ramp_time * 1000.0);
+			utils_step_towards(&torque_rel_ramp, torque_rel, ramp_step);
+			last_time = chVTGetSystemTimeX();
+			torque_rel = torque_rel_ramp;
+		}
+
+		pedal_torque = torque_rel;
+		pedal_torque_rel = torque_rel;
+    }
 }
 
 /* Check pedal speed using quadrature encoder.
@@ -444,6 +528,10 @@ static void update_pedal_speed_and_position(void)
 	} else {
 		pedal_brake_position = 0.0;
 	}
+
+	pedal_speed_rel = utils_map(pedal_speed, config.pedal_sensor.rpm_start, config.pedal_sensor.rpm_end, 0.0, 1.0);
+	pedal_brake_position_rel = utils_map(pedal_brake_position, config.back_pedal_brake.start_pos, config.back_pedal_brake.end_pos, 0.0, 1.0);
+
 #endif
 }
 

@@ -20,6 +20,15 @@
 #ifndef APP_REGEN_TYPES_H_
 #define APP_REGEN_TYPES_H_
 
+// ADC control types
+typedef enum {
+	CUSTOM_CTRL_TYPE_NONE = 0,
+	CUSTOM_CTRL_TYPE_PID,
+	CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED,
+    CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE,
+    CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE
+} custom_control_type;
+
 typedef enum {
     CLUTCH_STATE_OPENING = 0,
     CLUTCH_STATE_OPEN,
@@ -35,6 +44,11 @@ typedef enum {
 	SPEED_SENSOR_TYPE_QUADRATURE
 } speed_sensor_type;
 
+typedef enum {
+    TORQUE_SENSOR_TYPE_NONE = 0,
+    TORQUE_SENSOR_TYPE_ADC
+} torque_sensor_type;
+
 typedef struct {
     speed_sensor_type sensor_type;
     uint8_t magnets; 
@@ -45,6 +59,11 @@ typedef struct {
 	float ramp_time_neg;
 	//bool invert_direction;
 } speed_sensor_config_type;
+
+typedef struct {
+    torque_sensor_type sensor_type;
+	bool use_filter;
+} torque_sensor_config_type;
 
 typedef struct {
     float start_pos;
@@ -60,9 +79,10 @@ typedef struct {
 } clutch_config_type;
 
 typedef struct {
-	//pas_control_type ctrl_type;
+	custom_control_type ctrl_type;
     speed_sensor_config_type pedal_sensor;
     speed_sensor_config_type wheel_sensor;
+    torque_sensor_config_type torque_sensor;
     brake_config_type back_pedal_brake;
     clutch_config_type clutch;
 	//float current_scaling;
