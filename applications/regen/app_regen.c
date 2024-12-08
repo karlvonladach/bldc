@@ -586,14 +586,14 @@ static void update_clutch_state(void)
 			clutch_state = CLUTCH_STATE_OPEN;
 			commands_printf("[%4.2f] OPEN", (double)timestamp);
 		}
-	}
+	} else
 	if (clutch_state == CLUTCH_STATE_SYNCING){
 		if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff){
 			clutch_state = CLUTCH_STATE_SYNCED;
 			commands_printf("[%4.2f] SYNCED", (double)timestamp);
 			close_clutch();
 		}
-	}
+	} else 
 	if (clutch_state == CLUTCH_STATE_CLOSING){
 		if (elapsed_time > config.clutch.wait_before_check){
 			//TODO: check if closing succeeded
