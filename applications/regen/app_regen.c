@@ -154,6 +154,7 @@ void app_custom_configure(app_configuration *conf) {
 	config.pedal_sensor.rpm_end       = APP_CUSTOM_CONF_PEDAL_RPM_END;
 	config.pedal_sensor.ramp_time_pos = APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS;
 	config.pedal_sensor.ramp_time_neg = APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG;
+	config.pedal_sensor.invert_direction = APP_CUSTOM_CONF_PEDAL_INVERT_DIR;
 
 	config.wheel_sensor.sensor_type   = APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE;
 	config.wheel_sensor.magnets       = APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS;
@@ -162,6 +163,7 @@ void app_custom_configure(app_configuration *conf) {
 	config.wheel_sensor.rpm_end       = APP_CUSTOM_CONF_WHEEL_RPM_END;
 	config.wheel_sensor.ramp_time_pos = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS;
 	config.wheel_sensor.ramp_time_neg = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG;
+	config.wheel_sensor.invert_direction = APP_CUSTOM_CONF_WHEEL_INVERT_DIR;
 
 	config.torque_sensor.sensor_type  = APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE;
 
@@ -443,6 +445,10 @@ static void update_pedal_speed_and_position(void)
 	new_state = HALL2_level * 2 + HALL1_level;
 	direction = (float) QEM[old_state * 4 + new_state];
 	old_state = new_state;
+
+	if (config.pedal_sensor.invert_direction) {
+        direction *= -1;
+	}
 
 	// count the number of consecutive forward/backward phase changes
 	// - backward counter is limited based on the back padal brake config

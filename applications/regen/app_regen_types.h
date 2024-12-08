@@ -57,7 +57,7 @@ typedef struct {
 	float rpm_end;
 	float ramp_time_pos;
 	float ramp_time_neg;
-	//bool invert_direction;
+	bool invert_direction;
 } speed_sensor_config_type;
 
 typedef struct {
