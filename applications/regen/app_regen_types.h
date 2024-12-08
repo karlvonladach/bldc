@@ -21,9 +21,12 @@
 #define APP_REGEN_TYPES_H_
 
 typedef enum {
-    CLUTCH_STATE_DISCONNECTED = 0,
-    CLUTCH_STATE_SYNCHRONIZING,
-    CLUTCH_STATE_CONNECTED
+    CLUTCH_STATE_OPENING = 0,
+    CLUTCH_STATE_OPEN,
+    CLUTCH_STATE_SYNCING,
+    CLUTCH_STATE_SYNCED,
+    CLUTCH_STATE_CLOSING,
+    CLUTCH_STATE_CLOSED,
 } clutch_state_type;
 
 typedef enum {
@@ -49,10 +52,19 @@ typedef struct {
 } brake_config_type;
 
 typedef struct {
+    float wait_before_open;
+    float wait_before_close;
+    float wait_before_check;
+    float sync_rpm_diff;
+    float check_rpm_diff;
+} clutch_config_type;
+
+typedef struct {
 	//pas_control_type ctrl_type;
     speed_sensor_config_type pedal_sensor;
     speed_sensor_config_type wheel_sensor;
     brake_config_type back_pedal_brake;
+    clutch_config_type clutch;
 	//float current_scaling;
 	uint32_t update_rate_hz;
 } custom_config_type;

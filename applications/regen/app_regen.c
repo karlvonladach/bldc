@@ -37,6 +37,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // Threads
 static THD_FUNCTION(my_thread, arg);
@@ -44,31 +45,40 @@ static THD_WORKING_AREA(my_thread_wa, 1024);
 
 // Private functions
 static void terminal_test(int argc, const char **argv);
+
 static void update_pedal_torque(void);
 static void update_pedal_speed_and_position(void);
 static void update_wheel_speed(void);
 static void update_motor_speed(void);
+static void update_clutch_state(void);
+
+static void open_clutch(void);
+static void sync_clutch(void);
+static void close_clutch(void);
 static void enable_interrupt(void);
 
 // Private variables
 static volatile custom_config_type config;
-static volatile bool stop_now = true;
-static volatile bool is_running = false;
-static volatile float pedal_torque = 0;
-static volatile float pedal_speed  = 0;
-static volatile float wheel_speed  = 0;
-static volatile float motor_speed  = 0;
-static volatile float output_speed = 0;
-static volatile float pedal_brake_position = 0;
-static volatile float command_line_speed = -1;
-static volatile float ms_without_power = 0.0;
 static volatile float max_pedal_period = 0.0;
 static volatile float min_pedal_period = 0.0;
 static volatile float max_wheel_period = 0.0;
 static volatile float min_wheel_period = 0.0;
 static volatile int32_t min_backward_counter = 0;
 static volatile int32_t max_backward_counter = 0;
+
+static volatile bool stop_now = true;
+static volatile bool is_running = false;
+static volatile float pedal_torque = 0;
+static volatile float pedal_speed  = 0;
+static volatile float pedal_brake_position = 0;
+static volatile float wheel_speed  = 0;
+static volatile float motor_speed  = 0;
+static volatile float command_line_speed = -1;
+static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
+
+static volatile float ms_without_power = 0.0;
 static volatile float wheel_sensor_timestamp = 0;
+static volatile float clutch_timestamp = 0;
 
 // Called when the custom application is started. Start our
 // threads here and set up callbacks.
@@ -82,6 +92,10 @@ void app_custom_start(void) {
 
 #ifdef APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1
 	palSetPadMode(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1, PAL_MODE_INPUT_PULLUP);
+#endif
+
+#ifdef APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1
+	palSetPadMode(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, PAL_MODE_OUTPUT_OPENDRAIN);
 #endif
 
 	stop_now = false;
@@ -132,6 +146,12 @@ void app_custom_configure(app_configuration *conf) {
 	config.back_pedal_brake.start_pos = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS;
 	config.back_pedal_brake.end_pos   = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS;
 
+	config.clutch.wait_before_open    = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN;
+	config.clutch.wait_before_close   = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CLOSE;
+	config.clutch.wait_before_check   = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK;
+	config.clutch.sync_rpm_diff       = APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF;
+	config.clutch.check_rpm_diff      = APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF;
+
 	config.update_rate_hz = APP_CUSTOM_CONF_UPDATE_RATE_HZ;
 
 	ms_without_power = 0.0;
@@ -162,6 +182,8 @@ void app_custom_pin_isr(void){
 static THD_FUNCTION(my_thread, arg) {
 	(void)arg;
 	float timestamp = 0;
+	float pedal_inactivity_time = 0;
+	float pedal_activity_time = 0;
 
 	chRegSetThreadName("App Custom");
 
@@ -179,7 +201,7 @@ static THD_FUNCTION(my_thread, arg) {
 	commands_plot_add_graph("Motor RPM");
 #endif
 
-	for(;;) {
+	for(int cnt = 0; true; cnt++) {
 		// Sleep for a time according to the specified rate
 		systime_t sleep_time = CH_CFG_ST_FREQUENCY / config.update_rate_hz;
 
@@ -230,17 +252,61 @@ static THD_FUNCTION(my_thread, arg) {
 		commands_send_plot_points(timestamp, motor_speed);
 #endif
 
-		//TODO: if pedal speed = 0 then disconnect clutch after N seconds
-		//TODO: if pedal speed > 0 or < 0 then make sure clutch is connected
-		//         if disconnected then sync motor speed with wheel speed and connect clutch
-		//         start pedal position tracking
-		//TODO: if pedal speed > 0 then set power based on torque (and pedal speed)
-		//TODO: if pedal speed < 0 then set breaking power based on pedal position
+		//take care of clutch state transitions
+		update_clutch_state();
+
+		//if pedal speed = 0 then disconnect clutch after N seconds
+		if (pedal_speed == 0){
+			pedal_activity_time = 0;
+			if (pedal_inactivity_time < config.clutch.wait_before_open){
+				pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
+				if (pedal_inactivity_time >= config.clutch.wait_before_open){
+					open_clutch();
+				}
+			}
+		}
+		//if pedal speed > 0 then start syncing motor to wheel after N seconds
+		//   and set power based on torque and pedal speed
+		if (pedal_speed > 0){
+			pedal_inactivity_time = 0;
+			if (pedal_activity_time < config.clutch.wait_before_close){
+				pedal_activity_time += 1.0 / (float)config.update_rate_hz;
+				if (pedal_activity_time >= config.clutch.wait_before_close){
+					sync_clutch();
+				}
+			}
+		}
+		//if pedal brake is active then start syncing motor to wheel immediately
+		if (pedal_brake_position > 0){
+			sync_clutch();
+		}
 
 		if (command_line_speed >= 0){
 			mc_interface_set_pid_speed(command_line_speed);
-		} else {
-			mc_interface_set_pid_speed(output_speed);
+		} else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_OPENING || clutch_state == CLUTCH_STATE_CLOSING || clutch_state == CLUTCH_STATE_SYNCED){
+			mc_interface_set_pid_speed(20*wheel_speed + config.clutch.sync_rpm_diff);
+			if (cnt % (config.update_rate_hz / 10) == 0){
+				commands_printf("[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(20*wheel_speed + config.clutch.sync_rpm_diff));
+			}
+		} else if (clutch_state == CLUTCH_STATE_CLOSED){
+			if (pedal_brake_position > 0){
+				float brake_force = (pedal_brake_position - config.back_pedal_brake.start_pos) / (config.back_pedal_brake.end_pos - config.back_pedal_brake.start_pos);
+				mc_interface_set_brake_current_rel(brake_force);
+				if (cnt % (config.update_rate_hz / 10) == 0){
+					commands_printf("[%4.2f] BREAK set to %d%%", (double)timestamp, (int)floor(brake_force*100));
+				}
+			} else if (pedal_speed > 0){
+				//TODO: set power based on torque (and pedal speed)
+				mc_interface_set_pid_speed(20*pedal_speed);
+				if (cnt % (config.update_rate_hz / 10) == 0){
+					commands_printf("[%4.2f] RPM set to %4.0f (tmp solution)", (double)timestamp, (double)(20*pedal_speed));
+				}
+			}
+		} else { //clutch open
+			if (cnt % (config.update_rate_hz / 10) == 0){
+				commands_printf("[%4.2f] CURRENT set to %d", (double)timestamp, 0);
+			}
+			mc_interface_set_current_rel(0.0);
 		}
 	}
 }
@@ -412,10 +478,67 @@ static void update_wheel_speed(void)
 
 static void update_motor_speed(void)
 {
-	//TODO
+	motor_speed = mc_interface_get_rpm()/20;
 }
 
-	// Example of setting up pin interrupt
+static void update_clutch_state(void)
+{
+	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	float elapsed_time = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - clutch_timestamp;
+
+	if (clutch_state == CLUTCH_STATE_OPENING){
+		if (elapsed_time > config.clutch.wait_before_check){
+			//TODO: check if opening succeeded
+			clutch_state = CLUTCH_STATE_OPEN;
+			commands_printf("[%4.2f] OPEN", (double)timestamp);
+		}
+	}
+	if (clutch_state == CLUTCH_STATE_SYNCING){
+		if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff){
+			clutch_state = CLUTCH_STATE_SYNCED;
+			commands_printf("[%4.2f] SYNCED", (double)timestamp);
+			close_clutch();
+		}
+	}
+	if (clutch_state == CLUTCH_STATE_CLOSING){
+		if (elapsed_time > config.clutch.wait_before_check){
+			//TODO: check if closing succeeded
+			clutch_state = CLUTCH_STATE_CLOSED;
+			commands_printf("[%4.2f] CLOSED", (double)timestamp);
+		}		
+	}
+}
+
+static void open_clutch(void)
+{
+	if (clutch_state != CLUTCH_STATE_OPEN && clutch_state != CLUTCH_STATE_OPENING){ 
+		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, 1);
+		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+		clutch_state = CLUTCH_STATE_OPENING;
+		commands_printf("[%4.2f] OPENING...", (double)clutch_timestamp);
+	}
+}
+
+static void sync_clutch(void)
+{
+	if (clutch_state == CLUTCH_STATE_OPEN || clutch_state == CLUTCH_STATE_OPENING){ 
+		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+		clutch_state = CLUTCH_STATE_SYNCING;
+		commands_printf("[%4.2f] SYNCING...", (double)clutch_timestamp);
+	}
+}
+
+static void close_clutch(void)
+{
+	if (clutch_state != CLUTCH_STATE_CLOSED && clutch_state != CLUTCH_STATE_CLOSING){ 
+		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, 0);
+		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+		clutch_state = CLUTCH_STATE_CLOSING;
+		commands_printf("[%4.2f] CLOSING...", (double)clutch_timestamp);
+	}
+}
+
+// Setting up pin interrupt
 void enable_interrupt()
 {
 #ifdef HW_ENC_EXTI_PORTSRC
