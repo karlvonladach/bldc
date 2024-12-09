@@ -515,6 +515,14 @@ static void update_pedal_speed_and_position(void)
 		forward_direction_counter = 0;
 	}
 	else {
+		// if there was no measurement, check if the silent period is
+		// longer than the latest period and decrease estimated speed accordingly
+		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets;
+		avg_period = 0.5 * (period + old_period);		
+		if ((60.0 / avg_period) < pedal_speed) {
+			pedal_speed = 60.0 / avg_period;
+		}	
+		
 		// increase inactivity time whenever we are between two measurements
 		// does not necessarily mean that the pedal is not rotating, we just
 		// don't know when the next measurement will happen
@@ -558,6 +566,14 @@ static void update_wheel_speed(void)
 		wheel_sensor_timestamp = 0;
 		inactivity_time = 0.0;
 	} else {
+		// if there was no measurement, check if the silent period is
+		// longer than the latest period and decrease estimated speed accordingly
+		float period = ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
+		float avg_period = 0.5 * (period + old_period);		
+		if ((60.0 / avg_period) < wheel_speed) {
+			wheel_speed = 60.0 / avg_period;
+		}		
+
 		// increase inactivity time whenever we are between two measurements
 		// does not necessarily mean that the wheel is not rotating, we just
 		// don't know when the next measurement will happen
