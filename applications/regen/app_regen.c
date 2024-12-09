@@ -283,8 +283,8 @@ static THD_FUNCTION(my_thread, arg) {
 		//take care of clutch state transitions
 		update_clutch_state();
 
-		//if pedal speed = 0 then disconnect clutch after N seconds
-		if (pedal_speed == 0){
+		//if pedal speed = 0 and not braking then disconnect clutch after N seconds
+		if (pedal_speed == 0 && pedal_brake_position == 0){
 			pedal_activity_time = 0;
 			if (pedal_inactivity_time < config.clutch.wait_before_open){
 				pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
@@ -306,7 +306,9 @@ static THD_FUNCTION(my_thread, arg) {
 		}
 		//if pedal brake is active then start syncing motor to wheel immediately
 		if (pedal_brake_position > 0){
+			if (clutch_state == CLUTCH_STATE_OPEN) {
 			sync_clutch();
+			}
 		}
 
 		if (command_line_speed >= 0){
