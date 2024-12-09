@@ -93,6 +93,15 @@ static volatile float ms_without_power = 0.0;
 static volatile float wheel_sensor_timestamp = 0;
 static volatile float clutch_timestamp = 0;
 
+static volatile int plot_number = 0;
+static volatile int pedal_rpm_plot = 0;
+static volatile int brake_pos_plot = 0;
+static volatile int wheel_rpm_plot = 0;
+static volatile int hall1_plot = 0;
+static volatile int hall2_plot = 0;
+static volatile int motor_rpm_plot = 0;
+static volatile int clutch_state_plot = 0;
+
 // Called when the custom application is started. Start our
 // threads here and set up callbacks.
 void app_custom_start(void) {
@@ -221,12 +230,21 @@ static THD_FUNCTION(my_thread, arg) {
 #ifdef DEBUG_PLOT
 	chThdSleepMilliseconds(1000);
 	commands_init_plot("Time", "RPM");
+	plot_number = 0;
 	commands_plot_add_graph("Pedal RPM");
+	pedal_rpm_plot = plot_number++;
 	commands_plot_add_graph("Brake position");
+	brake_pos_plot = plot_number++;
 	commands_plot_add_graph("Wheel RPM");
-	commands_plot_add_graph("HALL1");
-	commands_plot_add_graph("HALL2");
+	wheel_rpm_plot = plot_number++;
+	//commands_plot_add_graph("HALL1");
+	//hall1_plot = plot_number++;
+	//commands_plot_add_graph("HALL2");
+	//hall2_plot = plot_number++;
+	commands_plot_add_graph("Clutch state");
+	clutch_state_plot = plot_number++;
 	commands_plot_add_graph("Motor RPM");
+	motor_rpm_plot = plot_number++;
 #endif
 
 	for(int cnt = 0; true; cnt++) {
@@ -260,28 +278,32 @@ static THD_FUNCTION(my_thread, arg) {
 		//measure pedal forward speed or backward position
 		update_pedal_speed_and_position();
 #ifdef DEBUG_PLOT
-		commands_plot_set_graph(0);
+		commands_plot_set_graph(pedal_rpm_plot);
 		commands_send_plot_points(timestamp, pedal_speed);
-		commands_plot_set_graph(1);
+		commands_plot_set_graph(brake_pos_plot);
 		commands_send_plot_points(timestamp, pedal_brake_position);
 #endif
 
 		//measure wheel speed
 		update_wheel_speed();
 #ifdef DEBUG_PLOT
-		commands_plot_set_graph(2);
+		commands_plot_set_graph(wheel_rpm_plot);
 		commands_send_plot_points(timestamp, wheel_speed);
 #endif
 
 		//get motor speed
 		update_motor_speed();
 #ifdef DEBUG_PLOT
-		commands_plot_set_graph(5);
+		commands_plot_set_graph(motor_rpm_plot);
 		commands_send_plot_points(timestamp, motor_speed);
 #endif
 
 		//take care of clutch state transitions
 		update_clutch_state();
+#ifdef DEBUG_PLOT
+		commands_plot_set_graph(clutch_state_plot);
+		commands_send_plot_points(timestamp, clutch_state);
+#endif
 
 		//if pedal speed = 0 and not braking then disconnect clutch after N seconds
 		if (pedal_speed == 0 && pedal_brake_position == 0){
@@ -307,7 +329,7 @@ static THD_FUNCTION(my_thread, arg) {
 		//if pedal brake is active then start syncing motor to wheel immediately
 		if (pedal_brake_position > 0){
 			if (clutch_state == CLUTCH_STATE_OPEN) {
-			sync_clutch();
+				sync_clutch();
 			}
 		}
 
@@ -474,10 +496,10 @@ static void update_pedal_speed_and_position(void)
 	const float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 
 #ifdef DEBUG_PLOT
-	commands_plot_set_graph(3);
-	commands_send_plot_points(timestamp, HALL1_level*20);
-	commands_plot_set_graph(4);
-	commands_send_plot_points(timestamp, HALL2_level*20);
+	//commands_plot_set_graph(hall1_plot);
+	//commands_send_plot_points(timestamp, HALL1_level*20);
+	//commands_plot_set_graph(hall2_plot);
+	//commands_send_plot_points(timestamp, HALL2_level*20);
 #endif
 
 	// calculate forward speed (for assistance)
