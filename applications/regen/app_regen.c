@@ -38,6 +38,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 // App settings
 #define FILTER_SAMPLES					5
@@ -50,6 +51,8 @@ static THD_WORKING_AREA(my_thread_wa, 1024);
 static void terminal_set_speed(int argc, const char **argv);
 static void terminal_config(int argc, const char **argv);
 static void terminal_clutch(int argc, const char **argv);
+static void terminal_log(int argc, const char **argv);
+static void print_log(log_group_t log_group, const char* format, ...);
 
 static void update_pedal_torque(void);
 static void update_pedal_speed_and_position(void);
@@ -80,6 +83,7 @@ static volatile float command_line_speed = -1;
 //// State variables
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
+static volatile uint8_t log_group_enabled[NUM_LOG_GROUPS];
 static volatile float pedal_torque = 0;
 static volatile float pedal_torque_rel = 0;
 static volatile float pedal_speed  = 0;
@@ -149,6 +153,15 @@ void app_custom_start(void) {
 			"Open or close the clutch",
 			"[open/close]",
 			terminal_clutch);
+	terminal_register_command_callback(
+			"log",
+			"Enable/disable logging",
+			"[log_group]",
+			terminal_log);
+
+	for (int i=0; i<NUM_LOG_GROUPS; i++){
+		log_group_enabled[i] = 0;
+	}
 }
 
 // Called when the custom application is stopped. Stop our threads
@@ -157,6 +170,7 @@ void app_custom_stop(void) {
 	terminal_unregister_callback(terminal_set_speed);
 	terminal_unregister_callback(terminal_config);
 	terminal_unregister_callback(terminal_clutch);
+	terminal_unregister_callback(terminal_log);
 
 	stop_now = true;
 	while (is_running) {
@@ -353,14 +367,14 @@ static THD_FUNCTION(my_thread, arg) {
 		} else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_OPENING || clutch_state == CLUTCH_STATE_CLOSING || clutch_state == CLUTCH_STATE_SYNCED){
 			mc_interface_set_pid_speed(20*wheel_speed + config.clutch.sync_rpm_diff);
 			if (cnt % (config.update_rate_hz / 10) == 0){
-				commands_printf("[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(20*wheel_speed + config.clutch.sync_rpm_diff));
+				print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(20*wheel_speed + config.clutch.sync_rpm_diff));
 			}
 		} else if (clutch_state == CLUTCH_STATE_CLOSED){
 			if (pedal_brake_position > 0){
 				float brake_force = (pedal_brake_position - config.back_pedal_brake.start_pos) / (config.back_pedal_brake.end_pos - config.back_pedal_brake.start_pos);
 				mc_interface_set_brake_current_rel(brake_force);
 				if (cnt % (config.update_rate_hz / 10) == 0){
-					commands_printf("[%4.2f] BREAK set to %d%%", (double)timestamp, (int)floor(brake_force*100));
+					print_log(LOG_GROUP_MOTOR,"[%4.2f] BREAK set to %d%%", (double)timestamp, (int)floor(brake_force*100));
 				}
 			} else if (pedal_speed > 0){
 				switch (config.ctrl_type){
@@ -369,7 +383,7 @@ static THD_FUNCTION(my_thread, arg) {
 					case CUSTOM_CTRL_TYPE_PID:
 						mc_interface_set_pid_speed(20*pedal_speed);
 						if (cnt % (config.update_rate_hz / 10) == 0){
-							commands_printf("[%4.2f] RPM set to %4.0f (tmp solution)", (double)timestamp, (double)(20*pedal_speed));
+							print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f (tmp solution)", (double)timestamp, (double)(20*pedal_speed));
 						}
 					    break;
 					case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED: 
@@ -387,7 +401,7 @@ static THD_FUNCTION(my_thread, arg) {
 			}
 		} else { //clutch open
 			if (cnt % (config.update_rate_hz / 10) == 0){
-				commands_printf("[%4.2f] CURRENT set to %d", (double)timestamp, 0);
+				print_log(LOG_GROUP_MOTOR,"[%4.2f] CURRENT set to %d", (double)timestamp, 0);
 			}
 			mc_interface_set_current_rel(0.0);
 		}
@@ -440,6 +454,34 @@ static void terminal_config(int argc, const char **argv) {
 	}
 }
 
+static void terminal_log(int argc, const char **argv) {
+	if (argc == 3) {
+		int en = 0;
+		sscanf(argv[2], "%d", &en);
+		if (en != 0 && en != 1){
+			commands_printf("unknown value. Valid values: 0 / 1");
+			return;
+		}
+		if (strcmp(argv[1],"sensor") == 0){
+			log_group_enabled[LOG_GROUP_SENSOR] = en;
+		} else
+		if (strcmp(argv[1],"motor") == 0){
+			log_group_enabled[LOG_GROUP_MOTOR] = en;
+		} else
+		if (strcmp(argv[1],"cluth") == 0){
+			log_group_enabled[LOG_GROUP_CLUTCH] = en;
+		} else
+		if (strcmp(argv[1],"error") == 0){
+			log_group_enabled[LOG_GROUP_ERROR] = en;
+		} else {
+			commands_printf("Unknown group.\r\nValid groups:\r\n  sensor\r\n  motor\r\n  clutch\r\n  error\r\n");
+		}
+	} else {
+		commands_printf("This command requires two arguments. Usage:\r\n  log [log_group] [0/1]");
+		commands_printf("Valid groups:\r\n  sensor\r\n  motor\r\n  clutch\r\n  error\r\n");
+	}
+}
+
 // Callback function for the terminal command with arguments.
 static void terminal_clutch(int argc, const char **argv) {
 	if (argc == 2) {
@@ -456,6 +498,16 @@ static void terminal_clutch(int argc, const char **argv) {
 	} else {
 		commands_printf("This command requires one argument.\n");
 	}
+}
+
+static void print_log(log_group_t log_group, const char* format, ...) {
+	va_list arg;
+	va_start (arg, format);
+
+	if (log_group_enabled[log_group]){
+		commands_printf(format, arg);
+	}
+	va_end (arg);
 }
 
 static void update_pedal_torque(void)
@@ -589,7 +641,7 @@ static void update_pedal_speed_and_position(void)
 			UTILS_LP_FAST(period_filtered, avg_period, 0.8);
 
 #ifdef DEBUG_PRINT
-			commands_printf("%d - %d \r\n", forward_direction_counter, backward_direction_counter);
+			print_log(LOG_GROUP_SENSOR,"%d - %d \r\n", forward_direction_counter, backward_direction_counter);
 #endif
 
 			if(period_filtered < min_pedal_period) { //can't be that short, abort
@@ -691,21 +743,21 @@ static void update_clutch_state(void)
 		if (elapsed_time > config.clutch.wait_before_check){
 			//TODO: check if opening succeeded
 			clutch_state = CLUTCH_STATE_OPEN;
-			commands_printf("[%4.2f] OPEN", (double)timestamp);
+			print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN", (double)timestamp);
 		}
 	} else
 	if (clutch_state == CLUTCH_STATE_SYNCING){
-		if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff){
+		//if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff){
 			clutch_state = CLUTCH_STATE_SYNCED;
-			commands_printf("[%4.2f] SYNCED", (double)timestamp);
+			print_log(LOG_GROUP_CLUTCH,"[%4.2f] SYNCED", (double)timestamp);
 			close_clutch();
-		}
+		//}
 	} else 
 	if (clutch_state == CLUTCH_STATE_CLOSING){
 		if (elapsed_time > config.clutch.wait_before_check){
 			//TODO: check if closing succeeded
 			clutch_state = CLUTCH_STATE_CLOSED;
-			commands_printf("[%4.2f] CLOSED", (double)timestamp);
+			print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSED", (double)timestamp);
 		}		
 	}
 }
@@ -716,7 +768,7 @@ static void open_clutch(void)
 		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, 1);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_OPENING;
-		commands_printf("[%4.2f] OPENING...", (double)clutch_timestamp);
+		print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPENING...", (double)clutch_timestamp);
 	}
 }
 
@@ -725,7 +777,7 @@ static void sync_clutch(void)
 	if (clutch_state == CLUTCH_STATE_OPEN || clutch_state == CLUTCH_STATE_OPENING){ 
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_SYNCING;
-		commands_printf("[%4.2f] SYNCING...", (double)clutch_timestamp);
+		print_log(LOG_GROUP_CLUTCH,"[%4.2f] SYNCING...", (double)clutch_timestamp);
 	}
 }
 
@@ -735,7 +787,7 @@ static void close_clutch(void)
 		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, 0);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_CLOSING;
-		commands_printf("[%4.2f] CLOSING...", (double)clutch_timestamp);
+		print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSING...", (double)clutch_timestamp);
 	}
 }
 

@@ -20,6 +20,14 @@
 #ifndef APP_REGEN_TYPES_H_
 #define APP_REGEN_TYPES_H_
 
+typedef enum {
+    LOG_GROUP_SENSOR = 0,
+    LOG_GROUP_MOTOR,
+    LOG_GROUP_CLUTCH,
+    LOG_GROUP_ERROR,
+    NUM_LOG_GROUPS
+} log_group_t;
+
 // ADC control types
 typedef enum {
 	CUSTOM_CTRL_TYPE_NONE = 0,
