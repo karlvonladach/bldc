@@ -47,7 +47,9 @@ static THD_FUNCTION(my_thread, arg);
 static THD_WORKING_AREA(my_thread_wa, 1024);
 
 // Private functions
-static void terminal_test(int argc, const char **argv);
+static void terminal_set_speed(int argc, const char **argv);
+static void terminal_config(int argc, const char **argv);
+static void terminal_clutch(int argc, const char **argv);
 
 static void update_pedal_torque(void);
 static void update_pedal_speed_and_position(void);
@@ -133,15 +135,28 @@ void app_custom_start(void) {
 	// Terminal commands for the VESC Tool terminal can be registered.
 	terminal_register_command_callback(
 			"set-speed",
-			"set the speed to RPM",
+			"Set the speed to RPM",
 			"[RPM]",
-			terminal_test);
+			terminal_set_speed);
+
+	terminal_register_command_callback(
+			"config",
+			"Configure custom app parameters",
+			"[parameter] [value]",
+			terminal_config);
+	terminal_register_command_callback(
+			"clutch",
+			"Open or close the clutch",
+			"[open/close]",
+			terminal_clutch);
 }
 
 // Called when the custom application is stopped. Stop our threads
 // and release callbacks.
 void app_custom_stop(void) {
-	terminal_unregister_callback(terminal_test);
+	terminal_unregister_callback(terminal_set_speed);
+	terminal_unregister_callback(terminal_config);
+	terminal_unregister_callback(terminal_clutch);
 
 	stop_now = true;
 	while (is_running) {
@@ -380,12 +395,64 @@ static THD_FUNCTION(my_thread, arg) {
 }
 
 // Callback function for the terminal command with arguments.
-static void terminal_test(int argc, const char **argv) {
+static void terminal_set_speed(int argc, const char **argv) {
 	if (argc == 2) {
 		int d = -1;
 		sscanf(argv[1], "%d", &d);
 		command_line_speed = d;
 		commands_printf("RPM set to %d", d);
+	} else {
+		commands_printf("This command requires one argument.\n");
+	}
+}
+
+// Callback function for the terminal command with arguments.
+static void terminal_config(int argc, const char **argv) {
+	if (argc == 3) {
+		if (strcmp(argv[1],"ctrl-type") == 0){
+			if (strcmp(argv[2],"none") == 0){
+				config.ctrl_type = CUSTOM_CTRL_TYPE_NONE;
+				commands_printf("Control type set to CUSTOM_CTRL_TYPE_NONE");
+			} else
+			if (strcmp(argv[2],"pid") == 0){
+				config.ctrl_type = CUSTOM_CTRL_TYPE_PID;
+				commands_printf("Control type set to CUSTOM_CTRL_TYPE_PID");
+			} else
+			if (strcmp(argv[2],"speed") == 0){
+				config.ctrl_type = CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED;
+				commands_printf("Control type set to CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED");
+			} else
+			if (strcmp(argv[2],"torque") == 0){
+				config.ctrl_type = CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE;
+				commands_printf("Control type set to CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE");
+			} else
+			if (strcmp(argv[2],"torque_speed") == 0){
+				config.ctrl_type = CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE;
+				commands_printf("Control type set to CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE");
+			} else {
+				commands_printf("Invalid value.\r\nValid values:\r\n  none\r\n  pid\r\n  speed\r\n  torque\r\n  torque_speed\r\n");
+			}
+		} else {
+			commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n");
+		}
+	} else {
+		commands_printf("This command requires two arguments.\n");
+	}
+}
+
+// Callback function for the terminal command with arguments.
+static void terminal_clutch(int argc, const char **argv) {
+	if (argc == 2) {
+		if (strcmp(argv[1],"open") == 0){
+			open_clutch();
+			commands_printf("Clutch opening...");
+		} else
+		if (strcmp(argv[1],"close") == 0){
+			sync_clutch();
+			commands_printf("Clutch closing...");
+		} else {
+			commands_printf("Invalid value.\r\nValid values:\r\n  open\r\n  close\r\n");
+		}
 	} else {
 		commands_printf("This command requires one argument.\n");
 	}
