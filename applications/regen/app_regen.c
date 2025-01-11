@@ -66,6 +66,7 @@ static void update_clutch_state(void);
 static void open_clutch(void);
 static void sync_clutch(void);
 static void close_clutch(void);
+static void set_motor_speed(float mrpm);
 static void enable_interrupt(void);
 static void init_plots(void);
 static void plot_points(plot_index_t plot, float x, float y);
@@ -345,11 +346,11 @@ static THD_FUNCTION(my_thread, arg) {
 		}
 
 		if (command_line_speed >= 0){
-			mc_interface_set_pid_speed(command_line_speed);
+			set_motor_speed(command_line_speed);
 		} else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_SYNCED){
-			mc_interface_set_pid_speed(20*wheel_speed + config.clutch.sync_rpm_diff);
+			set_motor_speed(wheel_speed + config.clutch.sync_rpm_diff);
 			if (cnt % (config.update_rate_hz / 10) == 0){
-				print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(20*wheel_speed + config.clutch.sync_rpm_diff));
+				print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(wheel_speed + config.clutch.sync_rpm_diff));
 			}
 		} else if (clutch_state == CLUTCH_STATE_CLOSED){
 			if (pedal_brake_position > 0){
@@ -363,9 +364,9 @@ static THD_FUNCTION(my_thread, arg) {
 					case CUSTOM_CTRL_TYPE_NONE:
 					    break;
 					case CUSTOM_CTRL_TYPE_PID:
-						mc_interface_set_pid_speed(20*pedal_speed);
+						set_motor_speed(pedal_speed);
 						if (cnt % (config.update_rate_hz / 10) == 0){
-							print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f (tmp solution)", (double)timestamp, (double)(20*pedal_speed));
+							print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f (tmp solution)", (double)timestamp, (double)(pedal_speed));
 						}
 					    break;
 					case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED: 
@@ -485,13 +486,13 @@ static void terminal_clutch(int argc, const char **argv) {
 // Function to handle terminal commands
 static void terminal_cmd_enable_plot(int argc, const char **argv) {
     if (argc == 2) {
-        if (strcmp(argv[1], "pedal_rpm") == 0) {
+        if (strcmp(argv[1], "crpm") == 0) {
             plot_enabled[PLOT_PEDAL_RPM] = true;
             commands_printf("Pedal RPM plot enabled");
-        } else if (strcmp(argv[1], "brake_pos") == 0) {
+        } else if (strcmp(argv[1], "brake") == 0) {
             plot_enabled[PLOT_BRAKE_POS] = true;
             commands_printf("Brake position plot enabled");
-        } else if (strcmp(argv[1], "wheel_rpm") == 0) {
+        } else if (strcmp(argv[1], "wrpm") == 0) {
             plot_enabled[PLOT_WHEEL_RPM] = true;
             commands_printf("Wheel RPM plot enabled");
         } else if (strcmp(argv[1], "hall1") == 0) {
@@ -500,27 +501,27 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
         } else if (strcmp(argv[1], "hall2") == 0) {
             plot_enabled[PLOT_HALL2] = true;
             commands_printf("HALL2 plot enabled");
-        } else if (strcmp(argv[1], "motor_rpm") == 0) {
+        } else if (strcmp(argv[1], "mrpm") == 0) {
             plot_enabled[PLOT_MOTOR_RPM] = true;
             commands_printf("Motor RPM plot enabled");
         } else {
-            commands_printf("Invalid plot name. Usage: enable_plot <plot_name>");
+            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  mrpm\r\n");
         }
         init_plots();
     } else {
-        commands_printf("Invalid arguments. Usage: enable_plot <plot_name>");
+        commands_printf("This command requires one argument. Usage: enable_plot <plot_name>");
     }
 }
 
 static void terminal_cmd_disable_plot(int argc, const char **argv) {
     if (argc == 2) {
-        if (strcmp(argv[1], "pedal_rpm") == 0) {
+        if (strcmp(argv[1], "crpm") == 0) {
             plot_enabled[PLOT_PEDAL_RPM] = false;
             commands_printf("Pedal RPM plot disabled");
-        } else if (strcmp(argv[1], "brake_pos") == 0) {
+        } else if (strcmp(argv[1], "brake") == 0) {
             plot_enabled[PLOT_BRAKE_POS] = false;
             commands_printf("Brake position plot disabled");
-        } else if (strcmp(argv[1], "wheel_rpm") == 0) {
+        } else if (strcmp(argv[1], "wrpm") == 0) {
             plot_enabled[PLOT_WHEEL_RPM] = false;
             commands_printf("Wheel RPM plot disabled");
         } else if (strcmp(argv[1], "hall1") == 0) {
@@ -529,15 +530,15 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
         } else if (strcmp(argv[1], "hall2") == 0) {
             plot_enabled[PLOT_HALL2] = false;
             commands_printf("HALL2 plot disabled");
-        } else if (strcmp(argv[1], "motor_rpm") == 0) {
+        } else if (strcmp(argv[1], "mrpm") == 0) {
             plot_enabled[PLOT_MOTOR_RPM] = false;
             commands_printf("Motor RPM plot disabled");
         } else {
-            commands_printf("Invalid plot name. Usage: disable_plot <plot_name>");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  mrpm\r\n");
         }
         init_plots();
     } else {
-        commands_printf("Invalid arguments. Usage: disable_plot <plot_name>");
+		commands_printf("This command requires one argument. Usage: disable_plot <plot_name>");
     }
 }
 
@@ -768,7 +769,11 @@ static void update_wheel_speed(void)
 
 static void update_motor_speed(void)
 {
-	motor_speed = mc_interface_get_rpm()/20;
+	// calculate motor speed from erpm
+	// the motor speed is the mechanical rpm (mrpm) divided by the gear ratio
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+	const float mrpm = mc_interface_get_rpm() / (conf->si_motor_poles / 2.0);
+	motor_speed = mrpm / conf->si_gear_ratio;
 }
 
 static void update_clutch_state(void)
@@ -828,6 +833,12 @@ static void close_clutch(void)
 	}
 }
 
+static void set_motor_speed(float mrpm) {
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+	const float erpm = mrpm * conf->si_gear_ratio * (conf->si_motor_poles / 2.0);
+	mc_interface_set_pid_speed(erpm);
+}
+
 // Setting up pin interrupt
 void enable_interrupt()
 {
@@ -856,7 +867,7 @@ static void init_plots(void) {
 
     if (plot_enabled[PLOT_PEDAL_RPM]) {
         plot_numbers[PLOT_PEDAL_RPM] = plot_number++;
-        commands_plot_add_graph("Pedal RPM");
+        commands_plot_add_graph("Pedal RPM (CRPM)");
     }
     if (plot_enabled[PLOT_BRAKE_POS]) {
         plot_numbers[PLOT_BRAKE_POS] = plot_number++;
@@ -864,7 +875,7 @@ static void init_plots(void) {
     }
     if (plot_enabled[PLOT_WHEEL_RPM]) {
         plot_numbers[PLOT_WHEEL_RPM] = plot_number++;
-        commands_plot_add_graph("Wheel RPM");
+        commands_plot_add_graph("Wheel RPM (WRPM)");
     }
     if (plot_enabled[PLOT_HALL1]) {
         plot_numbers[PLOT_HALL1] = plot_number++;
@@ -876,7 +887,7 @@ static void init_plots(void) {
     }
     if (plot_enabled[PLOT_MOTOR_RPM]) {
         plot_numbers[PLOT_MOTOR_RPM] = plot_number++;
-        commands_plot_add_graph("Motor RPM");
+        commands_plot_add_graph("Motor RPM (MRPM)");
     }
 }
 
