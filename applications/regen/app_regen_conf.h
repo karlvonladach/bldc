@@ -22,7 +22,7 @@
 
 #include "app_regen_types.h"
 
-#define DEBUG_PLOT
+//#define DEBUG_PLOT
 
 #define APP_CUSTOM_TO_USE				"regen/app_regen.c"
 

@@ -52,6 +52,9 @@ static void terminal_set_speed(int argc, const char **argv);
 static void terminal_config(int argc, const char **argv);
 static void terminal_clutch(int argc, const char **argv);
 static void terminal_log(int argc, const char **argv);
+static void terminal_cmd_enable_plot(int argc, const char **argv);
+static void terminal_cmd_disable_plot(int argc, const char **argv);
+
 static void print_log(log_group_t log_group, const char* format, ...);
 
 static void update_pedal_torque(void);
@@ -64,6 +67,8 @@ static void open_clutch(void);
 static void sync_clutch(void);
 static void close_clutch(void);
 static void enable_interrupt(void);
+static void init_plots(void);
+static void plot_points(plot_index_t plot, float x, float y);
 
 // Private variables
 //// Config variables
@@ -84,6 +89,8 @@ static volatile float command_line_speed = -1;
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
 static volatile uint8_t log_group_enabled[NUM_LOG_GROUPS];
+static volatile bool plot_enabled[PLOT_COUNT] = {false, false, false, false, false, false};
+static volatile int plot_numbers[PLOT_COUNT] = {0};
 static volatile float pedal_torque = 0;
 static volatile float pedal_torque_rel = 0;
 static volatile float pedal_speed  = 0;
@@ -100,13 +107,6 @@ static volatile float wheel_sensor_timestamp = 0;
 static volatile float clutch_timestamp = 0;
 
 static volatile int plot_number = 0;
-static volatile int pedal_rpm_plot = 0;
-static volatile int brake_pos_plot = 0;
-static volatile int wheel_rpm_plot = 0;
-static volatile int hall1_plot = 0;
-static volatile int hall2_plot = 0;
-static volatile int motor_rpm_plot = 0;
-static volatile int clutch_state_plot = 0;
 
 // Called when the custom application is started. Start our
 // threads here and set up callbacks.
@@ -158,6 +158,18 @@ void app_custom_start(void) {
 			"Enable/disable logging",
 			"[log_group]",
 			terminal_log);
+
+	terminal_register_command_callback(
+	        "enable_plot",
+    	    "Enable a plot. Usage: enable_plot <plot_name>",
+			"[plot_name]",
+        	terminal_cmd_enable_plot);
+
+    terminal_register_command_callback(
+        	"disable_plot",
+        	"Disable a plot. Usage: disable_plot <plot_name>",
+			"[plot_name]",
+        	terminal_cmd_disable_plot);
 
 	for (int i=0; i<NUM_LOG_GROUPS; i++){
 		log_group_enabled[i] = 0;
@@ -255,26 +267,8 @@ static THD_FUNCTION(my_thread, arg) {
 
 	is_running = true;
 
-	// Example of using the experiment plot
-#ifdef DEBUG_PLOT
 	chThdSleepMilliseconds(1000);
-	commands_init_plot("Time", "RPM");
-	plot_number = 0;
-	commands_plot_add_graph("Pedal RPM");
-	pedal_rpm_plot = plot_number++;
-	commands_plot_add_graph("Brake position");
-	brake_pos_plot = plot_number++;
-	commands_plot_add_graph("Wheel RPM");
-	wheel_rpm_plot = plot_number++;
-	//commands_plot_add_graph("HALL1");
-	//hall1_plot = plot_number++;
-	//commands_plot_add_graph("HALL2");
-	//hall2_plot = plot_number++;
-	commands_plot_add_graph("Clutch state");
-	clutch_state_plot = plot_number++;
-	commands_plot_add_graph("Motor RPM");
-	motor_rpm_plot = plot_number++;
-#endif
+	init_plots();
 
 	for(int cnt = 0; true; cnt++) {
 		// Sleep for a time according to the specified rate
@@ -306,33 +300,21 @@ static THD_FUNCTION(my_thread, arg) {
 
 		//measure pedal forward speed or backward position
 		update_pedal_speed_and_position();
-#ifdef DEBUG_PLOT
-		commands_plot_set_graph(pedal_rpm_plot);
-		commands_send_plot_points(timestamp, pedal_speed);
-		commands_plot_set_graph(brake_pos_plot);
-		commands_send_plot_points(timestamp, pedal_brake_position);
-#endif
+		plot_points(PLOT_PEDAL_RPM, timestamp, pedal_speed);
+        plot_points(PLOT_BRAKE_POS, timestamp, pedal_brake_position);
 
 		//measure wheel speed
 		update_wheel_speed();
-#ifdef DEBUG_PLOT
-		commands_plot_set_graph(wheel_rpm_plot);
-		commands_send_plot_points(timestamp, wheel_speed);
-#endif
+		plot_points(PLOT_WHEEL_RPM, timestamp, wheel_speed);
 
 		//get motor speed
 		update_motor_speed();
-#ifdef DEBUG_PLOT
-		commands_plot_set_graph(motor_rpm_plot);
-		commands_send_plot_points(timestamp, motor_speed);
-#endif
+		plot_points(PLOT_MOTOR_RPM, timestamp, motor_speed);
 
 		//take care of clutch state transitions
 		update_clutch_state();
-#ifdef DEBUG_PLOT
-		commands_plot_set_graph(clutch_state_plot);
-		commands_send_plot_points(timestamp, clutch_state);
-#endif
+		//commands_plot_set_graph(clutch_state_plot);
+		//commands_send_plot_points(timestamp, clutch_state);
 
 		//if pedal speed = 0 and not braking then disconnect clutch after N seconds
 		if (pedal_speed == 0 && pedal_brake_position == 0){
@@ -364,7 +346,7 @@ static THD_FUNCTION(my_thread, arg) {
 
 		if (command_line_speed >= 0){
 			mc_interface_set_pid_speed(command_line_speed);
-		} else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_OPENING || clutch_state == CLUTCH_STATE_CLOSING || clutch_state == CLUTCH_STATE_SYNCED){
+		} else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_SYNCED){
 			mc_interface_set_pid_speed(20*wheel_speed + config.clutch.sync_rpm_diff);
 			if (cnt % (config.update_rate_hz / 10) == 0){
 				print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(20*wheel_speed + config.clutch.sync_rpm_diff));
@@ -399,7 +381,7 @@ static THD_FUNCTION(my_thread, arg) {
 					    break;
 				}
 			}
-		} else { //clutch open
+		} else { //clutch open or opening or closing. TODO: keep opening here, revert closing
 			if (cnt % (config.update_rate_hz / 10) == 0){
 				print_log(LOG_GROUP_MOTOR,"[%4.2f] CURRENT set to %d", (double)timestamp, 0);
 			}
@@ -498,6 +480,65 @@ static void terminal_clutch(int argc, const char **argv) {
 	} else {
 		commands_printf("This command requires one argument.\n");
 	}
+}
+
+// Function to handle terminal commands
+static void terminal_cmd_enable_plot(int argc, const char **argv) {
+    if (argc == 2) {
+        if (strcmp(argv[1], "pedal_rpm") == 0) {
+            plot_enabled[PLOT_PEDAL_RPM] = true;
+            commands_printf("Pedal RPM plot enabled");
+        } else if (strcmp(argv[1], "brake_pos") == 0) {
+            plot_enabled[PLOT_BRAKE_POS] = true;
+            commands_printf("Brake position plot enabled");
+        } else if (strcmp(argv[1], "wheel_rpm") == 0) {
+            plot_enabled[PLOT_WHEEL_RPM] = true;
+            commands_printf("Wheel RPM plot enabled");
+        } else if (strcmp(argv[1], "hall1") == 0) {
+            plot_enabled[PLOT_HALL1] = true;
+            commands_printf("HALL1 plot enabled");
+        } else if (strcmp(argv[1], "hall2") == 0) {
+            plot_enabled[PLOT_HALL2] = true;
+            commands_printf("HALL2 plot enabled");
+        } else if (strcmp(argv[1], "motor_rpm") == 0) {
+            plot_enabled[PLOT_MOTOR_RPM] = true;
+            commands_printf("Motor RPM plot enabled");
+        } else {
+            commands_printf("Invalid plot name. Usage: enable_plot <plot_name>");
+        }
+        init_plots();
+    } else {
+        commands_printf("Invalid arguments. Usage: enable_plot <plot_name>");
+    }
+}
+
+static void terminal_cmd_disable_plot(int argc, const char **argv) {
+    if (argc == 2) {
+        if (strcmp(argv[1], "pedal_rpm") == 0) {
+            plot_enabled[PLOT_PEDAL_RPM] = false;
+            commands_printf("Pedal RPM plot disabled");
+        } else if (strcmp(argv[1], "brake_pos") == 0) {
+            plot_enabled[PLOT_BRAKE_POS] = false;
+            commands_printf("Brake position plot disabled");
+        } else if (strcmp(argv[1], "wheel_rpm") == 0) {
+            plot_enabled[PLOT_WHEEL_RPM] = false;
+            commands_printf("Wheel RPM plot disabled");
+        } else if (strcmp(argv[1], "hall1") == 0) {
+            plot_enabled[PLOT_HALL1] = false;
+            commands_printf("HALL1 plot disabled");
+        } else if (strcmp(argv[1], "hall2") == 0) {
+            plot_enabled[PLOT_HALL2] = false;
+            commands_printf("HALL2 plot disabled");
+        } else if (strcmp(argv[1], "motor_rpm") == 0) {
+            plot_enabled[PLOT_MOTOR_RPM] = false;
+            commands_printf("Motor RPM plot disabled");
+        } else {
+            commands_printf("Invalid plot name. Usage: disable_plot <plot_name>");
+        }
+        init_plots();
+    } else {
+        commands_printf("Invalid arguments. Usage: disable_plot <plot_name>");
+    }
 }
 
 static void print_log(log_group_t log_group, const char* format, ...) {
@@ -614,12 +655,8 @@ static void update_pedal_speed_and_position(void)
 	
 	const float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 
-#ifdef DEBUG_PLOT
-	//commands_plot_set_graph(hall1_plot);
-	//commands_send_plot_points(timestamp, HALL1_level*20);
-	//commands_plot_set_graph(hall2_plot);
-	//commands_send_plot_points(timestamp, HALL2_level*20);
-#endif
+	plot_points(PLOT_HALL1, timestamp, HALL1_level * 20);
+    plot_points(PLOT_HALL2, timestamp, HALL2_level * 20);
 
 	// calculate forward speed (for assistance)
 	// sensors are poorly placed, so use only one rising edge as reference.
@@ -810,4 +847,43 @@ void enable_interrupt()
 	// Enable and set EXTI Line Interrupt to the highest priority
 	nvicEnableVector(HW_ENC_EXTI_CH, 0);
 #endif
+}
+
+// Function to initialize plots and add only the enabled graphs
+static void init_plots(void) {
+    plot_number = 0;
+    commands_init_plot("Time", "RPM");
+
+    if (plot_enabled[PLOT_PEDAL_RPM]) {
+        plot_numbers[PLOT_PEDAL_RPM] = plot_number++;
+        commands_plot_add_graph("Pedal RPM");
+    }
+    if (plot_enabled[PLOT_BRAKE_POS]) {
+        plot_numbers[PLOT_BRAKE_POS] = plot_number++;
+        commands_plot_add_graph("Brake position");
+    }
+    if (plot_enabled[PLOT_WHEEL_RPM]) {
+        plot_numbers[PLOT_WHEEL_RPM] = plot_number++;
+        commands_plot_add_graph("Wheel RPM");
+    }
+    if (plot_enabled[PLOT_HALL1]) {
+        plot_numbers[PLOT_HALL1] = plot_number++;
+        commands_plot_add_graph("HALL1");
+    }
+    if (plot_enabled[PLOT_HALL2]) {
+        plot_numbers[PLOT_HALL2] = plot_number++;
+        commands_plot_add_graph("HALL2");
+    }
+    if (plot_enabled[PLOT_MOTOR_RPM]) {
+        plot_numbers[PLOT_MOTOR_RPM] = plot_number++;
+        commands_plot_add_graph("Motor RPM");
+    }
+}
+
+// Function to plot points if the plot is enabled
+static void plot_points(plot_index_t plot, float x, float y) {
+    if (plot_enabled[plot]) {
+        commands_plot_set_graph(plot_numbers[plot]);
+        commands_send_plot_points(x, y);
+    }
 }

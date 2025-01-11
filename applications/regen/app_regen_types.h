@@ -28,6 +28,17 @@ typedef enum {
     NUM_LOG_GROUPS
 } log_group_t;
 
+// Enum for plot indices
+typedef enum {
+    PLOT_PEDAL_RPM,
+    PLOT_BRAKE_POS,
+    PLOT_WHEEL_RPM,
+    PLOT_HALL1,
+    PLOT_HALL2,
+    PLOT_MOTOR_RPM,
+    PLOT_COUNT // This should always be the last element
+} plot_index_t;
+
 // ADC control types
 typedef enum {
 	CUSTOM_CTRL_TYPE_NONE = 0,
