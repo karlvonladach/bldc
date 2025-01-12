@@ -101,6 +101,8 @@ static volatile float pedal_brake_position_rel = 0;
 static volatile float wheel_speed  = 0;
 static volatile float motor_speed  = 0;
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
+static volatile uint8_t HALL1_level = 0;
+static volatile uint8_t HALL2_level = 0;
 
 //// Other variables
 static volatile float ms_without_power = 0.0;
@@ -256,6 +258,15 @@ void app_custom_configure(app_configuration *conf) {
 
 void app_custom_pin_isr(void){
 	wheel_sensor_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+}
+
+void app_custom_get_rtdata(float* data) {
+	data[0] = pedal_speed;
+	data[1] = wheel_speed;
+	data[2] = motor_speed;
+	data[3] = pedal_brake_position;
+	data[4] = pedal_torque;
+	data[5] = HALL1_level;
 }
 
 static THD_FUNCTION(my_thread, arg) {
@@ -623,8 +634,8 @@ static void update_pedal_speed_and_position(void)
 	static int32_t backward_direction_counter = 0;
 
 	// read quadrature encoder state
-	uint8_t HALL1_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN1);
-	uint8_t HALL2_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2);
+	HALL1_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN1);
+	HALL2_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2);
 
 	// determine direction from old and new state
 	new_state = HALL2_level * 2 + HALL1_level;

@@ -515,6 +515,7 @@ static void sendEscStatus(CanardInstance *ins) {
 
 static void sendRtData(CanardInstance *ins) {
 	vesc_RTData data;
+	float app_data[APP_RTDATA_COUNT];
 	memset(&data, 0, sizeof(data));
 
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
@@ -541,16 +542,17 @@ static void sendRtData(CanardInstance *ins) {
 	imu_get_rpy(rpy);
 	imu_get_accel(acc);
 	imu_get_gyro(gyro);
+	app_custom_get_rtdata(app_data);
 
 	data.roll = rpy[0];
 	data.pitch = rpy[1];
 	data.yaw = rpy[2];
-	data.acc_x = acc[0];
-	data.acc_y = acc[1];
-	data.acc_z = acc[2];
-	data.gyro_x = gyro[0];
-	data.gyro_y = gyro[1];
-	data.gyro_z = gyro[2];
+	data.acc_x = app_data[0]; //acc[0];
+	data.acc_y = app_data[1]; //acc[1];
+	data.acc_z = app_data[2]; //acc[2];
+	data.gyro_x = app_data[3]; //gyro[0];
+	data.gyro_y = app_data[4]; //gyro[1];
+	data.gyro_z = app_data[5]; //gyro[2];
 
 	data.erpm = mc_interface_get_rpm();
 	data.rpm = mc_interface_get_rpm() / ((float)conf->si_motor_poles / 2.0);

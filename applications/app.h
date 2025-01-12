@@ -89,5 +89,6 @@ void app_custom_stop(void);
 bool app_custom_is_running(void);
 void app_custom_configure(app_configuration *conf);
 void app_custom_pin_isr(void);
+void app_custom_get_rtdata(float* data);
 
 #endif /* APP_H_ */

@@ -1060,6 +1060,7 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 	case COMM_GET_IMU_DATA: {
 		int32_t ind = 0;
 		uint8_t send_buffer[70];
+		float app_data[APP_RTDATA_COUNT];
 		send_buffer[ind++] = packet_id;
 
 		int32_t ind2 = 0;
@@ -1071,6 +1072,7 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 		imu_get_gyro(gyro);
 		imu_get_mag(mag);
 		imu_get_quaternions(q);
+		app_custom_get_rtdata(app_data);
 
 		buffer_append_uint16(send_buffer, mask, &ind);
 
@@ -1085,23 +1087,23 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 		}
 
 		if (mask & ((uint32_t)1 << 3)) {
-			buffer_append_float32_auto(send_buffer, acc[0], &ind);
+			buffer_append_float32_auto(send_buffer, app_data[0], &ind);
 		}
 		if (mask & ((uint32_t)1 << 4)) {
-			buffer_append_float32_auto(send_buffer, acc[1], &ind);
+			buffer_append_float32_auto(send_buffer, app_data[1], &ind);
 		}
 		if (mask & ((uint32_t)1 << 5)) {
-			buffer_append_float32_auto(send_buffer, acc[2], &ind);
+			buffer_append_float32_auto(send_buffer, app_data[2], &ind);
 		}
 
 		if (mask & ((uint32_t)1 << 6)) {
-			buffer_append_float32_auto(send_buffer, gyro[0], &ind);
+			buffer_append_float32_auto(send_buffer, app_data[3], &ind);
 		}
 		if (mask & ((uint32_t)1 << 7)) {
-			buffer_append_float32_auto(send_buffer, gyro[1], &ind);
+			buffer_append_float32_auto(send_buffer, app_data[4], &ind);
 		}
 		if (mask & ((uint32_t)1 << 8)) {
-			buffer_append_float32_auto(send_buffer, gyro[2], &ind);
+			buffer_append_float32_auto(send_buffer, app_data[5], &ind);
 		}
 
 		if (mask & ((uint32_t)1 << 9)) {
