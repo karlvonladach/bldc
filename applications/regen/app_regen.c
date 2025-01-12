@@ -66,7 +66,7 @@ static void update_clutch_state(void);
 static void open_clutch(void);
 static void sync_clutch(void);
 static void close_clutch(void);
-static void set_motor_speed(float mrpm);
+static void set_motor_speed(float mwrpm);
 static void enable_interrupt(void);
 static void init_plots(void);
 static void plot_points(plot_index_t plot, float x, float y);
@@ -94,12 +94,12 @@ static volatile bool plot_enabled[PLOT_COUNT] = {false, false, false, false, fal
 static volatile int plot_numbers[PLOT_COUNT] = {0};
 static volatile float pedal_torque = 0;
 static volatile float pedal_torque_rel = 0;
-static volatile float pedal_speed  = 0;
-static volatile float pedal_speed_rel = 0;
+static volatile float pedal_speed  = 0;    //CRPM
+static volatile float pedal_speed_rel = 0; 
 static volatile float pedal_brake_position = 0;
 static volatile float pedal_brake_position_rel = 0;
-static volatile float wheel_speed  = 0;
-static volatile float motor_speed  = 0;
+static volatile float wheel_speed  = 0;    //WRPM
+static volatile float motor_speed  = 0;    //MWRPM
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
 static volatile uint8_t HALL1_level = 0;
 static volatile uint8_t HALL2_level = 0;
@@ -512,11 +512,11 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
         } else if (strcmp(argv[1], "hall2") == 0) {
             plot_enabled[PLOT_HALL2] = true;
             commands_printf("HALL2 plot enabled");
-        } else if (strcmp(argv[1], "mrpm") == 0) {
+        } else if (strcmp(argv[1], "mwrpm") == 0) {
             plot_enabled[PLOT_MOTOR_RPM] = true;
             commands_printf("Motor RPM plot enabled");
         } else {
-            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  mrpm\r\n");
+            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  mwrpm\r\n");
         }
         init_plots();
     } else {
@@ -541,11 +541,11 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
         } else if (strcmp(argv[1], "hall2") == 0) {
             plot_enabled[PLOT_HALL2] = false;
             commands_printf("HALL2 plot disabled");
-        } else if (strcmp(argv[1], "mrpm") == 0) {
+        } else if (strcmp(argv[1], "mwrpm") == 0) {
             plot_enabled[PLOT_MOTOR_RPM] = false;
             commands_printf("Motor RPM plot disabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  mrpm\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  mwrpm\r\n");
         }
         init_plots();
     } else {
@@ -781,7 +781,7 @@ static void update_wheel_speed(void)
 static void update_motor_speed(void)
 {
 	// calculate motor speed from erpm
-	// the motor speed is the mechanical rpm (mrpm) divided by the gear ratio
+	// the motor wheel speed (mwrpm) is the mechanical rpm (mrpm) divided by the gear ratio
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 	const float mrpm = mc_interface_get_rpm() / (conf->si_motor_poles / 2.0);
 	motor_speed = mrpm / conf->si_gear_ratio;
@@ -844,9 +844,9 @@ static void close_clutch(void)
 	}
 }
 
-static void set_motor_speed(float mrpm) {
+static void set_motor_speed(float mwrpm) {
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
-	const float erpm = mrpm * conf->si_gear_ratio * (conf->si_motor_poles / 2.0);
+	const float erpm = mwrpm * conf->si_gear_ratio * (conf->si_motor_poles / 2.0);
 	mc_interface_set_pid_speed(erpm);
 }
 
@@ -898,7 +898,7 @@ static void init_plots(void) {
     }
     if (plot_enabled[PLOT_MOTOR_RPM]) {
         plot_numbers[PLOT_MOTOR_RPM] = plot_number++;
-        commands_plot_add_graph("Motor RPM (MRPM)");
+        commands_plot_add_graph("Motor Wheel RPM (MWRPM)");
     }
 }
 
