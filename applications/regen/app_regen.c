@@ -54,6 +54,7 @@ static void terminal_clutch(int argc, const char **argv);
 static void terminal_log(int argc, const char **argv);
 static void terminal_cmd_enable_plot(int argc, const char **argv);
 static void terminal_cmd_disable_plot(int argc, const char **argv);
+static void terminal_cmd_help(int argc, const char **argv);
 
 static void print_log(log_group_t log_group, const char* format, ...);
 
@@ -174,6 +175,12 @@ void app_custom_start(void) {
 			"[plot_name]",
         	terminal_cmd_disable_plot);
 
+	terminal_register_command_callback(
+        	"help2",
+        	"List all commands, their usage, and possible arguments",
+			"",
+        	terminal_cmd_help);
+
 	for (int i=0; i<NUM_LOG_GROUPS; i++){
 		log_group_enabled[i] = 0;
 	}
@@ -186,6 +193,9 @@ void app_custom_stop(void) {
 	terminal_unregister_callback(terminal_config);
 	terminal_unregister_callback(terminal_clutch);
 	terminal_unregister_callback(terminal_log);
+	terminal_unregister_callback(terminal_cmd_enable_plot);
+	terminal_unregister_callback(terminal_cmd_disable_plot);
+	terminal_unregister_callback(terminal_cmd_help);
 
 	stop_now = true;
 	while (is_running) {
@@ -551,6 +561,24 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
     } else {
 		commands_printf("This command requires one argument. Usage: disable_plot <plot_name>");
     }
+}
+
+static void terminal_cmd_help(int argc, const char **argv) {
+    (void)argc;
+    (void)argv;
+    commands_printf("Available commands:");
+    commands_printf("  set-speed [RPM] - Set the speed to RPM");
+    commands_printf("  config [parameter] [value] - Configure custom app parameters");
+    commands_printf("    Parameters:");
+    commands_printf("      ctrl-type - Control type");
+    commands_printf("        Values: none, pid, speed, torque, torque_speed");
+    commands_printf("  clutch [open/close] - Open or close the clutch");
+    commands_printf("  log [log_group] [0/1] - Enable/disable logging");
+    commands_printf("    Log groups: sensor, motor, clutch, error");
+    commands_printf("  enable_plot [plot_name] - Enable a plot");
+    commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, mwrpm");
+    commands_printf("  disable_plot [plot_name] - Disable a plot");
+    commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, mwrpm");
 }
 
 static void print_log(log_group_t log_group, const char* format, ...) {
