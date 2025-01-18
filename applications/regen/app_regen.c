@@ -92,8 +92,8 @@ static volatile float command_line_speed = -1;
 //// State variables
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
-static volatile uint8_t log_group_enabled[NUM_LOG_GROUPS];
-static volatile bool plot_enabled[PLOT_COUNT] = {false, false, false, false, false, false};
+static volatile uint32_t log_groups_enabled = 0;
+static volatile uint32_t plots_enabled = 0;
 static volatile int plot_numbers[PLOT_COUNT] = {0};
 static volatile float pedal_torque = 0;
 static volatile float pedal_torque_rel = 0;
@@ -182,10 +182,6 @@ void app_custom_start(void) {
         	"List all commands, their usage, and possible arguments",
 			"",
         	terminal_cmd_help);
-
-	for (int i=0; i<NUM_LOG_GROUPS; i++){
-		log_group_enabled[i] = 0;
-	}
 }
 
 // Called when the custom application is stopped. Stop our threads
@@ -210,9 +206,18 @@ bool app_custom_is_running(void) {
 }
 
 void app_custom_configure(app_configuration *conf) {
+	eeprom_var v;
 	
 	load_default_config(&config);
+
 	load_stored_config(&config);
+
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR)) {
+		plots_enabled = v.as_u32;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_LOG_GROUPS_ENABLED_ADDR)) {
+		log_groups_enabled = v.as_u32;
+	}
 
 	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC) {
 		config_adc = conf->app_adc_conf;
@@ -603,6 +608,7 @@ static void terminal_config(int argc, const char **argv) {
 }
 
 static void terminal_log(int argc, const char **argv) {
+	eeprom_var v;
 	if (argc == 3) {
 		int en = 0;
 		sscanf(argv[2], "%d", &en);
@@ -611,19 +617,37 @@ static void terminal_log(int argc, const char **argv) {
 			return;
 		}
 		if (strcmp(argv[1],"sensor") == 0){
-			log_group_enabled[LOG_GROUP_SENSOR] = en;
+			if (en) {
+                log_groups_enabled |= (1 << LOG_GROUP_SENSOR);
+            } else {
+                log_groups_enabled &= ~(1 << LOG_GROUP_SENSOR);
+            }
 		} else
 		if (strcmp(argv[1],"motor") == 0){
-			log_group_enabled[LOG_GROUP_MOTOR] = en;
+			if (en) {
+                log_groups_enabled |= (1 << LOG_GROUP_MOTOR);
+            } else {
+                log_groups_enabled &= ~(1 << LOG_GROUP_MOTOR);
+            }
 		} else
 		if (strcmp(argv[1],"cluth") == 0){
-			log_group_enabled[LOG_GROUP_CLUTCH] = en;
+			if (en) {
+                log_groups_enabled |= (1 << LOG_GROUP_CLUTCH);
+            } else {
+                log_groups_enabled &= ~(1 << LOG_GROUP_CLUTCH);
+            }
 		} else
 		if (strcmp(argv[1],"error") == 0){
-			log_group_enabled[LOG_GROUP_ERROR] = en;
+			if (en) {
+                log_groups_enabled |= (1 << LOG_GROUP_ERROR);
+            } else {
+                log_groups_enabled &= ~(1 << LOG_GROUP_ERROR);
+            }
 		} else {
 			commands_printf("Unknown group.\r\nValid groups:\r\n  sensor\r\n  motor\r\n  clutch\r\n  error\r\n");
 		}
+		v.as_u32 = log_groups_enabled;
+		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_LOG_GROUPS_ENABLED_ADDR);
 	} else {
 		commands_printf("This command requires two arguments. Usage:\r\n  log [log_group] [0/1]");
 		commands_printf("Valid groups:\r\n  sensor\r\n  motor\r\n  clutch\r\n  error\r\n");
@@ -650,28 +674,31 @@ static void terminal_clutch(int argc, const char **argv) {
 
 // Function to handle terminal commands
 static void terminal_cmd_enable_plot(int argc, const char **argv) {
+	eeprom_var v;
     if (argc == 2) {
         if (strcmp(argv[1], "crpm") == 0) {
-            plot_enabled[PLOT_PEDAL_RPM] = true;
+            plots_enabled |= (1 << PLOT_PEDAL_RPM);
             commands_printf("Pedal RPM plot enabled");
         } else if (strcmp(argv[1], "brake") == 0) {
-            plot_enabled[PLOT_BRAKE_POS] = true;
+            plots_enabled |= (1 << PLOT_BRAKE_POS);
             commands_printf("Brake position plot enabled");
         } else if (strcmp(argv[1], "wrpm") == 0) {
-            plot_enabled[PLOT_WHEEL_RPM] = true;
+            plots_enabled |= (1 << PLOT_WHEEL_RPM);
             commands_printf("Wheel RPM plot enabled");
         } else if (strcmp(argv[1], "hall1") == 0) {
-            plot_enabled[PLOT_HALL1] = true;
+            plots_enabled |= (1 << PLOT_HALL1);
             commands_printf("HALL1 plot enabled");
         } else if (strcmp(argv[1], "hall2") == 0) {
-            plot_enabled[PLOT_HALL2] = true;
+            plots_enabled |= (1 << PLOT_HALL2);
             commands_printf("HALL2 plot enabled");
         } else if (strcmp(argv[1], "mwrpm") == 0) {
-            plot_enabled[PLOT_MOTOR_RPM] = true;
+            plots_enabled |= (1 << PLOT_MOTOR_RPM);
             commands_printf("Motor RPM plot enabled");
         } else {
             commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  mwrpm\r\n");
         }
+		v.as_u32 = plots_enabled;
+		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
         init_plots();
     } else {
         commands_printf("This command requires one argument. Usage: enable_plot <plot_name>");
@@ -679,28 +706,31 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 }
 
 static void terminal_cmd_disable_plot(int argc, const char **argv) {
+	eeprom_var v;
     if (argc == 2) {
         if (strcmp(argv[1], "crpm") == 0) {
-            plot_enabled[PLOT_PEDAL_RPM] = false;
+            plots_enabled &= ~(1 << PLOT_PEDAL_RPM);
             commands_printf("Pedal RPM plot disabled");
         } else if (strcmp(argv[1], "brake") == 0) {
-            plot_enabled[PLOT_BRAKE_POS] = false;
+            plots_enabled &= ~(1 << PLOT_BRAKE_POS);
             commands_printf("Brake position plot disabled");
         } else if (strcmp(argv[1], "wrpm") == 0) {
-            plot_enabled[PLOT_WHEEL_RPM] = false;
+            plots_enabled &= ~(1 << PLOT_WHEEL_RPM);
             commands_printf("Wheel RPM plot disabled");
         } else if (strcmp(argv[1], "hall1") == 0) {
-            plot_enabled[PLOT_HALL1] = false;
+            plots_enabled &= ~(1 << PLOT_HALL1);
             commands_printf("HALL1 plot disabled");
         } else if (strcmp(argv[1], "hall2") == 0) {
-            plot_enabled[PLOT_HALL2] = false;
+            plots_enabled &= ~(1 << PLOT_HALL2);
             commands_printf("HALL2 plot disabled");
         } else if (strcmp(argv[1], "mwrpm") == 0) {
-            plot_enabled[PLOT_MOTOR_RPM] = false;
+            plots_enabled &= ~(1 << PLOT_MOTOR_RPM);
             commands_printf("Motor RPM plot disabled");
         } else {
 			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  mwrpm\r\n");
         }
+		v.as_u32 = plots_enabled;
+		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
         init_plots();
     } else {
 		commands_printf("This command requires one argument. Usage: disable_plot <plot_name>");
@@ -745,9 +775,9 @@ static void print_log(log_group_t log_group, const char* format, ...) {
 	va_list arg;
 	va_start (arg, format);
 
-	if (log_group_enabled[log_group]){
-		commands_printf(format, arg);
-	}
+	if (log_groups_enabled & (1 << log_group)) {
+        commands_printf(format, arg);
+    }
 	va_end (arg);
 }
 
@@ -1064,27 +1094,27 @@ static void init_plots(void) {
     plot_number = 0;
     commands_init_plot("Time", "RPM");
 
-    if (plot_enabled[PLOT_PEDAL_RPM]) {
+    if (plots_enabled & (1 << PLOT_PEDAL_RPM)) {
         plot_numbers[PLOT_PEDAL_RPM] = plot_number++;
         commands_plot_add_graph("Pedal RPM (CRPM)");
     }
-    if (plot_enabled[PLOT_BRAKE_POS]) {
+    if (plots_enabled & (1 << PLOT_BRAKE_POS)) {
         plot_numbers[PLOT_BRAKE_POS] = plot_number++;
         commands_plot_add_graph("Brake position");
     }
-    if (plot_enabled[PLOT_WHEEL_RPM]) {
+    if (plots_enabled & (1 << PLOT_WHEEL_RPM)) {
         plot_numbers[PLOT_WHEEL_RPM] = plot_number++;
         commands_plot_add_graph("Wheel RPM (WRPM)");
     }
-    if (plot_enabled[PLOT_HALL1]) {
+    if (plots_enabled & (1 << PLOT_HALL1)) {
         plot_numbers[PLOT_HALL1] = plot_number++;
         commands_plot_add_graph("HALL1");
     }
-    if (plot_enabled[PLOT_HALL2]) {
+    if (plots_enabled & (1 << PLOT_HALL2)) {
         plot_numbers[PLOT_HALL2] = plot_number++;
         commands_plot_add_graph("HALL2");
     }
-    if (plot_enabled[PLOT_MOTOR_RPM]) {
+    if (plots_enabled & (1 << PLOT_MOTOR_RPM)) {
 		const volatile mc_configuration *conf = mc_interface_get_configuration();
 		char legend[32];
 		// Motor Wheel RPM
@@ -1096,7 +1126,7 @@ static void init_plots(void) {
 
 // Function to plot points if the plot is enabled
 static void plot_points(plot_index_t plot, float x, float y) {
-    if (plot_enabled[plot]) {
+    if (plots_enabled & (1 << plot)) {
         commands_plot_set_graph(plot_numbers[plot]);
         commands_send_plot_points(x, y);
     }
