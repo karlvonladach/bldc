@@ -213,8 +213,10 @@ void app_custom_configure(app_configuration *conf) {
 	config.pedal_sensor.sensor_type   = APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE;
 	config.pedal_sensor.magnets       = APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS;
 	config.pedal_sensor.use_filter    = APP_CUSTOM_CONF_PEDAL_SENSOR_USE_FILTER;
+    config.pedal_sensor.rpm_min       = APP_CUSTOM_CONF_PEDAL_RPM_MIN;
 	config.pedal_sensor.rpm_start     = APP_CUSTOM_CONF_PEDAL_RPM_START;
 	config.pedal_sensor.rpm_end       = APP_CUSTOM_CONF_PEDAL_RPM_END;
+	config.pedal_sensor.rpm_max       = APP_CUSTOM_CONF_PEDAL_RPM_MAX;
 	config.pedal_sensor.ramp_time_pos = APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS;
 	config.pedal_sensor.ramp_time_neg = APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG;
 	config.pedal_sensor.invert_direction = APP_CUSTOM_CONF_PEDAL_INVERT_DIR;
@@ -222,8 +224,8 @@ void app_custom_configure(app_configuration *conf) {
 	config.wheel_sensor.sensor_type   = APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE;
 	config.wheel_sensor.magnets       = APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS;
 	config.wheel_sensor.use_filter    = APP_CUSTOM_CONF_WHEEL_SENSOR_USE_FILTER;
-	config.wheel_sensor.rpm_start     = APP_CUSTOM_CONF_WHEEL_RPM_START;
-	config.wheel_sensor.rpm_end       = APP_CUSTOM_CONF_WHEEL_RPM_END;
+	config.wheel_sensor.rpm_min       = APP_CUSTOM_CONF_WHEEL_RPM_MIN;
+	config.wheel_sensor.rpm_max       = APP_CUSTOM_CONF_WHEEL_RPM_MAX;
 	config.wheel_sensor.ramp_time_pos = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS;
 	config.wheel_sensor.ramp_time_neg = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG;
 	config.wheel_sensor.invert_direction = APP_CUSTOM_CONF_WHEEL_INVERT_DIR;
@@ -247,17 +249,17 @@ void app_custom_configure(app_configuration *conf) {
 
 	ms_without_power = 0.0;
 
-	// a period longer than this should immediately reduce power to zero
-	max_pedal_period = 1.0 / ((config.pedal_sensor.rpm_start / 60.0) * config.pedal_sensor.magnets) * 1.2;
+	// a period longer than this should immediately reduce CRPM to zero
+	max_pedal_period = 1.0 / ((config.pedal_sensor.rpm_min / 60.0) * config.pedal_sensor.magnets);
 
-	// if pedal spins at x3 the end rpm, assume its beyond limits
-	min_pedal_period = 1.0 / ((config.pedal_sensor.rpm_end * 3.0 / 60.0));
+	// if pedal spins at max rpm, assume its beyond limits
+	min_pedal_period = 1.0 / ((config.pedal_sensor.rpm_max / 60.0) * config.pedal_sensor.magnets);
 
-	// a period longer than this should immediately reduce measurements to zero
-	max_wheel_period = 1.0 / ((config.wheel_sensor.rpm_start / 60.0) * config.wheel_sensor.magnets) * 1.2;
+	// a period longer than this should immediately reduce WRPM to zero
+	max_wheel_period = 1.0 / ((config.wheel_sensor.rpm_min / 60.0) * config.wheel_sensor.magnets);
 
-	// if wheel spins at x3 the end rpm, assume its beyond limits
-	min_wheel_period = 1.0 / ((config.wheel_sensor.rpm_end * 3.0 / 60.0));
+	// if wheel spins at max rpm, assume its beyond limits
+	min_wheel_period = 1.0 / ((config.wheel_sensor.rpm_max / 60.0) * config.wheel_sensor.magnets);
 
 	// convert pedal angles to quadrature counter
 	min_backward_counter = floor((float)(config.back_pedal_brake.start_pos) / (360.0f / (float)(4.0 * config.pedal_sensor.magnets)));

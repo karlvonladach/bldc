@@ -38,8 +38,10 @@
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2        HW_HALL_ENC_PIN2
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS     24u     // including "virtual magnets"
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_USE_FILTER  1       // 1/0 = enable/disable
-#define APP_CUSTOM_CONF_PEDAL_RPM_START          10.0f   // CRMP
-#define APP_CUSTOM_CONF_PEDAL_RPM_END            150.0f  // CRPM
+#define APP_CUSTOM_CONF_PEDAL_RPM_MIN            10.0f   // CRPM - set 0 CRPM below this value
+#define APP_CUSTOM_CONF_PEDAL_RPM_START          10.0f   // CRMP - start of boost
+#define APP_CUSTOM_CONF_PEDAL_RPM_END            150.0f  // CRPM - end of boost
+#define APP_CUSTOM_CONF_PEDAL_RPM_MAX            450.0f  // CRPM - raise error above this value
 #define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS      0.3f    // CRPM/sec
 #define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG      0.15f   // CRPM/sec
 #define APP_CUSTOM_CONF_PEDAL_INVERT_DIR         1       // 1/0 = invert/no invert
@@ -49,8 +51,8 @@
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1        HW_HALL_ENC_PIN3
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS     12u     // including "virtual magnets"
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_USE_FILTER  1       // 1/0 = enable/disable
-#define APP_CUSTOM_CONF_WHEEL_RPM_START          10.0f   // WRPM
-#define APP_CUSTOM_CONF_WHEEL_RPM_END            600.0f  // WRPM
+#define APP_CUSTOM_CONF_WHEEL_RPM_MIN            10.0f   // WRPM - set 0 WRPM below this value
+#define APP_CUSTOM_CONF_WHEEL_RPM_MAX            1800.0f // WRPM - raise error above this value
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS      0.3f    // WRPM/sec
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG      0.15f   // WRPM/sec
 #define APP_CUSTOM_CONF_WHEEL_INVERT_DIR         1       // 1/0 = invert/no invert

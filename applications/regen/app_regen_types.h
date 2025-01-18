@@ -72,8 +72,10 @@ typedef struct {
     speed_sensor_type sensor_type;
     uint8_t magnets; 
 	bool use_filter;
+    float rpm_min;
 	float rpm_start;
 	float rpm_end;
+    float rpm_max;
 	float ramp_time_pos;
 	float ramp_time_neg;
 	bool invert_direction;
