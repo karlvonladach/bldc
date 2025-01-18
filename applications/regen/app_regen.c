@@ -925,8 +925,12 @@ static void init_plots(void) {
         commands_plot_add_graph("HALL2");
     }
     if (plot_enabled[PLOT_MOTOR_RPM]) {
+		const volatile mc_configuration *conf = mc_interface_get_configuration();
+		char legend[32];
+		// Motor Wheel RPM
+	    sprintf(legend,"MWRPM = MRPM / %.1f", (double)(conf->si_gear_ratio));
         plot_numbers[PLOT_MOTOR_RPM] = plot_number++;
-        commands_plot_add_graph("Motor Wheel RPM (MWRPM)");
+        commands_plot_add_graph(legend);
     }
 }
 
