@@ -968,8 +968,14 @@ static void update_wheel_speed(void)
 
 	if (wheel_sensor_timestamp != 0){
 		float period = (wheel_sensor_timestamp - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
-		float avg_period = 0.5 * (period + old_period);
-		old_period = period;		
+		float avg_period;
+
+		if (period < min_wheel_period) { //can't be that short, abort
+			return;
+		}
+
+		avg_period = 0.5 * (period + old_period);
+		old_period = period;
 		UTILS_LP_FAST(period_filtered, avg_period, 0.8);
 		wheel_speed = 60.0 / period_filtered;
 		wheel_sensor_timestamp_old = wheel_sensor_timestamp;
@@ -979,7 +985,13 @@ static void update_wheel_speed(void)
 		// if there was no measurement, check if the silent period is
 		// longer than the latest period and decrease estimated speed accordingly
 		float period = ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
-		float avg_period = 0.5 * (period + old_period);		
+		float avg_period;
+		
+		if (period < min_wheel_period) { //can't be that short, abort
+			return;
+		}
+
+		avg_period = 0.5 * (period + old_period);		
 		if ((60.0 / avg_period) < wheel_speed) {
 			wheel_speed = 60.0 / avg_period;
 		}		
