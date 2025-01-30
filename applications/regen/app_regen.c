@@ -106,6 +106,8 @@ static volatile float motor_speed  = 0;    //MWRPM
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
 static volatile uint8_t HALL1_level = 0;
 static volatile uint8_t HALL2_level = 0;
+static volatile uint32_t HALL3_int_cntr_xp = 0;
+static volatile uint32_t HALL3_int_cntr_rt = 0;
 
 //// Other variables
 static volatile float ms_without_power = 0.0;
@@ -246,6 +248,8 @@ void app_custom_configure(app_configuration *conf) {
 
 void app_custom_pin_isr(void){
 	wheel_sensor_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	HALL3_int_cntr_xp++;
+	HALL3_int_cntr_rt++;
 }
 
 void app_custom_get_rtdata(float* data) {
@@ -254,7 +258,8 @@ void app_custom_get_rtdata(float* data) {
 	data[2] = motor_speed;
 	data[3] = pedal_brake_position;
 	data[4] = pedal_torque;
-	data[5] = HALL1_level;
+	data[5] = HALL3_int_cntr_rt;
+	HALL3_int_cntr_rt = 0;
 }
 
 static THD_FUNCTION(my_thread, arg) {
@@ -691,6 +696,9 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
         } else if (strcmp(argv[1], "hall2") == 0) {
             plots_enabled |= (1 << PLOT_HALL2);
             commands_printf("HALL2 plot enabled");
+        } else if (strcmp(argv[1], "hall3") == 0) {
+            plots_enabled |= (1 << PLOT_HALL3);
+            commands_printf("HALL3 plot enabled");
         } else if (strcmp(argv[1], "mwrpm") == 0) {
             plots_enabled |= (1 << PLOT_MOTOR_RPM);
             commands_printf("Motor RPM plot enabled");
@@ -723,6 +731,9 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
         } else if (strcmp(argv[1], "hall2") == 0) {
             plots_enabled &= ~(1 << PLOT_HALL2);
             commands_printf("HALL2 plot disabled");
+        } else if (strcmp(argv[1], "hall3") == 0) {
+            plots_enabled &= ~(1 << PLOT_HALL3);
+            commands_printf("HALL3 plot disabled");
         } else if (strcmp(argv[1], "mwrpm") == 0) {
             plots_enabled &= ~(1 << PLOT_MOTOR_RPM);
             commands_printf("Motor RPM plot disabled");
@@ -965,10 +976,14 @@ static void update_wheel_speed(void)
 	static float period_filtered = 0;
 	static float wheel_sensor_timestamp_old = 0;
 	static float inactivity_time = 0;
+	float avg_period;
+	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+
+	plot_points(PLOT_HALL3, timestamp, HALL3_int_cntr_xp);
+	HALL3_int_cntr_xp = 0;
 
 	if (wheel_sensor_timestamp != 0){
 		float period = (wheel_sensor_timestamp - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
-		float avg_period;
 
 		if (period < min_wheel_period) { //can't be that short, abort
 			return;
@@ -985,7 +1000,6 @@ static void update_wheel_speed(void)
 		// if there was no measurement, check if the silent period is
 		// longer than the latest period and decrease estimated speed accordingly
 		float period = ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
-		float avg_period;
 		
 		if (period < min_wheel_period) { //can't be that short, abort
 			return;
@@ -1125,6 +1139,10 @@ static void init_plots(void) {
     if (plots_enabled & (1 << PLOT_HALL2)) {
         plot_numbers[PLOT_HALL2] = plot_number++;
         commands_plot_add_graph("HALL2");
+    }
+    if (plots_enabled & (1 << PLOT_HALL3)) {
+        plot_numbers[PLOT_HALL3] = plot_number++;
+        commands_plot_add_graph("HALL3");
     }
     if (plots_enabled & (1 << PLOT_MOTOR_RPM)) {
 		const volatile mc_configuration *conf = mc_interface_get_configuration();
