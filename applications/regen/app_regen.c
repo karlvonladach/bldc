@@ -106,6 +106,7 @@ static volatile float motor_speed  = 0;    //MWRPM
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
 static volatile uint8_t HALL1_level = 0;
 static volatile uint8_t HALL2_level = 0;
+static volatile uint8_t HALL3_level = 0;
 static volatile uint32_t HALL3_int_cntr_xp = 0;
 static volatile uint32_t HALL3_int_cntr_rt = 0;
 
@@ -437,6 +438,9 @@ static void load_stored_config(custom_config_type* conf){
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CTRL_TYPE_ADDR)) {
 		conf->ctrl_type = v.as_u32;
 	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE_ADDR)) {
+		conf->pedal_sensor.sensor_type = v.as_u32;
+	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS_ADDR)) {
 		conf->pedal_sensor.magnets = v.as_u32;
 	}
@@ -451,6 +455,9 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_INVERT_DIR_ADDR)) {
 		conf->pedal_sensor.invert_direction = v.as_u32;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE_ADDR)) {
+		conf->wheel_sensor.sensor_type = v.as_u32;
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR)) {
 		conf->wheel_sensor.magnets = v.as_u32;
@@ -524,6 +531,24 @@ static void terminal_config(int argc, const char **argv) {
             }
 			v.as_u32 = config.ctrl_type;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CTRL_TYPE_ADDR);
+		} else if (strcmp(argv[1], "pedal_sensor_type") == 0) {
+			if (strcmp(argv[2], "single_poll") == 0) {
+			config.pedal_sensor.sensor_type = SPEED_SENSOR_TYPE_SINGLE_POLL;
+			commands_printf("Pedal sensor type set to SINGLE_POLL");
+			} else if (strcmp(argv[2], "single_int") == 0) {
+			config.pedal_sensor.sensor_type = SPEED_SENSOR_TYPE_SINGLE_INTERRUPT;
+			commands_printf("Pedal sensor type set to SINGLE_INTERRUPT");
+			} else if (strcmp(argv[2], "quad_poll") == 0) {
+			config.pedal_sensor.sensor_type = SPEED_SENSOR_TYPE_QUADRATURE_POLL;
+			commands_printf("Pedal sensor type set to QUADRATURE_POLL");
+			} else if (strcmp(argv[2], "quad_int") == 0) {
+			config.pedal_sensor.sensor_type = SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT;
+			commands_printf("Pedal sensor type set to QUADRATURE_INTERRUPT");
+			} else {
+			commands_printf("Invalid value.\r\nValid values:\r\n  single_poll\r\n  single_int\r\n  quad_poll\r\n  quad_int\r\n");
+			}
+			v.as_u32 = config.pedal_sensor.sensor_type;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE_ADDR);
         } else if (strcmp(argv[1], "pedal_magnets") == 0) {
             config.pedal_sensor.magnets = atoi(argv[2]);
             commands_printf("Pedal sensor magnets set to %d", config.pedal_sensor.magnets);
@@ -549,6 +574,24 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Pedal sensor invert direction set to %d", config.pedal_sensor.invert_direction);
 			v.as_u32 = config.pedal_sensor.invert_direction;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_INVERT_DIR_ADDR);
+		} else if (strcmp(argv[1], "wheel_sensor_type") == 0) {
+			if (strcmp(argv[2], "single_poll") == 0) {
+			config.wheel_sensor.sensor_type = SPEED_SENSOR_TYPE_SINGLE_POLL;
+			commands_printf("Wheel sensor type set to SINGLE_POLL");
+			} else if (strcmp(argv[2], "single_int") == 0) {
+			config.wheel_sensor.sensor_type = SPEED_SENSOR_TYPE_SINGLE_INTERRUPT;
+			commands_printf("Wheel sensor type set to SINGLE_INTERRUPT");
+			} else if (strcmp(argv[2], "quad_poll") == 0) {
+			config.wheel_sensor.sensor_type = SPEED_SENSOR_TYPE_QUADRATURE_POLL;
+			commands_printf("Wheel sensor type set to QUADRATURE_POLL");
+			} else if (strcmp(argv[2], "quad_int") == 0) {
+			config.wheel_sensor.sensor_type = SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT;
+			commands_printf("Wheel sensor type set to QUADRATURE_INTERRUPT");
+			} else {
+			commands_printf("Invalid value.\r\nValid values:\r\n  single_poll\r\n  single_int\r\n  quad_poll\r\n  quad_int\r\n");
+			}
+			v.as_u32 = config.pedal_sensor.sensor_type;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE_ADDR);
         } else if (strcmp(argv[1], "wheel_magnets") == 0) {
             config.wheel_sensor.magnets = atoi(argv[2]);
             commands_printf("Wheel sensor magnets set to %d", config.wheel_sensor.magnets);
@@ -749,37 +792,41 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 }
 
 static void terminal_cmd_help(int argc, const char **argv) {
-    (void)argc;
-    (void)argv;
-    commands_printf("Available commands:");
-    commands_printf("  set-speed [RPM] - Set the speed to RPM");
-    commands_printf("  config [parameter] [value] - Configure custom app parameters");
-    commands_printf("    Parameters:");
-    commands_printf("      ctrl-type - Control type");
-    commands_printf("        Values: none, pid, speed, torque, torque_speed");
-    commands_printf("      pedal_magnets - Number of pedal sensor magnets");
-    commands_printf("      pedal_filter - Use pedal sensor filter (0 or 1)");
-    commands_printf("      pedal_rpm_start - Pedal RPM start value");
-    commands_printf("      pedal_rpm_end - Pedal RPM end value");
-    commands_printf("      pedal_invert - Invert pedal sensor direction (0 or 1)");
-    commands_printf("      wheel_magnets - Number of wheel sensor magnets");
-    commands_printf("      wheel_filter - Use wheel sensor filter (0 or 1)");
-    commands_printf("      wheel_invert - Invert wheel sensor direction (0 or 1)");
-    commands_printf("      brake_start - Back pedal brake start position");
-    commands_printf("      brake_end - Back pedal brake end position");
-    commands_printf("      clutch_open - Clutch wait before open time");
-    commands_printf("      clutch_close - Clutch wait before close time");
-    commands_printf("      clutch_check - Clutch wait before check time");
-    commands_printf("      clutch_sync_diff - Clutch sync RPM difference");
-    commands_printf("      clutch_check_diff - Clutch check RPM difference");
-    commands_printf("      update_rate - Update rate in Hz");
-    commands_printf("  clutch [open/close] - Open or close the clutch");
-    commands_printf("  log [log_group] [0/1] - Enable/disable logging");
-    commands_printf("    Log groups: sensor, motor, clutch, error");
-    commands_printf("  enable_plot [plot_name] - Enable a plot");
-    commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, mwrpm");
-    commands_printf("  disable_plot [plot_name] - Disable a plot");
-    commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, mwrpm");
+	(void)argc;
+	(void)argv;
+	commands_printf("Available commands:");
+	commands_printf("  set-speed [RPM] - Set the speed to RPM");
+	commands_printf("  config [parameter] [value] - Configure custom app parameters");
+	commands_printf("    Parameters:");
+	commands_printf("      ctrl-type - Control type");
+	commands_printf("        Values: none, pid, speed, torque, torque_speed");
+	commands_printf("      pedal_sensor_type - Pedal sensor type");
+	commands_printf("        Values: single_poll, single_int, quad_poll, quad_int");
+	commands_printf("      pedal_magnets - Number of pedal sensor magnets");
+	commands_printf("      pedal_filter - Use pedal sensor filter (0 or 1)");
+	commands_printf("      pedal_rpm_start - Pedal RPM start value");
+	commands_printf("      pedal_rpm_end - Pedal RPM end value");
+	commands_printf("      pedal_invert - Invert pedal sensor direction (0 or 1)");
+	commands_printf("      wheel_sensor_type - Wheel sensor type");
+	commands_printf("        Values: single_poll, single_int, quad_poll, quad_int");
+	commands_printf("      wheel_magnets - Number of wheel sensor magnets");
+	commands_printf("      wheel_filter - Use wheel sensor filter (0 or 1)");
+	commands_printf("      wheel_invert - Invert wheel sensor direction (0 or 1)");
+	commands_printf("      brake_start - Back pedal brake start position");
+	commands_printf("      brake_end - Back pedal brake end position");
+	commands_printf("      clutch_open - Clutch wait before open time");
+	commands_printf("      clutch_close - Clutch wait before close time");
+	commands_printf("      clutch_check - Clutch wait before check time");
+	commands_printf("      clutch_sync_diff - Clutch sync RPM difference");
+	commands_printf("      clutch_check_diff - Clutch check RPM difference");
+	commands_printf("      update_rate - Update rate in Hz");
+	commands_printf("  clutch [open/close] - Open or close the clutch");
+	commands_printf("  log [log_group] [0/1] - Enable/disable logging");
+	commands_printf("    Log groups: sensor, motor, clutch, error");
+	commands_printf("  enable_plot [plot_name] - Enable a plot");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm");
+	commands_printf("  disable_plot [plot_name] - Disable a plot");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm");
 }
 
 static void print_log(log_group_t log_group, const char* format, ...) {
@@ -976,49 +1023,109 @@ static void update_wheel_speed(void)
 	static float period_filtered = 0;
 	static float wheel_sensor_timestamp_old = 0;
 	static float inactivity_time = 0;
+	static uint8_t HALL3_level_old =  1;
+	static float old_timestamp = 0;
 	float avg_period;
 	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 
-	plot_points(PLOT_HALL3, timestamp, HALL3_int_cntr_xp);
-	HALL3_int_cntr_xp = 0;
+	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT) {
+		plot_points(PLOT_HALL3, timestamp, HALL3_int_cntr_xp);
+		HALL3_int_cntr_xp = 0;
 
-	if (wheel_sensor_timestamp != 0){
-		float period = (wheel_sensor_timestamp - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
+		if (wheel_sensor_timestamp != 0){
+			float period = (wheel_sensor_timestamp - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
 
-		if (period < min_wheel_period) { //can't be that short, abort
-			return;
+			if (period < min_wheel_period) { //can't be that short, abort
+				return;
+			}
+
+			avg_period = 0.5 * (period + old_period);
+			old_period = period;
+
+			UTILS_LP_FAST(period_filtered, avg_period, 0.8);
+
+			if(period_filtered < min_wheel_period) { //can't be that short, abort
+				return;
+			}
+
+			wheel_speed = 60.0 / period_filtered;
+			wheel_sensor_timestamp_old = wheel_sensor_timestamp;
+			wheel_sensor_timestamp = 0;
+			inactivity_time = 0.0;
+		} else {
+			// if there was no measurement, check if the silent period is
+			// longer than the latest period and decrease estimated speed accordingly
+			float period = (timestamp - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
+			
+			if (period < min_wheel_period) { //can't be that short, abort
+				return;
+			}
+
+			avg_period = 0.5 * (period + old_period);		
+			if ((60.0 / avg_period) < wheel_speed) {
+				wheel_speed = 60.0 / avg_period;
+			}		
+
+			// increase inactivity time whenever we are between two measurements
+			// does not necessarily mean that the wheel is not rotating, we just
+			// don't know when the next measurement will happen
+			inactivity_time += 1.0 / (float)config.update_rate_hz;
+
+			//if no wheel measurement for a given, long enough period, set RPM as zero
+			if(inactivity_time > max_wheel_period) {
+				wheel_speed = 0.0;
+			}
+		}
+	} else 
+	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL){
+		// read the wheel sensor state
+		HALL3_level = palReadPad(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1);
+		plot_points(PLOT_HALL3, timestamp, HALL3_level * 20);
+
+		if (HALL3_level == 1 && HALL3_level_old == 0){
+			// calculate the time of one full rotation from the time difference
+			float period = (timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
+
+			if (period < min_wheel_period) { //can't be that short, abort
+				return;
+			}
+
+			avg_period = 0.5 * (period + old_period);
+			old_period = period;
+
+			// apply simple low pass filtering.
+			// 1.0 means no filtering, 0.0 means infinitely strong filtering
+			UTILS_LP_FAST(period_filtered, avg_period, 0.8);
+
+			if(period_filtered < min_wheel_period) { //can't be that short, abort
+				return;
+			}
+
+			// calculate speed from rotation time
+			wheel_speed = 60.0 / period_filtered;
+			old_timestamp = timestamp;
+			inactivity_time = 0.0;
+		} else {
+			// if there was no measurement, check if the silent period is
+			// longer than the latest period and decrease estimated speed accordingly
+			float period = (timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
+			avg_period = 0.5 * (period + old_period);		
+			if ((60.0 / avg_period) < wheel_speed) {
+				wheel_speed = 60.0 / avg_period;
+			}		
+
+			// increase inactivity time whenever we are between two measurements
+			// does not necessarily mean that the wheel is not rotating, we just
+			// don't know when the next measurement will happen
+			inactivity_time += 1.0 / (float)config.update_rate_hz;
+
+			//if no wheel measurement for a given, long enough period, set RPM as zero
+			if(inactivity_time > max_wheel_period) {
+				wheel_speed = 0.0;
+			}
 		}
 
-		avg_period = 0.5 * (period + old_period);
-		old_period = period;
-		UTILS_LP_FAST(period_filtered, avg_period, 0.8);
-		wheel_speed = 60.0 / period_filtered;
-		wheel_sensor_timestamp_old = wheel_sensor_timestamp;
-		wheel_sensor_timestamp = 0;
-		inactivity_time = 0.0;
-	} else {
-		// if there was no measurement, check if the silent period is
-		// longer than the latest period and decrease estimated speed accordingly
-		float period = ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
-		
-		if (period < min_wheel_period) { //can't be that short, abort
-			return;
-		}
-
-		avg_period = 0.5 * (period + old_period);		
-		if ((60.0 / avg_period) < wheel_speed) {
-			wheel_speed = 60.0 / avg_period;
-		}		
-
-		// increase inactivity time whenever we are between two measurements
-		// does not necessarily mean that the wheel is not rotating, we just
-		// don't know when the next measurement will happen
-		inactivity_time += 1.0 / (float)config.update_rate_hz;
-
-		//if no wheel measurement for a given, long enough period, set RPM as zero
-		if(inactivity_time > max_wheel_period) {
-			wheel_speed = 0.0;
-		}
+		HALL3_level_old = HALL3_level;
 	}
 }
 
