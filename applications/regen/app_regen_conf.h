@@ -44,7 +44,7 @@
 #define APP_CUSTOM_CONF_PEDAL_RPM_MAX            450.0f  // CRPM - raise error above this value
 #define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS      0.3f    // CRPM/sec
 #define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG      0.15f   // CRPM/sec
-#define APP_CUSTOM_CONF_PEDAL_INVERT_DIR         1       // 1/0 = invert/no invert
+#define APP_CUSTOM_CONF_PEDAL_INVERT_DIR         0       // 1/0 = invert/no invert
 
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE        SPEED_SENSOR_TYPE_SINGLE_INTERRUPT
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1       HW_HALL_ENC_GPIO3
@@ -55,7 +55,7 @@
 #define APP_CUSTOM_CONF_WHEEL_RPM_MAX            1800.0f // WRPM - raise error above this value
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS      0.3f    // WRPM/sec
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG      0.15f   // WRPM/sec
-#define APP_CUSTOM_CONF_WHEEL_INVERT_DIR         1       // 1/0 = invert/no invert
+#define APP_CUSTOM_CONF_WHEEL_INVERT_DIR         0       // 1/0 = invert/no invert
 
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE       TORQUE_SENSOR_TYPE_ADC
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PORT1      HW_ADC_EXT_GPIO
