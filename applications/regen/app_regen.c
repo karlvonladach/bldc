@@ -332,7 +332,7 @@ static THD_FUNCTION(my_thread, arg) {
 		//commands_send_plot_points(timestamp, clutch_state);
 
 		//if wheel speed = 0 then release brake after N seconds
-		if (wheel_speed == 0){
+		if (wheel_speed == 0 && pedal_brake_position > 0){
 			if (wheel_inactivity_time < config.back_pedal_brake.wait_before_release){
 				wheel_inactivity_time += 1.0 / (float)config.update_rate_hz;
 				if (wheel_inactivity_time >= config.back_pedal_brake.wait_before_release){
