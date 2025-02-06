@@ -989,6 +989,10 @@ static void update_pedal_speed_and_position(bool reset)
 		period_filtered = 0;
 		forward_direction_counter = 0;
 		backward_direction_counter = 0;
+		pedal_speed  = 0;
+		pedal_speed_rel = 0; 
+		pedal_brake_position = 0;
+		pedal_brake_position_rel = 0;
 		return;
 	}
 
