@@ -57,6 +57,7 @@ static void terminal_log(int argc, const char **argv);
 static void terminal_cmd_enable_plot(int argc, const char **argv);
 static void terminal_cmd_disable_plot(int argc, const char **argv);
 static void terminal_cmd_help(int argc, const char **argv);
+static void terminal_get_config(int argc, const char **argv);
 
 static void print_log(log_group_t log_group, const char* format, ...);
 
@@ -185,6 +186,12 @@ void app_custom_start(void) {
         	"List all commands, their usage, and possible arguments",
 			"",
         	terminal_cmd_help);
+
+	terminal_register_command_callback(
+			"getconfig",
+			"Get the current configuration settings",
+			"",
+			terminal_get_config);
 }
 
 // Called when the custom application is stopped. Stop our threads
@@ -197,6 +204,7 @@ void app_custom_stop(void) {
 	terminal_unregister_callback(terminal_cmd_enable_plot);
 	terminal_unregister_callback(terminal_cmd_disable_plot);
 	terminal_unregister_callback(terminal_cmd_help);
+	terminal_unregister_callback(terminal_get_config);
 
 	stop_now = true;
 	while (is_running) {
@@ -827,6 +835,42 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm");
 	commands_printf("  disable_plot [plot_name] - Disable a plot");
 	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm");
+	commands_printf("  getconfig - Get the current configuration settings");
+}
+
+static void terminal_get_config(int argc, const char **argv) {
+	(void)argc;
+	(void)argv;
+	commands_printf("Current configuration settings:");
+	commands_printf("  Control type: %s", config.ctrl_type == CUSTOM_CTRL_TYPE_NONE ? "none" :
+		config.ctrl_type == CUSTOM_CTRL_TYPE_PID ? "pid" :
+		config.ctrl_type == CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED ? "speed" :
+		config.ctrl_type == CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE ? "torque" :
+		config.ctrl_type == CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE ? "torque_speed" : "unknown");
+	commands_printf("  Pedal sensor type: %s", config.pedal_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL ? "single_poll" :
+		config.pedal_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT ? "single_int" :
+		config.pedal_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_POLL ? "quad_poll" :
+		config.pedal_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT ? "quad_int" : "unknown");
+	commands_printf("  Pedal sensor magnets: %d", config.pedal_sensor.magnets);
+	commands_printf("  Pedal sensor use filter: %d", config.pedal_sensor.use_filter);
+	commands_printf("  Pedal RPM start: %f", (double)config.pedal_sensor.rpm_start);
+	commands_printf("  Pedal RPM end: %f", (double)config.pedal_sensor.rpm_end);
+	commands_printf("  Pedal sensor invert direction: %d", config.pedal_sensor.invert_direction);
+	commands_printf("  Wheel sensor type: %s", config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL ? "single_poll" :
+		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT ? "single_int" :
+		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_POLL ? "quad_poll" :
+		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT ? "quad_int" : "unknown");
+	commands_printf("  Wheel sensor magnets: %d", config.wheel_sensor.magnets);
+	commands_printf("  Wheel sensor use filter: %d", config.wheel_sensor.use_filter);
+	commands_printf("  Wheel sensor invert direction: %d", config.wheel_sensor.invert_direction);
+	commands_printf("  Back pedal brake start position: %f", (double)config.back_pedal_brake.start_pos);
+	commands_printf("  Back pedal brake end position: %f", (double)config.back_pedal_brake.end_pos);
+	commands_printf("  Clutch wait before open: %f", (double)config.clutch.wait_before_open);
+	commands_printf("  Clutch wait before close: %f", (double)config.clutch.wait_before_close);
+	commands_printf("  Clutch wait before check: %f", (double)config.clutch.wait_before_check);
+	commands_printf("  Clutch sync RPM diff: %f", (double)config.clutch.sync_rpm_diff);
+	commands_printf("  Clutch check RPM diff: %f", (double)config.clutch.check_rpm_diff);
+	commands_printf("  Update rate: %d Hz", config.update_rate_hz);
 }
 
 static void print_log(log_group_t log_group, const char* format, ...) {
