@@ -92,6 +92,7 @@ typedef struct {
 typedef struct {
     float start_pos;
     float end_pos;
+    float release_rpm;
     float wait_before_release;
 } brake_config_type;
 

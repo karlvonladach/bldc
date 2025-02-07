@@ -332,7 +332,7 @@ static THD_FUNCTION(my_thread, arg) {
 		//commands_send_plot_points(timestamp, clutch_state);
 
 		//if wheel speed = 0 then release brake after N seconds
-		if (wheel_speed == 0 && pedal_brake_position > 0){
+		if (motor_speed < config.back_pedal_brake.release_rpm && pedal_brake_position > 0){
 			if (wheel_inactivity_time < config.back_pedal_brake.wait_before_release){
 				wheel_inactivity_time += 1.0 / (float)config.update_rate_hz;
 				if (wheel_inactivity_time >= config.back_pedal_brake.wait_before_release){
@@ -449,6 +449,7 @@ static void load_default_config(custom_config_type* conf){
 	conf->back_pedal_brake.start_pos = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS;
 	conf->back_pedal_brake.end_pos   = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS;
 	conf->back_pedal_brake.wait_before_release = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE;
+	conf->back_pedal_brake.release_rpm = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM;
 
 	conf->clutch.wait_before_open    = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN;
 	conf->clutch.wait_before_close   = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CLOSE;
@@ -502,6 +503,9 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE_ADDR)) {
 		conf->back_pedal_brake.wait_before_release = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM_ADDR)) {
+		conf->back_pedal_brake.release_rpm = v.as_float;
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN_ADDR)) {
 		conf->clutch.wait_before_open = v.as_float;
@@ -651,6 +655,11 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Back pedal brake wait before release set to %f", (double)config.back_pedal_brake.wait_before_release);
 			v.as_float = config.back_pedal_brake.wait_before_release;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE_ADDR);
+        } else if (strcmp(argv[1], "brake_release_rpm") == 0) {
+            config.back_pedal_brake.release_rpm = atof(argv[2]);
+            commands_printf("Back pedal brake release RPM set to %f", (double)config.back_pedal_brake.release_rpm);
+			v.as_float = config.back_pedal_brake.release_rpm;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM_ADDR);
         } else if (strcmp(argv[1], "clutch_open") == 0) {
             config.clutch.wait_before_open = atof(argv[2]);
             commands_printf("Clutch wait before open set to %f", (double)config.clutch.wait_before_open);
@@ -682,7 +691,7 @@ static void terminal_config(int argc, const char **argv) {
 			v.as_u32 = config.update_rate_hz;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_UPDATE_RATE_HZ_ADDR);
         } else {
-            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n");
+            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n");
         }
     } else {
         commands_printf("This command requires two arguments.\n");
@@ -849,6 +858,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      brake_start - Back pedal brake start position");
 	commands_printf("      brake_end - Back pedal brake end position");
 	commands_printf("      brake_wait_release - Back pedal brake wait before release time");
+	commands_printf("      brake_release_rpm - Back pedal brake release RPM");
 	commands_printf("      clutch_open - Clutch wait before open time");
 	commands_printf("      clutch_close - Clutch wait before close time");
 	commands_printf("      clutch_check - Clutch wait before check time");
@@ -893,6 +903,7 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Back pedal brake start position: %f", (double)config.back_pedal_brake.start_pos);
 	commands_printf("  Back pedal brake end position: %f", (double)config.back_pedal_brake.end_pos);
 	commands_printf("  Back pedal brake wait before release: %f", (double)config.back_pedal_brake.wait_before_release);
+	commands_printf("  Back pedal brake release RPM: %f", (double)config.back_pedal_brake.release_rpm);
 	commands_printf("  Clutch wait before open: %f", (double)config.clutch.wait_before_open);
 	commands_printf("  Clutch wait before close: %f", (double)config.clutch.wait_before_close);
 	commands_printf("  Clutch wait before check: %f", (double)config.clutch.wait_before_check);
