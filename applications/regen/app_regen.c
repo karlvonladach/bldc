@@ -61,6 +61,8 @@ static void terminal_get_config(int argc, const char **argv);
 
 static void print_log(log_group_t log_group, const char* format, ...);
 
+static void apply_ramping(float *value, systime_t *last_time, float target, float ramp_time_pos, float ramp_time_neg);
+
 static void update_pedal_torque(void);
 static void update_pedal_speed_and_position(bool reset);
 static void update_wheel_speed(void);
@@ -103,6 +105,7 @@ static volatile float pedal_speed_rel = 0;
 static volatile float pedal_brake_position = 0;
 static volatile float pedal_brake_position_rel = 0;
 static volatile float wheel_speed  = 0;    //WRPM
+static volatile float wheel_speed_rel = 0;
 static volatile float motor_speed  = 0;    //MWRPM
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
 static volatile uint8_t HALL1_level = 0;
@@ -525,6 +528,18 @@ static void load_stored_config(custom_config_type* conf){
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_UPDATE_RATE_HZ_ADDR)) {
 		conf->update_rate_hz = v.as_u32;
 	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS_ADDR)) {
+		conf->pedal_sensor.ramp_time_pos = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG_ADDR)) {
+		conf->pedal_sensor.ramp_time_neg = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS_ADDR)) {
+		conf->wheel_sensor.ramp_time_pos = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG_ADDR)) {
+		conf->wheel_sensor.ramp_time_neg = v.as_float;
+	}
 }
 
 // Callback function for the terminal command with arguments.
@@ -690,8 +705,28 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Update rate set to %d Hz", config.update_rate_hz);
 			v.as_u32 = config.update_rate_hz;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_UPDATE_RATE_HZ_ADDR);
+        } else if (strcmp(argv[1], "pedal_ramp_time_pos") == 0) {
+            config.pedal_sensor.ramp_time_pos = atof(argv[2]);
+            commands_printf("Pedal ramp time positive set to %f", (double)config.pedal_sensor.ramp_time_pos);
+			v.as_float = config.pedal_sensor.ramp_time_pos;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS_ADDR);
+        } else if (strcmp(argv[1], "pedal_ramp_time_neg") == 0) {
+            config.pedal_sensor.ramp_time_neg = atof(argv[2]);
+            commands_printf("Pedal ramp time negative set to %f", (double)config.pedal_sensor.ramp_time_neg);
+			v.as_float = config.pedal_sensor.ramp_time_neg;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG_ADDR);
+        } else if (strcmp(argv[1], "wheel_ramp_time_pos") == 0) {
+            config.wheel_sensor.ramp_time_pos = atof(argv[2]);
+            commands_printf("Wheel ramp time positive set to %f", (double)config.wheel_sensor.ramp_time_pos);
+			v.as_float = config.wheel_sensor.ramp_time_pos;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS_ADDR);
+        } else if (strcmp(argv[1], "wheel_ramp_time_neg") == 0) {
+            config.wheel_sensor.ramp_time_neg = atof(argv[2]);
+            commands_printf("Wheel ramp time negative set to %f", (double)config.wheel_sensor.ramp_time_neg);
+			v.as_float = config.wheel_sensor.ramp_time_neg;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG_ADDR);
         } else {
-            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n");
+            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n  pedal_ramp_time_pos\r\n  pedal_ramp_time_neg\r\n  wheel_ramp_time_pos\r\n  wheel_ramp_time_neg\r\n");
         }
     } else {
         commands_printf("This command requires two arguments.\n");
@@ -849,11 +884,15 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      pedal_filter - Use pedal sensor filter (0 or 1)");
 	commands_printf("      pedal_rpm_start - Pedal RPM start value");
 	commands_printf("      pedal_rpm_end - Pedal RPM end value");
+	commands_printf("      pedal_ramp_time_pos - Pedal ramp time positive value");
+	commands_printf("      pedal_ramp_time_neg - Pedal ramp time negative value");
 	commands_printf("      pedal_invert - Invert pedal sensor direction (0 or 1)");
 	commands_printf("      wheel_sensor_type - Wheel sensor type");
 	commands_printf("        Values: single_poll, single_int, quad_poll, quad_int");
 	commands_printf("      wheel_magnets - Number of wheel sensor magnets");
 	commands_printf("      wheel_filter - Use wheel sensor filter (0 or 1)");
+	commands_printf("      wheel_ramp_time_pos - Wheel ramp time positive value");
+	commands_printf("      wheel_ramp_time_neg - Wheel ramp time negative value");
 	commands_printf("      wheel_invert - Invert wheel sensor direction (0 or 1)");
 	commands_printf("      brake_start - Back pedal brake start position");
 	commands_printf("      brake_end - Back pedal brake end position");
@@ -892,6 +931,8 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Pedal sensor use filter: %d", config.pedal_sensor.use_filter);
 	commands_printf("  Pedal RPM start: %f", (double)config.pedal_sensor.rpm_start);
 	commands_printf("  Pedal RPM end: %f", (double)config.pedal_sensor.rpm_end);
+	commands_printf("  Pedal ramp time positive: %f", (double)config.pedal_sensor.ramp_time_pos);
+	commands_printf("  Pedal ramp time negative: %f", (double)config.pedal_sensor.ramp_time_neg);
 	commands_printf("  Pedal sensor invert direction: %d", config.pedal_sensor.invert_direction);
 	commands_printf("  Wheel sensor type: %s", config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL ? "single_poll" :
 		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT ? "single_int" :
@@ -899,6 +940,8 @@ static void terminal_get_config(int argc, const char **argv) {
 		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT ? "quad_int" : "unknown");
 	commands_printf("  Wheel sensor magnets: %d", config.wheel_sensor.magnets);
 	commands_printf("  Wheel sensor use filter: %d", config.wheel_sensor.use_filter);
+	commands_printf("  Wheel ramp time positive: %f", (double)config.wheel_sensor.ramp_time_pos);
+	commands_printf("  Wheel ramp time negative: %f", (double)config.wheel_sensor.ramp_time_neg);
 	commands_printf("  Wheel sensor invert direction: %d", config.wheel_sensor.invert_direction);
 	commands_printf("  Back pedal brake start position: %f", (double)config.back_pedal_brake.start_pos);
 	commands_printf("  Back pedal brake end position: %f", (double)config.back_pedal_brake.end_pos);
@@ -920,6 +963,24 @@ static void print_log(log_group_t log_group, const char* format, ...) {
         commands_printf(format, arg);
     }
 	va_end (arg);
+}
+
+static void apply_ramping(float *value, systime_t *last_time, float target, float ramp_time_pos, float ramp_time_neg) {
+	systime_t now = chVTGetSystemTimeX();
+	float dt = (float)(now - *last_time) / (float)CH_CFG_ST_FREQUENCY;
+	*last_time = now;
+
+	if (target > *value) {
+		*value += dt / ramp_time_pos;
+		if (*value > target) {
+			*value = target;
+		}
+	} else {
+		*value -= dt / ramp_time_neg;
+		if (*value < target) {
+			*value = target;
+		}
+	}
 }
 
 static void update_pedal_torque(void)
@@ -955,14 +1016,8 @@ static void update_pedal_torque(void)
 		// Apply ramping
 		static systime_t last_time = 0;
 		static float torque_rel_ramp = 0.0;
-		float ramp_time = fabsf(torque_rel) > fabsf(torque_rel_ramp) ? config_adc.ramp_time_pos : config_adc.ramp_time_neg;
-
-		if (ramp_time > 0.01) {
-			const float ramp_step = (float)ST2MS(chVTTimeElapsedSinceX(last_time)) / (ramp_time * 1000.0);
-			utils_step_towards(&torque_rel_ramp, torque_rel, ramp_step);
-			last_time = chVTGetSystemTimeX();
-			torque_rel = torque_rel_ramp;
-		}
+		apply_ramping(&torque_rel_ramp, &last_time, torque_rel, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
+		torque_rel = torque_rel_ramp;
 
 		pedal_torque = torque_rel;
 		pedal_torque_rel = torque_rel;
@@ -1109,8 +1164,16 @@ static void update_pedal_speed_and_position(bool reset)
 		pedal_brake_position = 0.0;
 	}
 
+	// calculate relative speed and position
 	pedal_speed_rel = utils_map(pedal_speed, config.pedal_sensor.rpm_start, config.pedal_sensor.rpm_end, 0.0, 1.0);
 	pedal_brake_position_rel = utils_map(pedal_brake_position, config.back_pedal_brake.start_pos, config.back_pedal_brake.end_pos, 0.0, 1.0);
+
+	// Apply ramping on pedal speed
+	static systime_t last_time = 0;
+	static float pedal_speed_rel_ramp = 0.0;
+	apply_ramping(&pedal_speed_rel_ramp, &last_time, pedal_speed_rel, config.pedal_sensor.ramp_time_pos, config.pedal_sensor.ramp_time_neg);
+	pedal_speed_rel = pedal_speed_rel_ramp;
+	pedal_speed = utils_map(pedal_speed_rel, 0.0, 1.0, config.pedal_sensor.rpm_start, config.pedal_sensor.rpm_end);
 
 #endif
 }
@@ -1225,6 +1288,16 @@ static void update_wheel_speed(void)
 
 		HALL3_level_old = HALL3_level;
 	}
+
+	// calculate relative wheel speed
+	wheel_speed_rel = utils_map(wheel_speed, config.wheel_sensor.rpm_min, config.wheel_sensor.rpm_max, 0.0, 1.0);
+
+	// Apply ramping on wheel speed
+	static systime_t last_time = 0;
+	static float wheel_speed_rel_ramp = 0.0;
+	apply_ramping(&wheel_speed_rel_ramp, &last_time, wheel_speed_rel, config.wheel_sensor.ramp_time_pos, config.wheel_sensor.ramp_time_neg);
+	wheel_speed_rel = wheel_speed_rel_ramp;
+	wheel_speed = utils_map(wheel_speed_rel, 0.0, 1.0, config.wheel_sensor.rpm_min, config.wheel_sensor.rpm_max);
 }
 
 static void update_motor_speed(void)
