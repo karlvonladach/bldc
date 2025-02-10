@@ -638,7 +638,7 @@ static void terminal_config(int argc, const char **argv) {
 			} else {
 			commands_printf("Invalid value.\r\nValid values:\r\n  single_poll\r\n  single_int\r\n  quad_poll\r\n  quad_int\r\n");
 			}
-			v.as_u32 = config.pedal_sensor.sensor_type;
+			v.as_u32 = config.wheel_sensor.sensor_type;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE_ADDR);
         } else if (strcmp(argv[1], "wheel_magnets") == 0) {
             config.wheel_sensor.magnets = atoi(argv[2]);
