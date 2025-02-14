@@ -108,6 +108,8 @@ static volatile float wheel_speed  = 0;    //WRPM
 static volatile float wheel_speed_rel = 0;
 static volatile float motor_speed  = 0;    //MWRPM
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
+static volatile uint8_t clutch_must_close = 0;
+static volatile uint8_t clutch_must_open = 0;
 static volatile uint8_t HALL1_level = 0;
 static volatile uint8_t HALL2_level = 0;
 static volatile uint8_t HALL3_level = 0;
@@ -347,12 +349,27 @@ static THD_FUNCTION(my_thread, arg) {
 			wheel_inactivity_time = 0;
 		}
 
-		//if wheel speed is too low or too high then clutch must be kept closed
+		//if wheel speed is too low then clutch must be kept closed for instant start
 		if (wheel_speed < config.clutch.min_rpm){
+			clutch_must_close = 1;
+		} else {
+			clutch_must_close = 0;
+		}
+			
+		//if wheel speed is too high then clutch must be kept open to save the motor
+		if (wheel_speed > config.clutch.max_rpm_open){
+			clutch_must_open = 1;
+		}
+		if (wheel_speed < config.clutch.max_rpm_close){
+			clutch_must_open = 0;
+		}
+
+		//if wheel speed is too low then clutch must be kept closed for instant start
+		if (clutch_must_close){
 			pedal_activity_time = 0;
 			pedal_inactivity_time = 0;
 			sync_clutch();
-		} else if (wheel_speed > config.clutch.max_rpm){
+		} else if (clutch_must_open){
 			pedal_activity_time = 0;
 			pedal_inactivity_time = 0;
 			open_clutch();
@@ -471,7 +488,8 @@ static void load_default_config(custom_config_type* conf){
 	conf->clutch.sync_rpm_diff       = APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF;
 	conf->clutch.check_rpm_diff      = APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF;
 	conf->clutch.min_rpm 			 = APP_CUSTOM_CONF_CLUTCH_MIN_RPM;
-	conf->clutch.max_rpm			 = APP_CUSTOM_CONF_CLUTCH_MAX_RPM;
+	conf->clutch.max_rpm_open		 = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN;
+	conf->clutch.max_rpm_close		 = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE;
 
 	conf->update_rate_hz = APP_CUSTOM_CONF_UPDATE_RATE_HZ;
 }
@@ -556,8 +574,11 @@ static void load_stored_config(custom_config_type* conf){
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_ADDR)) {
 		conf->clutch.min_rpm = v.as_float;
 	}
-	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_ADDR)) {
-		conf->clutch.max_rpm = v.as_float;
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN_ADDR)) {
+		conf->clutch.max_rpm_open = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE_ADDR)) {
+		conf->clutch.max_rpm_close = v.as_float;
 	}
 }
 
@@ -749,13 +770,18 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Clutch min RPM set to %f", (double)config.clutch.min_rpm);
 			v.as_float = config.clutch.min_rpm;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_ADDR);
-        } else if (strcmp(argv[1], "clutch_max_rpm") == 0) {
-            config.clutch.max_rpm = atof(argv[2]);
-            commands_printf("Clutch max RPM set to %f", (double)config.clutch.max_rpm);
-			v.as_float = config.clutch.max_rpm;
-			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_ADDR);
+        } else if (strcmp(argv[1], "clutch_max_rpm_open") == 0) {
+            config.clutch.max_rpm_open = atof(argv[2]);
+            commands_printf("Clutch max RPM open set to %f", (double)config.clutch.max_rpm_open);
+			v.as_float = config.clutch.max_rpm_open;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN_ADDR);
+        } else if (strcmp(argv[1], "clutch_max_rpm_close") == 0) {
+            config.clutch.max_rpm_close = atof(argv[2]);
+            commands_printf("Clutch max RPM close set to %f", (double)config.clutch.max_rpm_close);
+			v.as_float = config.clutch.max_rpm_close;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE_ADDR);
         } else {
-            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n  pedal_ramp_time_pos\r\n  pedal_ramp_time_neg\r\n  wheel_ramp_time_pos\r\n  wheel_ramp_time_neg\r\n  clutch_min_rpm\r\n  clutch_max_rpm\r\n");
+            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n  pedal_ramp_time_pos\r\n  pedal_ramp_time_neg\r\n  wheel_ramp_time_pos\r\n  wheel_ramp_time_neg\r\n  clutch_min_rpm\r\n  clutch_max_rpm_open\r\n  clutch_max_rpm_close\r\n");
         }
     } else {
         commands_printf("This command requires two arguments.\n");
@@ -933,7 +959,8 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      clutch_sync_diff - Clutch sync RPM difference");
 	commands_printf("      clutch_check_diff - Clutch check RPM difference");
 	commands_printf("      clutch_min_rpm - Clutch minimum RPM");
-	commands_printf("      clutch_max_rpm - Clutch maximum RPM");
+	commands_printf("      clutch_max_rpm_open - Clutch maximum RPM for opening");
+	commands_printf("      clutch_max_rpm_close - Clutch maximum RPM for closing");
 	commands_printf("      update_rate - Update rate in Hz");
 	commands_printf("  clutch [open/close] - Open or close the clutch");
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging");
@@ -984,7 +1011,8 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Clutch sync RPM diff: %f", (double)config.clutch.sync_rpm_diff);
 	commands_printf("  Clutch check RPM diff: %f", (double)config.clutch.check_rpm_diff);
 	commands_printf("  Clutch min RPM: %f", (double)config.clutch.min_rpm);
-	commands_printf("  Clutch max RPM: %f", (double)config.clutch.max_rpm);
+	commands_printf("  Clutch max RPM open: %f", (double)config.clutch.max_rpm_open);
+	commands_printf("  Clutch max RPM close: %f", (double)config.clutch.max_rpm_close);
 	commands_printf("  Update rate: %d Hz", config.update_rate_hz);
 }
 

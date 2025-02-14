@@ -103,7 +103,8 @@ typedef struct {
     float sync_rpm_diff;
     float check_rpm_diff;
     float min_rpm;
-    float max_rpm;
+    float max_rpm_open;
+    float max_rpm_close;
 } clutch_config_type;
 
 typedef struct {
