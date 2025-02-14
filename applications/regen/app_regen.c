@@ -336,8 +336,8 @@ static THD_FUNCTION(my_thread, arg) {
 		plot_points(PLOT_CLUTCH_STATE, timestamp, clutch_state == CLUTCH_STATE_OPEN ? 0 : (clutch_state == CLUTCH_STATE_CLOSED ? 20 : 10));
 
 		//if wheel speed is small then release brake after N seconds
-		// TODO: change back motor speed to wheel speed once the issue with 0 wheel speed is fixed
-		if (motor_speed < config.back_pedal_brake.release_rpm && pedal_brake_position > 0){
+		// note: motor speed is measured here because of the instability of wrpm in interrupt mode
+		if (clutch_state == CLUTCH_STATE_CLOSED && motor_speed < config.back_pedal_brake.release_rpm && pedal_brake_position > 0){
 			if (wheel_inactivity_time < config.back_pedal_brake.wait_before_release){
 				wheel_inactivity_time += 1.0 / (float)config.update_rate_hz;
 				if (wheel_inactivity_time >= config.back_pedal_brake.wait_before_release){
