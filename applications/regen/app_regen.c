@@ -334,7 +334,8 @@ static THD_FUNCTION(my_thread, arg) {
 		//commands_plot_set_graph(clutch_state_plot);
 		//commands_send_plot_points(timestamp, clutch_state);
 
-		//if wheel speed = 0 then release brake after N seconds
+		//if wheel speed is small then release brake after N seconds
+		// TODO: change back motor speed to wheel speed once the issue with 0 wheel speed is fixed
 		if (motor_speed < config.back_pedal_brake.release_rpm && pedal_brake_position > 0){
 			if (wheel_inactivity_time < config.back_pedal_brake.wait_before_release){
 				wheel_inactivity_time += 1.0 / (float)config.update_rate_hz;
@@ -345,30 +346,40 @@ static THD_FUNCTION(my_thread, arg) {
 		} else {
 			wheel_inactivity_time = 0;
 		}
-		//if pedal speed = 0 and not braking then disconnect clutch after N seconds
-		if (pedal_speed == 0 && pedal_brake_position == 0){
+
+		//if wheel speed is too low or too high then clutch must be kept closed
+		if (wheel_speed < config.clutch.min_rpm){
 			pedal_activity_time = 0;
-			if (pedal_inactivity_time < config.clutch.wait_before_open){
-				pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
-				if (pedal_inactivity_time >= config.clutch.wait_before_open){
-					open_clutch();
-				}
-			}
-		}
-		//if pedal speed > 0 then start syncing motor to wheel after N seconds
-		//   and set power based on torque and pedal speed
-		if (pedal_speed > 0){
 			pedal_inactivity_time = 0;
-			if (pedal_activity_time < config.clutch.wait_before_close){
-				pedal_activity_time += 1.0 / (float)config.update_rate_hz;
-				if (pedal_activity_time >= config.clutch.wait_before_close){
-					sync_clutch();
+			sync_clutch();
+		} else if (wheel_speed > config.clutch.max_rpm){
+			pedal_activity_time = 0;
+			pedal_inactivity_time = 0;
+			open_clutch();
+		} else {
+			//if pedal speed = 0 and not braking then disconnect clutch after N seconds
+			if (pedal_speed == 0 && pedal_brake_position == 0){
+				pedal_activity_time = 0;
+				if (pedal_inactivity_time < config.clutch.wait_before_open){
+					pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
+					if (pedal_inactivity_time >= config.clutch.wait_before_open){
+						open_clutch();
+					}
 				}
 			}
-		}
-		//if pedal brake is active then start syncing motor to wheel immediately
-		if (pedal_brake_position > 0){
-			if (clutch_state == CLUTCH_STATE_OPEN) {
+			//if pedal speed > 0 then start syncing motor to wheel after N seconds
+			// and set power based on torque and pedal speed
+			if (pedal_speed > 0){
+				pedal_inactivity_time = 0;
+				if (pedal_activity_time < config.clutch.wait_before_close){
+					pedal_activity_time += 1.0 / (float)config.update_rate_hz;
+					if (pedal_activity_time >= config.clutch.wait_before_close){
+						sync_clutch();
+					}
+				}
+			}
+			//if pedal brake is active then start syncing motor to wheel immediately
+			if (pedal_brake_position > 0){
 				sync_clutch();
 			}
 		}
@@ -459,6 +470,8 @@ static void load_default_config(custom_config_type* conf){
 	conf->clutch.wait_before_check   = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK;
 	conf->clutch.sync_rpm_diff       = APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF;
 	conf->clutch.check_rpm_diff      = APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF;
+	conf->clutch.min_rpm 			 = APP_CUSTOM_CONF_CLUTCH_MIN_RPM;
+	conf->clutch.max_rpm			 = APP_CUSTOM_CONF_CLUTCH_MAX_RPM;
 
 	conf->update_rate_hz = APP_CUSTOM_CONF_UPDATE_RATE_HZ;
 }
@@ -539,6 +552,12 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG_ADDR)) {
 		conf->wheel_sensor.ramp_time_neg = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_ADDR)) {
+		conf->clutch.min_rpm = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_ADDR)) {
+		conf->clutch.max_rpm = v.as_float;
 	}
 }
 
@@ -725,8 +744,18 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Wheel ramp time negative set to %f", (double)config.wheel_sensor.ramp_time_neg);
 			v.as_float = config.wheel_sensor.ramp_time_neg;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG_ADDR);
+        } else if (strcmp(argv[1], "clutch_min_rpm") == 0) {
+            config.clutch.min_rpm = atof(argv[2]);
+            commands_printf("Clutch min RPM set to %f", (double)config.clutch.min_rpm);
+			v.as_float = config.clutch.min_rpm;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_ADDR);
+        } else if (strcmp(argv[1], "clutch_max_rpm") == 0) {
+            config.clutch.max_rpm = atof(argv[2]);
+            commands_printf("Clutch max RPM set to %f", (double)config.clutch.max_rpm);
+			v.as_float = config.clutch.max_rpm;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_ADDR);
         } else {
-            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n  pedal_ramp_time_pos\r\n  pedal_ramp_time_neg\r\n  wheel_ramp_time_pos\r\n  wheel_ramp_time_neg\r\n");
+            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n  pedal_ramp_time_pos\r\n  pedal_ramp_time_neg\r\n  wheel_ramp_time_pos\r\n  wheel_ramp_time_neg\r\n  clutch_min_rpm\r\n  clutch_max_rpm\r\n");
         }
     } else {
         commands_printf("This command requires two arguments.\n");
@@ -903,6 +932,8 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      clutch_check - Clutch wait before check time");
 	commands_printf("      clutch_sync_diff - Clutch sync RPM difference");
 	commands_printf("      clutch_check_diff - Clutch check RPM difference");
+	commands_printf("      clutch_min_rpm - Clutch minimum RPM");
+	commands_printf("      clutch_max_rpm - Clutch maximum RPM");
 	commands_printf("      update_rate - Update rate in Hz");
 	commands_printf("  clutch [open/close] - Open or close the clutch");
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging");
@@ -952,6 +983,8 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Clutch wait before check: %f", (double)config.clutch.wait_before_check);
 	commands_printf("  Clutch sync RPM diff: %f", (double)config.clutch.sync_rpm_diff);
 	commands_printf("  Clutch check RPM diff: %f", (double)config.clutch.check_rpm_diff);
+	commands_printf("  Clutch min RPM: %f", (double)config.clutch.min_rpm);
+	commands_printf("  Clutch max RPM: %f", (double)config.clutch.max_rpm);
 	commands_printf("  Update rate: %d Hz", config.update_rate_hz);
 }
 

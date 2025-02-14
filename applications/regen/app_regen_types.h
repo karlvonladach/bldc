@@ -102,6 +102,8 @@ typedef struct {
     float wait_before_check;
     float sync_rpm_diff;
     float check_rpm_diff;
+    float min_rpm;
+    float max_rpm;
 } clutch_config_type;
 
 typedef struct {
