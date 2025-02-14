@@ -272,8 +272,9 @@ void app_custom_get_rtdata(float* data) {
 	data[2] = motor_speed;
 	data[3] = pedal_brake_position;
 	data[4] = pedal_torque;
-	data[5] = HALL3_int_cntr_rt;
-	HALL3_int_cntr_rt = 0;
+	data[5] = (float)clutch_state;
+	//data[5] = HALL3_int_cntr_rt;
+	//HALL3_int_cntr_rt = 0;
 }
 
 static THD_FUNCTION(my_thread, arg) {
