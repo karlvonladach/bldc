@@ -333,8 +333,7 @@ static THD_FUNCTION(my_thread, arg) {
 
 		//take care of clutch state transitions
 		update_clutch_state();
-		//commands_plot_set_graph(clutch_state_plot);
-		//commands_send_plot_points(timestamp, clutch_state);
+		plot_points(PLOT_CLUTCH_STATE, timestamp, clutch_state == CLUTCH_STATE_OPEN ? 0 : (clutch_state == CLUTCH_STATE_CLOSED ? 20 : 10));
 
 		//if wheel speed is small then release brake after N seconds
 		// TODO: change back motor speed to wheel speed once the issue with 0 wheel speed is fixed
@@ -878,8 +877,11 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
         } else if (strcmp(argv[1], "mwrpm") == 0) {
             plots_enabled |= (1 << PLOT_MOTOR_RPM);
             commands_printf("Motor RPM plot enabled");
+        } else if (strcmp(argv[1], "clutch_state") == 0) {
+            plots_enabled |= (1 << PLOT_CLUTCH_STATE);
+            commands_printf("Clutch State plot enabled");
         } else {
-            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  mwrpm\r\n");
+            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -913,8 +915,11 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
         } else if (strcmp(argv[1], "mwrpm") == 0) {
             plots_enabled &= ~(1 << PLOT_MOTOR_RPM);
             commands_printf("Motor RPM plot disabled");
+        } else if (strcmp(argv[1], "clutch_state") == 0) {
+            plots_enabled &= ~(1 << PLOT_CLUTCH_STATE);
+            commands_printf("Clutch State plot disabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  mwrpm\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -966,9 +971,9 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging");
 	commands_printf("    Log groups: sensor, motor, clutch, error");
 	commands_printf("  enable_plot [plot_name] - Enable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state");
 	commands_printf("  disable_plot [plot_name] - Disable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state");
 	commands_printf("  getconfig - Get the current configuration settings");
 }
 
@@ -1490,6 +1495,10 @@ static void init_plots(void) {
 	    sprintf(legend,"MWRPM = MRPM / %.1f", (double)(conf->si_gear_ratio));
         plot_numbers[PLOT_MOTOR_RPM] = plot_number++;
         commands_plot_add_graph(legend);
+    }
+    if (plots_enabled & (1 << PLOT_CLUTCH_STATE)) {
+        plot_numbers[PLOT_CLUTCH_STATE] = plot_number++;
+        commands_plot_add_graph("Clutch State");
     }
 }
 
