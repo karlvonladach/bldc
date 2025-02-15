@@ -811,7 +811,7 @@ static void terminal_log(int argc, const char **argv) {
                 log_groups_enabled &= ~(1 << LOG_GROUP_MOTOR);
             }
 		} else
-		if (strcmp(argv[1],"cluth") == 0){
+		if (strcmp(argv[1],"clutch") == 0){
 			if (en) {
                 log_groups_enabled |= (1 << LOG_GROUP_CLUTCH);
             } else {
