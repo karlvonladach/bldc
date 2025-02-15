@@ -1239,9 +1239,9 @@ static void update_pedal_speed_and_position(bool reset)
 
 	// calculate relative speed and position
 	pedal_speed_rel = utils_map(pedal_speed, config.pedal_sensor.rpm_start, config.pedal_sensor.rpm_end, 0.0, 1.0);
-	utils_truncate_number(&pedal_speed_rel, 0.0, 1.0);
+	utils_truncate_number((float*)&pedal_speed_rel, 0.0, 1.0);
 	pedal_brake_position_rel = utils_map(pedal_brake_position, config.back_pedal_brake.start_pos, config.back_pedal_brake.end_pos, 0.0, 1.0);
-	utils_truncate_number(&pedal_brake_position_rel, 0.0, 1.0);
+	utils_truncate_number((float*)&pedal_brake_position_rel, 0.0, 1.0);
 
 	// Apply ramping on pedal speed
 	static systime_t last_time = 0;
@@ -1374,7 +1374,7 @@ static void update_wheel_speed(void)
 
 	// calculate relative wheel speed
 	wheel_speed_rel = utils_map(wheel_speed, config.wheel_sensor.rpm_min, config.wheel_sensor.rpm_max, 0.0, 1.0);
-	utils_truncate_number(&wheel_speed_rel, 0.0, 1.0);
+	utils_truncate_number((float*)&wheel_speed_rel, 0.0, 1.0);
 
 	// Apply ramping on wheel speed
 	static systime_t last_time = 0;
