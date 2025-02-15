@@ -334,7 +334,7 @@ static THD_FUNCTION(my_thread, arg) {
 
 		//take care of clutch state transitions
 		update_clutch_state();
-		plot_points(PLOT_CLUTCH_STATE, timestamp, clutch_state == CLUTCH_STATE_OPEN ? 0 : (clutch_state == CLUTCH_STATE_CLOSED ? 20 : 10));
+		plot_points(PLOT_CLUTCH_STATE, timestamp, clutch_state == CLUTCH_STATE_OPEN ? 0 : (clutch_state == CLUTCH_STATE_CLOSED ? 30 : (clutch_state == CLUTCH_STATE_OPENING ? 10 : 20)));
 
 		//if wheel speed is small then release brake after N seconds
 		// note: motor speed is measured here because of the instability of wrpm in interrupt mode
