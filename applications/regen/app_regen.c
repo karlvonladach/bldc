@@ -881,8 +881,11 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
         } else if (strcmp(argv[1], "clutch_state") == 0) {
             plots_enabled |= (1 << PLOT_CLUTCH_STATE);
             commands_printf("Clutch State plot enabled");
+		} else if (strcmp(argv[1], "all") == 0) {
+			plots_enabled = 0xFFFFFFFF;
+			commands_printf("All plots enabled");
         } else {
-            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n");
+            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -919,8 +922,11 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
         } else if (strcmp(argv[1], "clutch_state") == 0) {
             plots_enabled &= ~(1 << PLOT_CLUTCH_STATE);
             commands_printf("Clutch State plot disabled");
+		} else if (strcmp(argv[1], "all") == 0) {
+			plots_enabled = 0;
+			commands_printf("All plots disabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -972,9 +978,9 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging");
 	commands_printf("    Log groups: sensor, motor, clutch, error");
 	commands_printf("  enable_plot [plot_name] - Enable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, all");
 	commands_printf("  disable_plot [plot_name] - Disable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, all");
 	commands_printf("  getconfig - Get the current configuration settings");
 }
 
@@ -1492,18 +1498,6 @@ static void init_plots(void) {
         plot_numbers[PLOT_WHEEL_RPM] = plot_number++;
         commands_plot_add_graph("Wheel RPM (WRPM)");
     }
-    if (plots_enabled & (1 << PLOT_HALL1)) {
-        plot_numbers[PLOT_HALL1] = plot_number++;
-        commands_plot_add_graph("HALL1");
-    }
-    if (plots_enabled & (1 << PLOT_HALL2)) {
-        plot_numbers[PLOT_HALL2] = plot_number++;
-        commands_plot_add_graph("HALL2");
-    }
-    if (plots_enabled & (1 << PLOT_HALL3)) {
-        plot_numbers[PLOT_HALL3] = plot_number++;
-        commands_plot_add_graph("HALL3");
-    }
     if (plots_enabled & (1 << PLOT_MOTOR_RPM)) {
 		const volatile mc_configuration *conf = mc_interface_get_configuration();
 		char legend[32];
@@ -1515,6 +1509,18 @@ static void init_plots(void) {
     if (plots_enabled & (1 << PLOT_CLUTCH_STATE)) {
         plot_numbers[PLOT_CLUTCH_STATE] = plot_number++;
         commands_plot_add_graph("Clutch State");
+    }
+    if (plots_enabled & (1 << PLOT_HALL3)) {
+        plot_numbers[PLOT_HALL3] = plot_number++;
+        commands_plot_add_graph("HALL3");
+    }
+    if (plots_enabled & (1 << PLOT_HALL1)) {
+        plot_numbers[PLOT_HALL1] = plot_number++;
+        commands_plot_add_graph("HALL1");
+    }
+    if (plots_enabled & (1 << PLOT_HALL2)) {
+        plot_numbers[PLOT_HALL2] = plot_number++;
+        commands_plot_add_graph("HALL2");
     }
 }
 
