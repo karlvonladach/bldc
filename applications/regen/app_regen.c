@@ -1233,14 +1233,24 @@ static void update_pedal_speed_and_position(bool reset)
 
 	// calculate relative speed and position
 	pedal_speed_rel = utils_map(pedal_speed, config.pedal_sensor.rpm_start, config.pedal_sensor.rpm_end, 0.0, 1.0);
+	utils_truncate_number(&pedal_speed_rel, 0.0, 1.0);
 	pedal_brake_position_rel = utils_map(pedal_brake_position, config.back_pedal_brake.start_pos, config.back_pedal_brake.end_pos, 0.0, 1.0);
+	utils_truncate_number(&pedal_brake_position_rel, 0.0, 1.0);
 
 	// Apply ramping on pedal speed
 	static systime_t last_time = 0;
+	static float pedal_speed_ramp = 0.0;
 	static float pedal_speed_rel_ramp = 0.0;
-	apply_ramping(&pedal_speed_rel_ramp, &last_time, pedal_speed_rel, config.pedal_sensor.ramp_time_pos, config.pedal_sensor.ramp_time_neg);
-	pedal_speed_rel = pedal_speed_rel_ramp;
-	pedal_speed = utils_map(pedal_speed_rel, 0.0, 1.0, config.pedal_sensor.rpm_start, config.pedal_sensor.rpm_end);
+	if (pedal_speed > 0.0) {
+		apply_ramping(&pedal_speed_ramp, &last_time, pedal_speed, 
+						config.pedal_sensor.ramp_time_pos / (config.pedal_sensor.rpm_max - config.pedal_sensor.rpm_min), 
+						config.pedal_sensor.ramp_time_neg / (config.pedal_sensor.rpm_max - config.pedal_sensor.rpm_min));
+		apply_ramping(&pedal_speed_rel_ramp, &last_time, pedal_speed_rel, 
+						config.pedal_sensor.ramp_time_pos / ((config.pedal_sensor.rpm_max - config.pedal_sensor.rpm_min) / (config.pedal_sensor.rpm_end - config.pedal_sensor.rpm_start)), 
+						config.pedal_sensor.ramp_time_neg / ((config.pedal_sensor.rpm_max - config.pedal_sensor.rpm_min) / (config.pedal_sensor.rpm_end - config.pedal_sensor.rpm_start)));
+		pedal_speed = pedal_speed_ramp;
+		pedal_speed_rel = pedal_speed_rel_ramp;
+	}
 
 #endif
 }
@@ -1358,13 +1368,18 @@ static void update_wheel_speed(void)
 
 	// calculate relative wheel speed
 	wheel_speed_rel = utils_map(wheel_speed, config.wheel_sensor.rpm_min, config.wheel_sensor.rpm_max, 0.0, 1.0);
+	utils_truncate_number(&wheel_speed_rel, 0.0, 1.0);
 
 	// Apply ramping on wheel speed
 	static systime_t last_time = 0;
+	static float wheel_speed_ramp = 0.0;
 	static float wheel_speed_rel_ramp = 0.0;
-	apply_ramping(&wheel_speed_rel_ramp, &last_time, wheel_speed_rel, config.wheel_sensor.ramp_time_pos, config.wheel_sensor.ramp_time_neg);
-	wheel_speed_rel = wheel_speed_rel_ramp;
-	wheel_speed = utils_map(wheel_speed_rel, 0.0, 1.0, config.wheel_sensor.rpm_min, config.wheel_sensor.rpm_max);
+	if (wheel_speed > 0.0) {
+		apply_ramping(&wheel_speed_ramp, &last_time, wheel_speed, config.wheel_sensor.ramp_time_pos / (config.wheel_sensor.rpm_max - config.wheel_sensor.rpm_min), config.wheel_sensor.ramp_time_neg / (config.wheel_sensor.rpm_max - config.wheel_sensor.rpm_min));
+		apply_ramping(&wheel_speed_rel_ramp, &last_time, wheel_speed_rel, config.wheel_sensor.ramp_time_pos / 1.0, config.wheel_sensor.ramp_time_neg / 1.0);
+		wheel_speed = wheel_speed_ramp;
+		wheel_speed_rel = wheel_speed_rel_ramp;
+	}
 }
 
 static void update_motor_speed(void)

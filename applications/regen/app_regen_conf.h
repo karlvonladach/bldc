@@ -42,8 +42,8 @@
 #define APP_CUSTOM_CONF_PEDAL_RPM_START          10.0f   // CRMP - start of boost
 #define APP_CUSTOM_CONF_PEDAL_RPM_END            150.0f  // CRPM - end of boost
 #define APP_CUSTOM_CONF_PEDAL_RPM_MAX            450.0f  // CRPM - raise error above this value
-#define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS      0.3f    // sec/fullscale
-#define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG      0.15f   // sec/fullscale
+#define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS      0.3f    // sec/fullscale (min to max)
+#define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG      0.15f   // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_PEDAL_INVERT_DIR         0       // 1/0 = invert/no invert
 
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE        SPEED_SENSOR_TYPE_SINGLE_INTERRUPT
@@ -53,8 +53,8 @@
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_USE_FILTER  1       // 1/0 = enable/disable
 #define APP_CUSTOM_CONF_WHEEL_RPM_MIN            10.0f   // WRPM - set 0 WRPM below this value
 #define APP_CUSTOM_CONF_WHEEL_RPM_MAX            1800.0f // WRPM - raise error above this value
-#define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS      0.3f    // sec/fullscale
-#define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG      0.15f   // sec/fullscale
+#define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS      0.3f    // sec/fullscale (min to max)
+#define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG      0.15f   // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_WHEEL_INVERT_DIR         0       // 1/0 = invert/no invert
 
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE       TORQUE_SENSOR_TYPE_ADC
