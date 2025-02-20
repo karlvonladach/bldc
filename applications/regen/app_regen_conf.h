@@ -66,6 +66,7 @@
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM         30.0f  // WRPM
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE  0.5f  // seconds
 
+#define APP_CUSTOM_CONF_CLUTCH_MODE              CLUTCH_MODE_CLOSED
 #define APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1        HW_UART_TX_PORT
 #define APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1         HW_UART_TX_PIN
 #define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN  1.0f    // seconds
@@ -76,8 +77,9 @@
 #define APP_CUSTOM_CONF_CLUTCH_MIN_RPM           30.0f   // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN      400.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE     350.0f  // WRPM
+#define APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS      5u      // max attempts to open/close clutch
 
-#define APP_CUSTOM_CONF_UPDATE_RATE_HZ           500
+#define APP_CUSTOM_CONF_UPDATE_RATE_HZ           500     // Hz - sensor signal processing and clutch control
 
 #define APP_CUSTOM_CONF_CTRL_TYPE_ADDR                   0
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS_ADDR        1
@@ -109,5 +111,6 @@
 #define APP_CUSTOM_CONF_CLUTCH_MIN_RPM_ADDR              27
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN_ADDR         28
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE_ADDR        29
+#define APP_CUSTOM_CONF_CLUTCH_MODE_ADDR                 30
 
 #endif /* APP_REGEN_CONF_H_ */

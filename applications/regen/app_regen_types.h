@@ -60,6 +60,13 @@ typedef enum {
 } clutch_state_type;
 
 typedef enum {
+    CLUTCH_MODE_CLOSED = 0,
+    CLUTCH_MODE_OPEN,
+    CLUTCH_MODE_AUTO,
+    CLUTCH_MODE_MANUAL
+} clutch_mode_type;
+
+typedef enum {
     SPEED_SENSOR_TYPE_NONE = 0,
     SPEED_SENSOR_TYPE_SINGLE_INTERRUPT,
     SPEED_SENSOR_TYPE_SINGLE_POLL,
@@ -98,6 +105,7 @@ typedef struct {
 } brake_config_type;
 
 typedef struct {
+    clutch_mode_type mode;
     float wait_before_open;
     float wait_before_sync;
     float wait_before_check;

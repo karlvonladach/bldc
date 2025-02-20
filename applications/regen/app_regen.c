@@ -95,9 +95,6 @@ static volatile float command_line_speed = -1;
 //// State variables
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
-static volatile uint32_t log_groups_enabled = 0;
-static volatile uint32_t plots_enabled = 0;
-static volatile int plot_numbers[PLOT_COUNT] = {0};
 static volatile float pedal_torque = 0;
 static volatile float pedal_torque_rel = 0;
 static volatile float pedal_speed  = 0;    //CRPM
@@ -108,20 +105,23 @@ static volatile float wheel_speed  = 0;    //WRPM
 static volatile float wheel_speed_rel = 0;
 static volatile float motor_speed  = 0;    //MWRPM
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
-static volatile uint8_t clutch_must_close = 0;
-static volatile uint8_t clutch_must_open = 0;
 static volatile uint8_t HALL1_level = 0;
 static volatile uint8_t HALL2_level = 0;
 static volatile uint8_t HALL3_level = 0;
-static volatile uint32_t HALL3_int_cntr_xp = 0;
-static volatile uint32_t HALL3_int_cntr_rt = 0;
+
 
 //// Other variables
+static volatile uint32_t log_groups_enabled = 0;
+static volatile uint32_t plots_enabled = 0;
+static volatile int plot_numbers[PLOT_COUNT] = {0};
+static volatile int plot_number = 0;
 static volatile float ms_without_power = 0.0;
 static volatile float wheel_sensor_timestamp = 0;
 static volatile float clutch_timestamp = 0;
-
-static volatile int plot_number = 0;
+static volatile uint8_t clutch_must_close = 0;
+static volatile uint8_t clutch_must_open = 0;
+static volatile uint32_t HALL3_int_cntr_xp = 0;
+static volatile uint32_t HALL3_int_cntr_rt = 0;
 
 // Called when the custom application is started. Start our
 // threads here and set up callbacks.
@@ -490,6 +490,7 @@ static void load_default_config(custom_config_type* conf){
 	conf->clutch.min_rpm 			 = APP_CUSTOM_CONF_CLUTCH_MIN_RPM;
 	conf->clutch.max_rpm_open		 = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN;
 	conf->clutch.max_rpm_close		 = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE;
+	conf->clutch.mode 				 = APP_CUSTOM_CONF_CLUTCH_MODE;
 
 	conf->update_rate_hz = APP_CUSTOM_CONF_UPDATE_RATE_HZ;
 }
@@ -579,6 +580,9 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE_ADDR)) {
 		conf->clutch.max_rpm_close = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MODE_ADDR)) {
+		conf->clutch.mode = v.as_u32;
 	}
 }
 
@@ -780,8 +784,26 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Clutch max RPM close set to %f", (double)config.clutch.max_rpm_close);
 			v.as_float = config.clutch.max_rpm_close;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE_ADDR);
+        } else if (strcmp(argv[1], "clutch_mode") == 0) {
+            if (strcmp(argv[2], "closed") == 0) {
+                config.clutch.mode = CLUTCH_MODE_CLOSED;
+                commands_printf("Clutch mode set to CLOSED");
+            } else if (strcmp(argv[2], "open") == 0) {
+                config.clutch.mode = CLUTCH_MODE_OPEN;
+                commands_printf("Clutch mode set to OPEN");
+            } else if (strcmp(argv[2], "auto") == 0) {
+                config.clutch.mode = CLUTCH_MODE_AUTO;
+                commands_printf("Clutch mode set to AUTO");
+            } else if (strcmp(argv[2], "manual") == 0) {
+                config.clutch.mode = CLUTCH_MODE_MANUAL;
+                commands_printf("Clutch mode set to MANUAL");
         } else {
-            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n  pedal_ramp_time_pos\r\n  pedal_ramp_time_neg\r\n  wheel_ramp_time_pos\r\n  wheel_ramp_time_neg\r\n  clutch_min_rpm\r\n  clutch_max_rpm_open\r\n  clutch_max_rpm_close\r\n");
+                commands_printf("Invalid value.\r\nValid values: closed, open, auto, manual");
+            }
+			v.as_u32 = config.clutch.mode;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MODE_ADDR);
+        } else {
+            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n  pedal_ramp_time_pos\r\n  pedal_ramp_time_neg\r\n  wheel_ramp_time_pos\r\n  wheel_ramp_time_neg\r\n  clutch_min_rpm\r\n  clutch_max_rpm_open\r\n  clutch_max_rpm_close\r\n  clutch_mode\r\n");
         }
     } else {
         commands_printf("This command requires two arguments.\n");
@@ -973,6 +995,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      clutch_min_rpm - Clutch minimum RPM");
 	commands_printf("      clutch_max_rpm_open - Clutch maximum RPM for opening");
 	commands_printf("      clutch_max_rpm_close - Clutch maximum RPM for closing");
+	commands_printf("      clutch_mode - Clutch mode (closed, open, auto, manual)");
 	commands_printf("      update_rate - Update rate in Hz");
 	commands_printf("  clutch [open/close] - Open or close the clutch");
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging");
@@ -1025,6 +1048,10 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Clutch min RPM: %f", (double)config.clutch.min_rpm);
 	commands_printf("  Clutch max RPM open: %f", (double)config.clutch.max_rpm_open);
 	commands_printf("  Clutch max RPM close: %f", (double)config.clutch.max_rpm_close);
+	commands_printf("  Clutch mode: %s", config.clutch.mode == CLUTCH_MODE_CLOSED ? "closed" :
+		config.clutch.mode == CLUTCH_MODE_OPEN ? "open" :
+		config.clutch.mode == CLUTCH_MODE_AUTO ? "auto" :
+		config.clutch.mode == CLUTCH_MODE_MANUAL ? "manual" : "unknown");
 	commands_printf("  Update rate: %d Hz", config.update_rate_hz);
 }
 
