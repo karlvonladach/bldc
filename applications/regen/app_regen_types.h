@@ -99,7 +99,7 @@ typedef struct {
 
 typedef struct {
     float wait_before_open;
-    float wait_before_close;
+    float wait_before_sync;
     float wait_before_check;
     float sync_rpm_diff;
     float check_rpm_diff;

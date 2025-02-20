@@ -388,9 +388,9 @@ static THD_FUNCTION(my_thread, arg) {
 			// and set power based on torque and pedal speed
 			if (pedal_speed > 0){
 				pedal_inactivity_time = 0;
-				if (pedal_activity_time < config.clutch.wait_before_close){
+				if (pedal_activity_time < config.clutch.wait_before_sync){
 					pedal_activity_time += 1.0 / (float)config.update_rate_hz;
-					if (pedal_activity_time >= config.clutch.wait_before_close){
+					if (pedal_activity_time >= config.clutch.wait_before_sync){
 						sync_clutch();
 					}
 				}
@@ -483,7 +483,7 @@ static void load_default_config(custom_config_type* conf){
 	conf->back_pedal_brake.release_rpm = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM;
 
 	conf->clutch.wait_before_open    = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN;
-	conf->clutch.wait_before_close   = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CLOSE;
+	conf->clutch.wait_before_sync   = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC;
 	conf->clutch.wait_before_check   = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK;
 	conf->clutch.sync_rpm_diff       = APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF;
 	conf->clutch.check_rpm_diff      = APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF;
@@ -544,8 +544,8 @@ static void load_stored_config(custom_config_type* conf){
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN_ADDR)) {
 		conf->clutch.wait_before_open = v.as_float;
 	}
-	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CLOSE_ADDR)) {
-		conf->clutch.wait_before_close = v.as_float;
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_ADDR)) {
+		conf->clutch.wait_before_sync = v.as_float;
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK_ADDR)) {
 		conf->clutch.wait_before_check = v.as_float;
@@ -721,10 +721,10 @@ static void terminal_config(int argc, const char **argv) {
 			v.as_float = config.clutch.wait_before_open;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN_ADDR);
         } else if (strcmp(argv[1], "clutch_close") == 0) {
-            config.clutch.wait_before_close = atof(argv[2]);
-            commands_printf("Clutch wait before close set to %f", (double)config.clutch.wait_before_close);
-			v.as_float = config.clutch.wait_before_close;
-			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CLOSE_ADDR);
+            config.clutch.wait_before_sync = atof(argv[2]);
+            commands_printf("Clutch wait before close set to %f", (double)config.clutch.wait_before_sync);
+			v.as_float = config.clutch.wait_before_sync;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_ADDR);
         } else if (strcmp(argv[1], "clutch_check") == 0) {
             config.clutch.wait_before_check = atof(argv[2]);
             commands_printf("Clutch wait before check set to %f", (double)config.clutch.wait_before_check);
@@ -1018,7 +1018,7 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Back pedal brake wait before release: %f", (double)config.back_pedal_brake.wait_before_release);
 	commands_printf("  Back pedal brake release RPM: %f", (double)config.back_pedal_brake.release_rpm);
 	commands_printf("  Clutch wait before open: %f", (double)config.clutch.wait_before_open);
-	commands_printf("  Clutch wait before close: %f", (double)config.clutch.wait_before_close);
+	commands_printf("  Clutch wait before close: %f", (double)config.clutch.wait_before_sync);
 	commands_printf("  Clutch wait before check: %f", (double)config.clutch.wait_before_check);
 	commands_printf("  Clutch sync RPM diff: %f", (double)config.clutch.sync_rpm_diff);
 	commands_printf("  Clutch check RPM diff: %f", (double)config.clutch.check_rpm_diff);
