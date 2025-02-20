@@ -50,6 +50,7 @@ static THD_WORKING_AREA(my_thread_wa, 1024);
 // Private functions
 static void load_default_config(custom_config_type* conf);
 static void load_stored_config(custom_config_type* conf);
+
 static void terminal_set_speed(int argc, const char **argv);
 static void terminal_config(int argc, const char **argv);
 static void terminal_clutch(int argc, const char **argv);
@@ -59,15 +60,12 @@ static void terminal_cmd_disable_plot(int argc, const char **argv);
 static void terminal_cmd_help(int argc, const char **argv);
 static void terminal_get_config(int argc, const char **argv);
 
-static void print_log(log_group_t log_group, const char* format, ...);
-
-static void apply_ramping(float *value, systime_t *last_time, float target, float ramp_time_pos, float ramp_time_neg);
-
 static void update_pedal_torque(void);
 static void update_pedal_speed_and_position(bool reset);
 static void update_wheel_speed(void);
 static void update_motor_speed(void);
 static void update_clutch_state(void);
+static void update_motor_control(void);
 
 static void open_clutch(void);
 static void sync_clutch(void);
@@ -76,6 +74,8 @@ static void set_motor_speed(float mwrpm);
 static void enable_interrupt(void);
 static void init_plots(void);
 static void plot_points(plot_index_t plot, float x, float y);
+static void print_log(log_group_t log_group, const char* format, ...);
+static void apply_ramping(float *value, systime_t *last_time, float target, float ramp_time_pos, float ramp_time_neg);
 
 // Private variables
 //// Config variables
@@ -109,7 +109,6 @@ static volatile uint8_t HALL1_level = 0;
 static volatile uint8_t HALL2_level = 0;
 static volatile uint8_t HALL3_level = 0;
 
-
 //// Other variables
 static volatile uint32_t log_groups_enabled = 0;
 static volatile uint32_t plots_enabled = 0;
@@ -118,8 +117,6 @@ static volatile int plot_number = 0;
 static volatile float ms_without_power = 0.0;
 static volatile float wheel_sensor_timestamp = 0;
 static volatile float clutch_timestamp = 0;
-static volatile uint8_t clutch_must_close = 0;
-static volatile uint8_t clutch_must_open = 0;
 static volatile uint8_t clutch_open_error_counter = 0;
 static volatile uint8_t clutch_close_error_counter = 0;
 static volatile uint32_t HALL3_int_cntr_xp = 0;
@@ -282,8 +279,6 @@ void app_custom_get_rtdata(float* data) {
 static THD_FUNCTION(my_thread, arg) {
 	(void)arg;
 	float timestamp = 0;
-	float pedal_inactivity_time = 0;
-	float pedal_activity_time = 0;
 	float wheel_inactivity_time = 0;
 
 	chRegSetThreadName("App Custom");
@@ -323,20 +318,27 @@ static THD_FUNCTION(my_thread, arg) {
 
 		//measure pedal forward speed or backward position
 		update_pedal_speed_and_position(FALSE);
+
 		plot_points(PLOT_PEDAL_RPM, timestamp, pedal_speed);
         plot_points(PLOT_BRAKE_POS, timestamp, pedal_brake_position);
 
 		//measure wheel speed
 		update_wheel_speed();
+
 		plot_points(PLOT_WHEEL_RPM, timestamp, wheel_speed);
 
 		//get motor speed
 		update_motor_speed();
+
 		plot_points(PLOT_MOTOR_RPM, timestamp, motor_speed);
 
 		//take care of clutch state transitions
 		update_clutch_state();
+
 		plot_points(PLOT_CLUTCH_STATE, timestamp, clutch_state == CLUTCH_STATE_OPEN ? 0 : (clutch_state == CLUTCH_STATE_CLOSED ? 30 : (clutch_state == CLUTCH_STATE_OPENING ? 10 : 20)));
+
+		//control motor speed/current according to the current state variables
+		update_motor_control();
 
 		//if wheel speed is small then release brake after N seconds
 		// note: motor speed is measured here because of the instability of wrpm in interrupt mode
@@ -349,107 +351,6 @@ static THD_FUNCTION(my_thread, arg) {
 			}
 		} else {
 			wheel_inactivity_time = 0;
-		}
-
-		//if wheel speed is too low then clutch must be kept closed for instant start
-		if (wheel_speed < config.clutch.min_rpm){
-			clutch_must_close = 1;
-		} else {
-			clutch_must_close = 0;
-		}
-			
-		//if wheel speed is too high then clutch must be kept open to save the motor
-		if (wheel_speed > config.clutch.max_rpm_open){
-			clutch_must_open = 1;
-		}
-		if (wheel_speed < config.clutch.max_rpm_close){
-			clutch_must_open = 0;
-		}
-
-		//if wheel speed is too low then clutch must be kept closed for instant start
-		if (clutch_must_close){
-			pedal_activity_time = 0;
-			pedal_inactivity_time = 0;
-			sync_clutch();
-		} else if (clutch_must_open){
-			pedal_activity_time = 0;
-			pedal_inactivity_time = 0;
-			open_clutch();
-		} else {
-			//if pedal speed = 0 and not braking then disconnect clutch after N seconds
-			if (pedal_speed == 0 && pedal_brake_position == 0){
-				pedal_activity_time = 0;
-				if (pedal_inactivity_time < config.clutch.wait_before_open){
-					pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
-					if (pedal_inactivity_time >= config.clutch.wait_before_open){
-						open_clutch();
-					}
-				}
-			}
-			//if pedal speed > 0 then start syncing motor to wheel after N seconds
-			// and set power based on torque and pedal speed
-			if (pedal_speed > 0){
-				pedal_inactivity_time = 0;
-				if (pedal_activity_time < config.clutch.wait_before_sync){
-					pedal_activity_time += 1.0 / (float)config.update_rate_hz;
-					if (pedal_activity_time >= config.clutch.wait_before_sync){
-						sync_clutch();
-					}
-				}
-			}
-			//if pedal brake is active then start syncing motor to wheel immediately
-			if (pedal_brake_position > 0){
-				sync_clutch();
-			}
-		}
-
-		if (command_line_speed >= 0){
-			set_motor_speed(command_line_speed);
-		} else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_SYNCED){
-			set_motor_speed(wheel_speed + config.clutch.sync_rpm_diff);
-			if (cnt % (config.update_rate_hz / 10) == 0){
-				print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(wheel_speed + config.clutch.sync_rpm_diff));
-			}
-		} else if (clutch_state == CLUTCH_STATE_CLOSED){
-			if (pedal_brake_position > 0){
-				float brake_force = (pedal_brake_position - config.back_pedal_brake.start_pos) / (config.back_pedal_brake.end_pos - config.back_pedal_brake.start_pos);
-				mc_interface_set_brake_current_rel(brake_force);
-				if (cnt % (config.update_rate_hz / 10) == 0){
-					print_log(LOG_GROUP_MOTOR,"[%4.2f] BREAK set to %d%%", (double)timestamp, (int)floor(brake_force*100));
-				}
-			} else if (pedal_speed > 0){
-				switch (config.ctrl_type){
-					case CUSTOM_CTRL_TYPE_NONE:
-					    break;
-					case CUSTOM_CTRL_TYPE_PID:
-						set_motor_speed(pedal_speed);
-						if (cnt % (config.update_rate_hz / 10) == 0){
-							print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f (tmp solution)", (double)timestamp, (double)(pedal_speed));
-						}
-					    break;
-					case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED: 
-						mc_interface_set_current_rel(pedal_speed_rel);
-					    break;
-					case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE: 
-						mc_interface_set_current_rel(pedal_torque_rel);
-					    break;
-					case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE:
-						mc_interface_set_current_rel(pedal_speed_rel * pedal_torque_rel);
-					    break;
-					default: 
-					    break;
-				}
-			} else {
-				if (cnt % (config.update_rate_hz / 10) == 0){
-					print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, 0);
-				}
-				mc_interface_set_current_rel(0.0);
-			}
-		} else { //clutch open or opening or closing. TODO: keep opening here, revert closing
-			if (cnt % (config.update_rate_hz / 10) == 0){
-				print_log(LOG_GROUP_MOTOR,"[%4.2f] CURRENT set to %d", (double)timestamp, 0);
-			}
-			mc_interface_set_current_rel(0.0);
 		}
 	}
 }
@@ -1057,34 +958,6 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Update rate: %d Hz", config.update_rate_hz);
 }
 
-static void print_log(log_group_t log_group, const char* format, ...) {
-	va_list arg;
-	va_start (arg, format);
-
-	if (log_groups_enabled & (1 << log_group)) {
-        commands_printf(format, arg);
-    }
-	va_end (arg);
-}
-
-static void apply_ramping(float *value, systime_t *last_time, float target, float ramp_time_pos, float ramp_time_neg) {
-	systime_t now = chVTGetSystemTimeX();
-	float dt = (float)(now - *last_time) / (float)CH_CFG_ST_FREQUENCY;
-	*last_time = now;
-
-	if (target > *value) {
-		*value += dt / ramp_time_pos;
-		if (*value > target) {
-			*value = target;
-		}
-	} else {
-		*value -= dt / ramp_time_neg;
-		if (*value < target) {
-			*value = target;
-		}
-	}
-}
-
 static void update_pedal_torque(void)
 {
     if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC) {
@@ -1430,6 +1303,10 @@ static void update_clutch_state(void)
 {
 	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 	float elapsed_time = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - clutch_timestamp;
+	uint8_t clutch_must_close = 0;
+	uint8_t clutch_must_open = 0;
+	static float pedal_inactivity_time = 0;
+	static float pedal_activity_time = 0;
 
 	if (clutch_state == CLUTCH_STATE_OPENING){
 		if (elapsed_time > config.clutch.wait_before_check){
@@ -1469,6 +1346,115 @@ static void update_clutch_state(void)
 		} else {
 			clutch_close_error_counter = 0;
 		}
+	}
+
+	//if wheel speed is too low then clutch must be kept closed for instant start
+	if (wheel_speed < config.clutch.min_rpm){
+		clutch_must_close = 1;
+	} else {
+		clutch_must_close = 0;
+	}
+		
+	//if wheel speed is too high then clutch must be kept open to save the motor
+	if (wheel_speed > config.clutch.max_rpm_open){
+		clutch_must_open = 1;
+	}
+	if (wheel_speed < config.clutch.max_rpm_close){
+		clutch_must_open = 0;
+	}
+
+	//if wheel speed is too low then clutch must be kept closed for instant start
+	if (clutch_must_close){
+		pedal_activity_time = 0;
+		pedal_inactivity_time = 0;
+		sync_clutch();
+	} else if (clutch_must_open){
+		pedal_activity_time = 0;
+		pedal_inactivity_time = 0;
+		open_clutch();
+	} else {
+		//if pedal speed = 0 and not braking then disconnect clutch after N seconds
+		if (pedal_speed == 0 && pedal_brake_position == 0){
+			pedal_activity_time = 0;
+			if (pedal_inactivity_time < config.clutch.wait_before_open){
+				pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
+				if (pedal_inactivity_time >= config.clutch.wait_before_open){
+					open_clutch();
+				}
+			}
+		}
+		//if pedal speed > 0 then start syncing motor to wheel after N seconds
+		// and set power based on torque and pedal speed
+		if (pedal_speed > 0){
+			pedal_inactivity_time = 0;
+			if (pedal_activity_time < config.clutch.wait_before_sync){
+				pedal_activity_time += 1.0 / (float)config.update_rate_hz;
+				if (pedal_activity_time >= config.clutch.wait_before_sync){
+					sync_clutch();
+				}
+			}
+		}
+		//if pedal brake is active then start syncing motor to wheel immediately
+		if (pedal_brake_position > 0){
+			sync_clutch();
+		}
+	}
+}
+
+static void update_motor_control()
+{
+	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	static uint32_t cnt = 0;
+	
+	cnt++;
+
+	if (command_line_speed >= 0){
+		set_motor_speed(command_line_speed);
+	} else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_SYNCED || clutch_state == CLUTCH_STATE_CLOSING){
+		set_motor_speed(wheel_speed + config.clutch.sync_rpm_diff);
+		if (cnt % (config.update_rate_hz / 10) == 0){
+			print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(wheel_speed + config.clutch.sync_rpm_diff));
+		}
+	} else if (clutch_state == CLUTCH_STATE_CLOSED){
+		if (pedal_brake_position > 0){
+			float brake_force = (pedal_brake_position - config.back_pedal_brake.start_pos) / (config.back_pedal_brake.end_pos - config.back_pedal_brake.start_pos);
+			mc_interface_set_brake_current_rel(brake_force);
+			if (cnt % (config.update_rate_hz / 10) == 0){
+				print_log(LOG_GROUP_MOTOR,"[%4.2f] BREAK set to %d%%", (double)timestamp, (int)floor(brake_force*100));
+			}
+		} else if (pedal_speed > 0){
+			switch (config.ctrl_type){
+				case CUSTOM_CTRL_TYPE_NONE:
+					break;
+				case CUSTOM_CTRL_TYPE_PID:
+					set_motor_speed(pedal_speed);
+					if (cnt % (config.update_rate_hz / 10) == 0){
+						print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f (tmp solution)", (double)timestamp, (double)(pedal_speed));
+					}
+					break;
+				case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED: 
+					mc_interface_set_current_rel(pedal_speed_rel);
+					break;
+				case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE: 
+					mc_interface_set_current_rel(pedal_torque_rel);
+					break;
+				case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE:
+					mc_interface_set_current_rel(pedal_speed_rel * pedal_torque_rel);
+					break;
+				default: 
+					break;
+			}
+		} else {
+			if (cnt % (config.update_rate_hz / 10) == 0){
+				print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, 0);
+			}
+			mc_interface_set_current_rel(0.0);
+		}
+	} else { //clutch open or opening
+		if (cnt % (config.update_rate_hz / 10) == 0){
+			print_log(LOG_GROUP_MOTOR,"[%4.2f] CURRENT set to %d", (double)timestamp, 0);
+		}
+		mc_interface_set_current_rel(0.0);
 	}
 }
 
@@ -1589,4 +1575,32 @@ static void plot_points(plot_index_t plot, float x, float y) {
         commands_plot_set_graph(plot_numbers[plot]);
         commands_send_plot_points(x, y);
     }
+}
+
+static void print_log(log_group_t log_group, const char* format, ...) {
+	va_list arg;
+	va_start (arg, format);
+
+	if (log_groups_enabled & (1 << log_group)) {
+        commands_printf(format, arg);
+    }
+	va_end (arg);
+}
+
+static void apply_ramping(float *value, systime_t *last_time, float target, float ramp_time_pos, float ramp_time_neg) {
+	systime_t now = chVTGetSystemTimeX();
+	float dt = (float)(now - *last_time) / (float)CH_CFG_ST_FREQUENCY;
+	*last_time = now;
+
+	if (target > *value) {
+		*value += dt / ramp_time_pos;
+		if (*value > target) {
+			*value = target;
+		}
+	} else {
+		*value -= dt / ramp_time_neg;
+		if (*value < target) {
+			*value = target;
+		}
+	}
 }
