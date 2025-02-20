@@ -120,6 +120,8 @@ static volatile float wheel_sensor_timestamp = 0;
 static volatile float clutch_timestamp = 0;
 static volatile uint8_t clutch_must_close = 0;
 static volatile uint8_t clutch_must_open = 0;
+static volatile uint8_t clutch_open_error_counter = 0;
+static volatile uint8_t clutch_close_error_counter = 0;
 static volatile uint32_t HALL3_int_cntr_xp = 0;
 static volatile uint32_t HALL3_int_cntr_rt = 0;
 
@@ -724,9 +726,9 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Clutch wait before open set to %f", (double)config.clutch.wait_before_open);
 			v.as_float = config.clutch.wait_before_open;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN_ADDR);
-        } else if (strcmp(argv[1], "clutch_close") == 0) {
+        } else if (strcmp(argv[1], "clutch_sync") == 0) {
             config.clutch.wait_before_sync = atof(argv[2]);
-            commands_printf("Clutch wait before close set to %f", (double)config.clutch.wait_before_sync);
+            commands_printf("Clutch wait before sync set to %f", (double)config.clutch.wait_before_sync);
 			v.as_float = config.clutch.wait_before_sync;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_ADDR);
         } else if (strcmp(argv[1], "clutch_check") == 0) {
@@ -1041,7 +1043,7 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Back pedal brake wait before release: %f", (double)config.back_pedal_brake.wait_before_release);
 	commands_printf("  Back pedal brake release RPM: %f", (double)config.back_pedal_brake.release_rpm);
 	commands_printf("  Clutch wait before open: %f", (double)config.clutch.wait_before_open);
-	commands_printf("  Clutch wait before close: %f", (double)config.clutch.wait_before_sync);
+	commands_printf("  Clutch wait before sync: %f", (double)config.clutch.wait_before_sync);
 	commands_printf("  Clutch wait before check: %f", (double)config.clutch.wait_before_check);
 	commands_printf("  Clutch sync RPM diff: %f", (double)config.clutch.sync_rpm_diff);
 	commands_printf("  Clutch check RPM diff: %f", (double)config.clutch.check_rpm_diff);
@@ -1431,29 +1433,51 @@ static void update_clutch_state(void)
 
 	if (clutch_state == CLUTCH_STATE_OPENING){
 		if (elapsed_time > config.clutch.wait_before_check){
-			//TODO: check if opening succeeded
 			clutch_state = CLUTCH_STATE_OPEN;
 			print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN", (double)timestamp);
 		}
 	} else
+	if (clutch_state == CLUTCH_STATE_OPEN && config.clutch.mode != CLUTCH_MODE_CLOSED){
+		// check if clutch was opened (motor should slow down)
+		if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff){
+			clutch_open_error_counter++;
+			print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN FAILED (%d)", (double)timestamp, clutch_open_error_counter);
+			open_clutch();
+		} else {
+			clutch_open_error_counter = 0;
+		}
+	} else
 	if (clutch_state == CLUTCH_STATE_SYNCING){
-		//if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff){
+		if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff || config.clutch.mode == CLUTCH_MODE_OPEN){
 			clutch_state = CLUTCH_STATE_SYNCED;
 			print_log(LOG_GROUP_CLUTCH,"[%4.2f] SYNCED", (double)timestamp);
 			close_clutch();
-		//}
+		}
 	} else 
 	if (clutch_state == CLUTCH_STATE_CLOSING){
 		if (elapsed_time > config.clutch.wait_before_check){
-			//TODO: check if closing succeeded
 			clutch_state = CLUTCH_STATE_CLOSED;
 			print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSED", (double)timestamp);
 		}		
+	} else
+	if (clutch_state == CLUTCH_STATE_CLOSED && config.clutch.mode != CLUTCH_MODE_OPEN){
+		// check if clutch was closed (motor should stay in sync with wheel)
+		if (abs(wheel_speed - motor_speed) > config.clutch.check_rpm_diff){
+			clutch_close_error_counter++;
+			print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSE FAILED / SYNC LOST (%d)", (double)timestamp, clutch_close_error_counter);
+			close_clutch();
+		} else {
+			clutch_close_error_counter = 0;
+		}
 	}
 }
 
 static void open_clutch(void)
 {
+	if (clutch_open_error_counter > APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS){
+		print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH OPEN DISABLED DUE TO TOO MANY FAILURES", (double)clutch_timestamp);
+		return;
+	}
 	if (clutch_state != CLUTCH_STATE_OPEN && clutch_state != CLUTCH_STATE_OPENING){ 
 		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, 1);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
@@ -1464,6 +1488,10 @@ static void open_clutch(void)
 
 static void sync_clutch(void)
 {
+	if (clutch_close_error_counter > APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS){
+		print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH SYNC DISABLED DUE TO TOO MANY FAILURES", (double)clutch_timestamp);
+		return;
+	}
 	if (clutch_state == CLUTCH_STATE_OPEN || clutch_state == CLUTCH_STATE_OPENING){ 
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_SYNCING;
@@ -1473,6 +1501,10 @@ static void sync_clutch(void)
 
 static void close_clutch(void)
 {
+	if (clutch_close_error_counter > APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS){
+		print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH CLOSE DISABLED DUE TO TOO MANY FAILURES", (double)clutch_timestamp);
+		return;
+	}
 	if (clutch_state != CLUTCH_STATE_CLOSED && clutch_state != CLUTCH_STATE_CLOSING){ 
 		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, 0);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
