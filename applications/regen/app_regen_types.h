@@ -82,7 +82,7 @@ typedef enum {
 typedef struct {
     speed_sensor_type sensor_type;
     uint8_t magnets; 
-	bool use_filter;
+	float filter;
     float rpm_min;
 	float rpm_start;
 	float rpm_end;

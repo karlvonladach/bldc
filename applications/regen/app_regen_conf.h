@@ -37,7 +37,7 @@
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2       HW_HALL_ENC_GPIO2
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2        HW_HALL_ENC_PIN2
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS     24u     // including "virtual magnets"
-#define APP_CUSTOM_CONF_PEDAL_SENSOR_USE_FILTER  1       // 1/0 = enable/disable
+#define APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER      0.8     // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_PEDAL_RPM_MIN            10.0f   // CRPM - set 0 CRPM below this value
 #define APP_CUSTOM_CONF_PEDAL_RPM_START          10.0f   // CRMP - start of boost
 #define APP_CUSTOM_CONF_PEDAL_RPM_END            150.0f  // CRPM - end of boost
@@ -50,7 +50,7 @@
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1       HW_HALL_ENC_GPIO3
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1        HW_HALL_ENC_PIN3
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS     12u     // including "virtual magnets"
-#define APP_CUSTOM_CONF_WHEEL_SENSOR_USE_FILTER  1       // 1/0 = enable/disable
+#define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER      0.8     // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_WHEEL_RPM_MIN            10.0f   // WRPM - set 0 WRPM below this value
 #define APP_CUSTOM_CONF_WHEEL_RPM_MAX            1800.0f // WRPM - raise error above this value
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS      0.3f    // sec/fullscale (min to max)
@@ -83,12 +83,12 @@
 
 #define APP_CUSTOM_CONF_CTRL_TYPE_ADDR                   0
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS_ADDR        1
-#define APP_CUSTOM_CONF_PEDAL_SENSOR_USE_FILTER_ADDR     2
+#define APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER_ADDR         2
 #define APP_CUSTOM_CONF_PEDAL_RPM_START_ADDR             3
 #define APP_CUSTOM_CONF_PEDAL_RPM_END_ADDR               4
 #define APP_CUSTOM_CONF_PEDAL_INVERT_DIR_ADDR            5
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR        6
-#define APP_CUSTOM_CONF_WHEEL_SENSOR_USE_FILTER_ADDR     7
+#define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR         7
 #define APP_CUSTOM_CONF_WHEEL_INVERT_DIR_ADDR            8
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR  9
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS_ADDR   10

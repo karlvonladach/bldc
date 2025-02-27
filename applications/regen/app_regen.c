@@ -367,7 +367,7 @@ static void load_default_config(custom_config_type* conf){
 
 	conf->pedal_sensor.sensor_type   = APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE;
 	conf->pedal_sensor.magnets       = APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS;
-	conf->pedal_sensor.use_filter    = APP_CUSTOM_CONF_PEDAL_SENSOR_USE_FILTER;
+	conf->pedal_sensor.filter        = APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER;
     conf->pedal_sensor.rpm_min       = APP_CUSTOM_CONF_PEDAL_RPM_MIN;
 	conf->pedal_sensor.rpm_start     = APP_CUSTOM_CONF_PEDAL_RPM_START;
 	conf->pedal_sensor.rpm_end       = APP_CUSTOM_CONF_PEDAL_RPM_END;
@@ -378,7 +378,7 @@ static void load_default_config(custom_config_type* conf){
 
 	conf->wheel_sensor.sensor_type   = APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE;
 	conf->wheel_sensor.magnets       = APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS;
-	conf->wheel_sensor.use_filter    = APP_CUSTOM_CONF_WHEEL_SENSOR_USE_FILTER;
+	conf->wheel_sensor.filter        = APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER;
 	conf->wheel_sensor.rpm_min       = APP_CUSTOM_CONF_WHEEL_RPM_MIN;
 	conf->wheel_sensor.rpm_max       = APP_CUSTOM_CONF_WHEEL_RPM_MAX;
 	conf->wheel_sensor.ramp_time_pos = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS;
@@ -416,8 +416,8 @@ static void load_stored_config(custom_config_type* conf){
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS_ADDR)) {
 		conf->pedal_sensor.magnets = v.as_u32;
 	}
-	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_SENSOR_USE_FILTER_ADDR)) {
-		conf->pedal_sensor.use_filter = v.as_u32;
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER_ADDR)) {
+		conf->pedal_sensor.filter = v.as_float;
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_RPM_START_ADDR)) {
 		conf->pedal_sensor.rpm_start = v.as_float;
@@ -434,8 +434,8 @@ static void load_stored_config(custom_config_type* conf){
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR)) {
 		conf->wheel_sensor.magnets = v.as_u32;
 	}
-	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_USE_FILTER_ADDR)) {
-		conf->wheel_sensor.use_filter = v.as_u32;
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR)) {
+		conf->wheel_sensor.filter = v.as_float;
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_INVERT_DIR_ADDR)) {
 		conf->wheel_sensor.invert_direction = v.as_u32;
@@ -557,10 +557,10 @@ static void terminal_config(int argc, const char **argv) {
 			v.as_u32 = config.pedal_sensor.magnets;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS_ADDR);
         } else if (strcmp(argv[1], "pedal_filter") == 0) {
-            config.pedal_sensor.use_filter = atoi(argv[2]);
-            commands_printf("Pedal sensor filter set to %d", config.pedal_sensor.use_filter);
-			v.as_u32 = config.pedal_sensor.use_filter;
-			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_SENSOR_USE_FILTER_ADDR);
+            config.pedal_sensor.filter = atof(argv[2]);
+            commands_printf("Pedal sensor filter set to %f", (double)config.pedal_sensor.filter);
+			v.as_float = config.pedal_sensor.filter;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER_ADDR);
         } else if (strcmp(argv[1], "pedal_rpm_start") == 0) {
             config.pedal_sensor.rpm_start = atof(argv[2]);
             commands_printf("Pedal RPM start set to %f", (double)config.pedal_sensor.rpm_start);
@@ -600,10 +600,10 @@ static void terminal_config(int argc, const char **argv) {
 			v.as_u32 = config.wheel_sensor.magnets;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR);
         } else if (strcmp(argv[1], "wheel_filter") == 0) {
-            config.wheel_sensor.use_filter = atoi(argv[2]);
-            commands_printf("Wheel sensor filter set to %d", config.wheel_sensor.use_filter);
-			v.as_u32 = config.wheel_sensor.use_filter;
-			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_USE_FILTER_ADDR);
+            config.wheel_sensor.filter = atof(argv[2]);
+            commands_printf("Wheel sensor filter set to %f", (double)config.wheel_sensor.filter);
+			v.as_float = config.wheel_sensor.filter;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR);
         } else if (strcmp(argv[1], "wheel_invert") == 0) {
             config.wheel_sensor.invert_direction = atoi(argv[2]);
             commands_printf("Wheel sensor invert direction set to %d", config.wheel_sensor.invert_direction);
@@ -880,7 +880,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      pedal_sensor_type - Pedal sensor type");
 	commands_printf("        Values: single_poll, single_int, quad_poll, quad_int");
 	commands_printf("      pedal_magnets - Number of pedal sensor magnets");
-	commands_printf("      pedal_filter - Use pedal sensor filter (0 or 1)");
+	commands_printf("      pedal_filter - Pedal sensor filter (0 to 1 - 1 gives unfiltered value)");
 	commands_printf("      pedal_rpm_start - Pedal RPM start value");
 	commands_printf("      pedal_rpm_end - Pedal RPM end value");
 	commands_printf("      pedal_ramp_time_pos - Pedal ramp time positive value");
@@ -889,7 +889,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      wheel_sensor_type - Wheel sensor type");
 	commands_printf("        Values: single_poll, single_int, quad_poll, quad_int");
 	commands_printf("      wheel_magnets - Number of wheel sensor magnets");
-	commands_printf("      wheel_filter - Use wheel sensor filter (0 or 1)");
+	commands_printf("      wheel_filter - Wheel sensor filter (0 to 1 - 1 gives unfiltered value)");
 	commands_printf("      wheel_ramp_time_pos - Wheel ramp time positive value");
 	commands_printf("      wheel_ramp_time_neg - Wheel ramp time negative value");
 	commands_printf("      wheel_invert - Invert wheel sensor direction (0 or 1)");
@@ -931,33 +931,33 @@ static void terminal_get_config(int argc, const char **argv) {
 		config.pedal_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_POLL ? "quad_poll" :
 		config.pedal_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT ? "quad_int" : "unknown");
 	commands_printf("  Pedal sensor magnets: %d", config.pedal_sensor.magnets);
-	commands_printf("  Pedal sensor use filter: %d", config.pedal_sensor.use_filter);
-	commands_printf("  Pedal RPM start: %f", (double)config.pedal_sensor.rpm_start);
-	commands_printf("  Pedal RPM end: %f", (double)config.pedal_sensor.rpm_end);
-	commands_printf("  Pedal ramp time positive: %f", (double)config.pedal_sensor.ramp_time_pos);
-	commands_printf("  Pedal ramp time negative: %f", (double)config.pedal_sensor.ramp_time_neg);
+	commands_printf("  Pedal sensor filter: %.2f", (double)config.pedal_sensor.filter);
+	commands_printf("  Pedal RPM start: %.2f", (double)config.pedal_sensor.rpm_start);
+	commands_printf("  Pedal RPM end: %.2f", (double)config.pedal_sensor.rpm_end);
+	commands_printf("  Pedal ramp time positive: %.2f", (double)config.pedal_sensor.ramp_time_pos);
+	commands_printf("  Pedal ramp time negative: %.2f", (double)config.pedal_sensor.ramp_time_neg);
 	commands_printf("  Pedal sensor invert direction: %d", config.pedal_sensor.invert_direction);
 	commands_printf("  Wheel sensor type: %s", config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL ? "single_poll" :
 		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT ? "single_int" :
 		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_POLL ? "quad_poll" :
 		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT ? "quad_int" : "unknown");
 	commands_printf("  Wheel sensor magnets: %d", config.wheel_sensor.magnets);
-	commands_printf("  Wheel sensor use filter: %d", config.wheel_sensor.use_filter);
-	commands_printf("  Wheel ramp time positive: %f", (double)config.wheel_sensor.ramp_time_pos);
-	commands_printf("  Wheel ramp time negative: %f", (double)config.wheel_sensor.ramp_time_neg);
+	commands_printf("  Wheel sensor filter: %.2f", (double)config.wheel_sensor.filter);
+	commands_printf("  Wheel ramp time positive: %.2f", (double)config.wheel_sensor.ramp_time_pos);
+	commands_printf("  Wheel ramp time negative: %.2f", (double)config.wheel_sensor.ramp_time_neg);
 	commands_printf("  Wheel sensor invert direction: %d", config.wheel_sensor.invert_direction);
-	commands_printf("  Back pedal brake start position: %f", (double)config.back_pedal_brake.start_pos);
-	commands_printf("  Back pedal brake end position: %f", (double)config.back_pedal_brake.end_pos);
-	commands_printf("  Back pedal brake wait before release: %f", (double)config.back_pedal_brake.wait_before_release);
-	commands_printf("  Back pedal brake release RPM: %f", (double)config.back_pedal_brake.release_rpm);
-	commands_printf("  Clutch wait before open: %f", (double)config.clutch.wait_before_open);
-	commands_printf("  Clutch wait before sync: %f", (double)config.clutch.wait_before_sync);
-	commands_printf("  Clutch wait before check: %f", (double)config.clutch.wait_before_check);
-	commands_printf("  Clutch sync RPM diff: %f", (double)config.clutch.sync_rpm_diff);
-	commands_printf("  Clutch check RPM diff: %f", (double)config.clutch.check_rpm_diff);
-	commands_printf("  Clutch min RPM: %f", (double)config.clutch.min_rpm);
-	commands_printf("  Clutch max RPM open: %f", (double)config.clutch.max_rpm_open);
-	commands_printf("  Clutch max RPM close: %f", (double)config.clutch.max_rpm_close);
+	commands_printf("  Back pedal brake start position: %.2f", (double)config.back_pedal_brake.start_pos);
+	commands_printf("  Back pedal brake end position: %.2f", (double)config.back_pedal_brake.end_pos);
+	commands_printf("  Back pedal brake wait before release: %.2f", (double)config.back_pedal_brake.wait_before_release);
+	commands_printf("  Back pedal brake release RPM: %.2f", (double)config.back_pedal_brake.release_rpm);
+	commands_printf("  Clutch wait before open: %.2f", (double)config.clutch.wait_before_open);
+	commands_printf("  Clutch wait before sync: %.2f", (double)config.clutch.wait_before_sync);
+	commands_printf("  Clutch wait before check: %.2f", (double)config.clutch.wait_before_check);
+	commands_printf("  Clutch sync RPM diff: %.2f", (double)config.clutch.sync_rpm_diff);
+	commands_printf("  Clutch check RPM diff: %.2f", (double)config.clutch.check_rpm_diff);
+	commands_printf("  Clutch min RPM: %.2f", (double)config.clutch.min_rpm);
+	commands_printf("  Clutch max RPM open: %.2f", (double)config.clutch.max_rpm_open);
+	commands_printf("  Clutch max RPM close: %.2f", (double)config.clutch.max_rpm_close);
 	commands_printf("  Clutch mode: %s", config.clutch.mode == CLUTCH_MODE_CLOSED ? "closed" :
 		config.clutch.mode == CLUTCH_MODE_OPEN ? "open" :
 		config.clutch.mode == CLUTCH_MODE_AUTO ? "auto" :
@@ -1098,7 +1098,7 @@ static void update_pedal_speed_and_position(bool reset)
 
 			// apply simple low pass filtering.
 			// 1.0 means no filtering, 0.0 means infinitely strong filtering
-			UTILS_LP_FAST(period_filtered, avg_period, 0.8);
+			UTILS_LP_FAST(period_filtered, avg_period, config.pedal_sensor.filter);
 
 #ifdef DEBUG_PRINT
 			print_log(LOG_GROUP_SENSOR,"%d - %d \r\n", forward_direction_counter, backward_direction_counter);
@@ -1195,7 +1195,7 @@ static void update_wheel_speed(void)
 			avg_period = 0.5 * (period + old_period);
 			old_period = period;
 
-			UTILS_LP_FAST(period_filtered, avg_period, 0.8);
+			UTILS_LP_FAST(period_filtered, avg_period, config.wheel_sensor.filter);
 
 			if(period_filtered < min_wheel_period) { //can't be that short, abort
 				return;
