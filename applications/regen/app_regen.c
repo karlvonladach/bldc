@@ -288,6 +288,13 @@ static THD_FUNCTION(my_thread, arg) {
 	chThdSleepMilliseconds(1000);
 	init_plots();
 
+	// put clutch into defined state
+	if (config.clutch.mode == CLUTCH_MODE_OPEN) {
+		open_clutch();
+	} else {
+		close_clutch();
+	}
+
 	for(int cnt = 0; true; cnt++) {
 		// Sleep for a time according to the specified rate
 		systime_t sleep_time = CH_CFG_ST_FREQUENCY / config.update_rate_hz;
@@ -1348,55 +1355,58 @@ static void update_clutch_state(void)
 		}
 	}
 
-	//if wheel speed is too low then clutch must be kept closed for instant start
-	if (wheel_speed < config.clutch.min_rpm){
-		clutch_must_close = 1;
-	} else {
-		clutch_must_close = 0;
-	}
-		
-	//if wheel speed is too high then clutch must be kept open to save the motor
-	if (wheel_speed > config.clutch.max_rpm_open){
-		clutch_must_open = 1;
-	}
-	if (wheel_speed < config.clutch.max_rpm_close){
-		clutch_must_open = 0;
-	}
+	if (config.clutch.mode != CLUTCH_MODE_MANUAL) {
+			
+		//if wheel speed is too low then clutch must be kept closed for instant start
+		if (wheel_speed < config.clutch.min_rpm){
+			clutch_must_close = 1;
+		} else {
+			clutch_must_close = 0;
+		}
+			
+		//if wheel speed is too high then clutch must be kept open to save the motor
+		if (wheel_speed > config.clutch.max_rpm_open){
+			clutch_must_open = 1;
+		}
+		if (wheel_speed < config.clutch.max_rpm_close){
+			clutch_must_open = 0;
+		}
 
-	//if wheel speed is too low then clutch must be kept closed for instant start
-	if (clutch_must_close){
-		pedal_activity_time = 0;
-		pedal_inactivity_time = 0;
-		sync_clutch();
-	} else if (clutch_must_open){
-		pedal_activity_time = 0;
-		pedal_inactivity_time = 0;
-		open_clutch();
-	} else {
-		//if pedal speed = 0 and not braking then disconnect clutch after N seconds
-		if (pedal_speed == 0 && pedal_brake_position == 0){
+		//if wheel speed is too low then clutch must be kept closed for instant start
+		if (clutch_must_close){
 			pedal_activity_time = 0;
-			if (pedal_inactivity_time < config.clutch.wait_before_open){
-				pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
-				if (pedal_inactivity_time >= config.clutch.wait_before_open){
-					open_clutch();
-				}
-			}
-		}
-		//if pedal speed > 0 then start syncing motor to wheel after N seconds
-		// and set power based on torque and pedal speed
-		if (pedal_speed > 0){
 			pedal_inactivity_time = 0;
-			if (pedal_activity_time < config.clutch.wait_before_sync){
-				pedal_activity_time += 1.0 / (float)config.update_rate_hz;
-				if (pedal_activity_time >= config.clutch.wait_before_sync){
-					sync_clutch();
+			sync_clutch();
+		} else if (clutch_must_open){
+			pedal_activity_time = 0;
+			pedal_inactivity_time = 0;
+			open_clutch();
+		} else {
+			//if pedal speed = 0 and not braking then disconnect clutch after N seconds
+			if (pedal_speed == 0 && pedal_brake_position == 0){
+				pedal_activity_time = 0;
+				if (pedal_inactivity_time < config.clutch.wait_before_open){
+					pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
+					if (pedal_inactivity_time >= config.clutch.wait_before_open){
+						open_clutch();
+					}
 				}
 			}
-		}
-		//if pedal brake is active then start syncing motor to wheel immediately
-		if (pedal_brake_position > 0){
-			sync_clutch();
+			//if pedal speed > 0 then start syncing motor to wheel after N seconds
+			// and set power based on torque and pedal speed
+			if (pedal_speed > 0){
+				pedal_inactivity_time = 0;
+				if (pedal_activity_time < config.clutch.wait_before_sync){
+					pedal_activity_time += 1.0 / (float)config.update_rate_hz;
+					if (pedal_activity_time >= config.clutch.wait_before_sync){
+						sync_clutch();
+					}
+				}
+			}
+			//if pedal brake is active then start syncing motor to wheel immediately
+			if (pedal_brake_position > 0){
+				sync_clutch();
+			}
 		}
 	}
 }
