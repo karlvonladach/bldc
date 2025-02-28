@@ -494,6 +494,18 @@ static void load_stored_config(custom_config_type* conf){
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MODE_ADDR)) {
 		conf->clutch.mode = v.as_u32;
 	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_RPM_MIN_ADDR)) {
+		conf->pedal_sensor.rpm_min = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_RPM_MAX_ADDR)) {
+		conf->pedal_sensor.rpm_max = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_RPM_MIN_ADDR)) {
+		conf->wheel_sensor.rpm_min = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_RPM_MAX_ADDR)) {
+		conf->wheel_sensor.rpm_max = v.as_float;
+	}
 }
 
 // Callback function for the terminal command with arguments.
@@ -571,6 +583,16 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Pedal RPM end set to %f", (double)config.pedal_sensor.rpm_end);
 			v.as_float = config.pedal_sensor.rpm_end;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_RPM_END_ADDR);
+        } else if (strcmp(argv[1], "pedal_rpm_min") == 0) {
+            config.pedal_sensor.rpm_min = atof(argv[2]);
+            commands_printf("Pedal RPM min set to %f", (double)config.pedal_sensor.rpm_min);
+			v.as_float = config.pedal_sensor.rpm_min;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_RPM_MIN_ADDR);
+        } else if (strcmp(argv[1], "pedal_rpm_max") == 0) {
+            config.pedal_sensor.rpm_max = atof(argv[2]);
+            commands_printf("Pedal RPM max set to %f", (double)config.pedal_sensor.rpm_max);
+			v.as_float = config.pedal_sensor.rpm_max;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_RPM_MAX_ADDR);
         } else if (strcmp(argv[1], "pedal_invert") == 0) {
             config.pedal_sensor.invert_direction = atoi(argv[2]);
             commands_printf("Pedal sensor invert direction set to %d", config.pedal_sensor.invert_direction);
@@ -604,6 +626,16 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Wheel sensor filter set to %f", (double)config.wheel_sensor.filter);
 			v.as_float = config.wheel_sensor.filter;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR);
+        } else if (strcmp(argv[1], "wheel_rpm_min") == 0) {
+            config.wheel_sensor.rpm_min = atof(argv[2]);
+            commands_printf("Wheel RPM min set to %f", (double)config.wheel_sensor.rpm_min);
+			v.as_float = config.wheel_sensor.rpm_min;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_RPM_MIN_ADDR);
+        } else if (strcmp(argv[1], "wheel_rpm_max") == 0) {
+            config.wheel_sensor.rpm_max = atof(argv[2]);
+            commands_printf("Wheel RPM max set to %f", (double)config.wheel_sensor.rpm_max);
+			v.as_float = config.wheel_sensor.rpm_max;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_RPM_MAX_ADDR);
         } else if (strcmp(argv[1], "wheel_invert") == 0) {
             config.wheel_sensor.invert_direction = atoi(argv[2]);
             commands_printf("Wheel sensor invert direction set to %d", config.wheel_sensor.invert_direction);
@@ -707,13 +739,13 @@ static void terminal_config(int argc, const char **argv) {
             } else if (strcmp(argv[2], "manual") == 0) {
                 config.clutch.mode = CLUTCH_MODE_MANUAL;
                 commands_printf("Clutch mode set to MANUAL");
-        } else {
+        	} else {
                 commands_printf("Invalid value.\r\nValid values: closed, open, auto, manual");
             }
 			v.as_u32 = config.clutch.mode;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MODE_ADDR);
         } else {
-            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n  pedal_ramp_time_pos\r\n  pedal_ramp_time_neg\r\n  wheel_ramp_time_pos\r\n  wheel_ramp_time_neg\r\n  clutch_min_rpm\r\n  clutch_max_rpm_open\r\n  clutch_max_rpm_close\r\n  clutch_mode\r\n");
+            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n  pedal_ramp_time_pos\r\n  pedal_ramp_time_neg\r\n  wheel_ramp_time_pos\r\n  wheel_ramp_time_neg\r\n  clutch_min_rpm\r\n  clutch_max_rpm_open\r\n  clutch_max_rpm_close\r\n  clutch_mode\r\n  pedal_rpm_min\r\n  pedal_rpm_max\r\n  wheel_rpm_min\r\n  wheel_rpm_max\r\n");
         }
     } else {
         commands_printf("This command requires two arguments.\n");
@@ -883,6 +915,8 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      pedal_filter - Pedal sensor filter (0 to 1 - 1 gives unfiltered value)");
 	commands_printf("      pedal_rpm_start - Pedal RPM start value");
 	commands_printf("      pedal_rpm_end - Pedal RPM end value");
+	commands_printf("      pedal_rpm_min - Pedal RPM min value");
+	commands_printf("      pedal_rpm_max - Pedal RPM max value");
 	commands_printf("      pedal_ramp_time_pos - Pedal ramp time positive value");
 	commands_printf("      pedal_ramp_time_neg - Pedal ramp time negative value");
 	commands_printf("      pedal_invert - Invert pedal sensor direction (0 or 1)");
@@ -890,6 +924,8 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("        Values: single_poll, single_int, quad_poll, quad_int");
 	commands_printf("      wheel_magnets - Number of wheel sensor magnets");
 	commands_printf("      wheel_filter - Wheel sensor filter (0 to 1 - 1 gives unfiltered value)");
+	commands_printf("      wheel_rpm_min - Wheel RPM min value");
+	commands_printf("      wheel_rpm_max - Wheel RPM max value");
 	commands_printf("      wheel_ramp_time_pos - Wheel ramp time positive value");
 	commands_printf("      wheel_ramp_time_neg - Wheel ramp time negative value");
 	commands_printf("      wheel_invert - Invert wheel sensor direction (0 or 1)");
@@ -934,6 +970,8 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Pedal sensor filter: %.2f", (double)config.pedal_sensor.filter);
 	commands_printf("  Pedal RPM start: %.2f", (double)config.pedal_sensor.rpm_start);
 	commands_printf("  Pedal RPM end: %.2f", (double)config.pedal_sensor.rpm_end);
+	commands_printf("  Pedal RPM min: %.2f", (double)config.pedal_sensor.rpm_min);
+	commands_printf("  Pedal RPM max: %.2f", (double)config.pedal_sensor.rpm_max);
 	commands_printf("  Pedal ramp time positive: %.2f", (double)config.pedal_sensor.ramp_time_pos);
 	commands_printf("  Pedal ramp time negative: %.2f", (double)config.pedal_sensor.ramp_time_neg);
 	commands_printf("  Pedal sensor invert direction: %d", config.pedal_sensor.invert_direction);
@@ -943,6 +981,8 @@ static void terminal_get_config(int argc, const char **argv) {
 		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT ? "quad_int" : "unknown");
 	commands_printf("  Wheel sensor magnets: %d", config.wheel_sensor.magnets);
 	commands_printf("  Wheel sensor filter: %.2f", (double)config.wheel_sensor.filter);
+	commands_printf("  Wheel RPM min: %.2f", (double)config.wheel_sensor.rpm_min);
+	commands_printf("  Wheel RPM max: %.2f", (double)config.wheel_sensor.rpm_max);
 	commands_printf("  Wheel ramp time positive: %.2f", (double)config.wheel_sensor.ramp_time_pos);
 	commands_printf("  Wheel ramp time negative: %.2f", (double)config.wheel_sensor.ramp_time_neg);
 	commands_printf("  Wheel sensor invert direction: %d", config.wheel_sensor.invert_direction);
