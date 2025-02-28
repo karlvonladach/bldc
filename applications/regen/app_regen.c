@@ -1087,14 +1087,11 @@ static void update_pedal_speed_and_position(bool reset)
 		// calculate the time of one full rotation from the time difference
 		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets;
 
-		old_timestamp = timestamp;
-
 		// quadrature encoder has 4 states, so we should observe 4 phase changes 
 		// in the same direction before we reach a specific state again. 
 		if (forward_direction_counter == 4) {
 			// average last 2 periods due to differences between the upward and downward magnet orientation
 			avg_period = 0.5 * (period + old_period);
-			old_period = period;
 
 			// apply simple low pass filtering.
 			// 1.0 means no filtering, 0.0 means infinitely strong filtering
@@ -1110,10 +1107,13 @@ static void update_pedal_speed_and_position(bool reset)
 
 			// calculate speed from rotation time
 			pedal_speed = 60.0 / period_filtered;
+
+			old_period = period;
 			backward_direction_counter = 0;
 			pedal_brake_position = 0.0;
 		}
 
+		old_timestamp = timestamp;
 		inactivity_time = 0.0;
 		forward_direction_counter = 0;
 	}
@@ -1193,7 +1193,6 @@ static void update_wheel_speed(void)
 			}
 
 			avg_period = 0.5 * (period + old_period);
-			old_period = period;
 
 			UTILS_LP_FAST(period_filtered, avg_period, config.wheel_sensor.filter);
 
@@ -1202,6 +1201,8 @@ static void update_wheel_speed(void)
 			}
 
 			wheel_speed = 60.0 / period_filtered;
+
+			old_period = period;
 			wheel_sensor_timestamp_old = wheel_sensor_timestamp;
 			wheel_sensor_timestamp = 0;
 			inactivity_time = 0.0;
@@ -1244,7 +1245,6 @@ static void update_wheel_speed(void)
 			}
 
 			avg_period = 0.5 * (period + old_period);
-			old_period = period;
 
 			// apply simple low pass filtering.
 			// 1.0 means no filtering, 0.0 means infinitely strong filtering
@@ -1256,6 +1256,8 @@ static void update_wheel_speed(void)
 
 			// calculate speed from rotation time
 			wheel_speed = 60.0 / period_filtered;
+
+			old_period = period;
 			old_timestamp = timestamp;
 			inactivity_time = 0.0;
 		} else {
