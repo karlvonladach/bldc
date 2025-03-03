@@ -59,6 +59,7 @@ static void terminal_cmd_enable_plot(int argc, const char **argv);
 static void terminal_cmd_disable_plot(int argc, const char **argv);
 static void terminal_cmd_help(int argc, const char **argv);
 static void terminal_get_config(int argc, const char **argv);
+static void terminal_set_pin(int argc, const char **argv);
 
 static void update_pedal_torque(void);
 static void update_pedal_speed_and_position(bool reset);
@@ -146,6 +147,10 @@ void app_custom_start(void) {
 	}
 #endif
 
+	palSetPadMode(HW_UART_TX_PORT, HW_UART_TX_PIN, PAL_MODE_OUTPUT_PUSHPULL);
+	palSetPadMode(HW_UART_RX_PORT, HW_UART_RX_PIN, PAL_MODE_OUTPUT_PUSHPULL);
+	palSetPadMode(HW_ADC_EXT2_GPIO, HW_ADC_EXT2_PIN, PAL_MODE_OUTPUT_PUSHPULL);
+
 	stop_now = false;
 	chThdCreateStatic(my_thread_wa, sizeof(my_thread_wa),
 			NORMALPRIO, my_thread, NULL);
@@ -196,6 +201,12 @@ void app_custom_start(void) {
 			"Get the current configuration settings",
 			"",
 			terminal_get_config);
+
+	terminal_register_command_callback(
+			"setpin",
+			"Set the given pin to logical 0 or 1",
+			"",
+			terminal_set_pin);
 }
 
 // Called when the custom application is stopped. Stop our threads
@@ -209,6 +220,7 @@ void app_custom_stop(void) {
 	terminal_unregister_callback(terminal_cmd_disable_plot);
 	terminal_unregister_callback(terminal_cmd_help);
 	terminal_unregister_callback(terminal_get_config);
+	terminal_unregister_callback(terminal_set_pin);
 
 	stop_now = true;
 	while (is_running) {
@@ -951,6 +963,9 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("  disable_plot [plot_name] - Disable a plot");
 	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, all");
 	commands_printf("  getconfig - Get the current configuration settings");
+	commands_printf("  setpin [pin] [value] - Set a pin value");
+	commands_printf("    Pins: tx, rx, adc2");
+	commands_printf("    Values: 0, 1");
 }
 
 static void terminal_get_config(int argc, const char **argv) {
@@ -1003,6 +1018,43 @@ static void terminal_get_config(int argc, const char **argv) {
 		config.clutch.mode == CLUTCH_MODE_AUTO ? "auto" :
 		config.clutch.mode == CLUTCH_MODE_MANUAL ? "manual" : "unknown");
 	commands_printf("  Update rate: %d Hz", config.update_rate_hz);
+}
+
+static void terminal_set_pin(int argc, const char **argv) {
+	if (argc == 3) {
+		int en = 0;
+		sscanf(argv[2], "%d", &en);
+		if (en != 0 && en != 1){
+			commands_printf("unknown value. Valid values: 0 / 1");
+			return;
+		}
+		if (strcmp(argv[1],"tx") == 0){
+			if (en) {
+				palWritePad(HW_UART_TX_PORT, HW_UART_TX_PIN, 1);
+			} else {
+				palWritePad(HW_UART_TX_PORT, HW_UART_TX_PIN, 0);
+			}
+		} else 
+		if (strcmp(argv[1],"rx") == 0){
+			if (en) {
+				palWritePad(HW_UART_RX_PORT, HW_UART_RX_PIN, 1);
+			} else {
+				palWritePad(HW_UART_RX_PORT, HW_UART_RX_PIN, 0);
+			}
+		} else
+		if (strcmp(argv[1],"adc2") == 0){
+			if (en) {
+				palWritePad(HW_ADC_EXT2_GPIO, HW_ADC_EXT2_PIN, 1);
+			} else {
+				palWritePad(HW_ADC_EXT2_GPIO, HW_ADC_EXT2_PIN, 0);
+			}
+		} else {
+			commands_printf("Unknown pin.\r\nValid pins:\r\n  tx\r\n  rx\r\n  adc2\r\n");
+		}
+	} else {
+		commands_printf("This command requires two arguments. Usage:\r\n  set_pin [pin] [0/1]");
+		commands_printf("Valid pins:\r\n  tx\r\n  rx\r\n  adc2\r\n");
+	}
 }
 
 static void update_pedal_torque(void)
