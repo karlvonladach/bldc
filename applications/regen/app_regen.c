@@ -1340,7 +1340,7 @@ static void update_wheel_speed(void)
 
 			// apply simple low pass filtering.
 			// 1.0 means no filtering, 0.0 means infinitely strong filtering
-			UTILS_LP_FAST(period_filtered, avg_period, 0.8);
+			UTILS_LP_FAST(period_filtered, avg_period, config.wheel_sensor.filter);
 
 			if(period_filtered < min_wheel_period) { //can't be that short, abort
 				return;
