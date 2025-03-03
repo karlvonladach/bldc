@@ -38,6 +38,7 @@
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2        HW_HALL_ENC_PIN2
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS     24u     // including "virtual magnets"
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER      0.8     // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
+#define APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM      10.0f   // CRPM - average last two samples above this value
 #define APP_CUSTOM_CONF_PEDAL_RPM_MIN            10.0f   // CRPM - set 0 CRPM below this value
 #define APP_CUSTOM_CONF_PEDAL_RPM_START          10.0f   // CRMP - start of boost
 #define APP_CUSTOM_CONF_PEDAL_RPM_END            150.0f  // CRPM - end of boost
@@ -51,6 +52,7 @@
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1        HW_HALL_ENC_PIN3
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS     12u     // including "virtual magnets"
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER      0.8     // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
+#define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM      100.0f  // WRPM - average last two samples above this value
 #define APP_CUSTOM_CONF_WHEEL_RPM_MIN            10.0f   // WRPM - set 0 WRPM below this value
 #define APP_CUSTOM_CONF_WHEEL_RPM_MAX            1800.0f // WRPM - raise error above this value
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS      0.3f    // sec/fullscale (min to max)
@@ -116,5 +118,7 @@
 #define APP_CUSTOM_CONF_PEDAL_RPM_MAX_ADDR               32
 #define APP_CUSTOM_CONF_WHEEL_RPM_MIN_ADDR               33
 #define APP_CUSTOM_CONF_WHEEL_RPM_MAX_ADDR               34
+#define APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM_ADDR         35
+#define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR         36
 
 #endif /* APP_REGEN_CONF_H_ */

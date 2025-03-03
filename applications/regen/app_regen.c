@@ -380,6 +380,7 @@ static void load_default_config(custom_config_type* conf){
 	conf->pedal_sensor.sensor_type   = APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE;
 	conf->pedal_sensor.magnets       = APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS;
 	conf->pedal_sensor.filter        = APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER;
+	conf->pedal_sensor.avg_above_rpm = APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM;
     conf->pedal_sensor.rpm_min       = APP_CUSTOM_CONF_PEDAL_RPM_MIN;
 	conf->pedal_sensor.rpm_start     = APP_CUSTOM_CONF_PEDAL_RPM_START;
 	conf->pedal_sensor.rpm_end       = APP_CUSTOM_CONF_PEDAL_RPM_END;
@@ -391,6 +392,7 @@ static void load_default_config(custom_config_type* conf){
 	conf->wheel_sensor.sensor_type   = APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE;
 	conf->wheel_sensor.magnets       = APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS;
 	conf->wheel_sensor.filter        = APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER;
+	conf->wheel_sensor.avg_above_rpm = APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM;
 	conf->wheel_sensor.rpm_min       = APP_CUSTOM_CONF_WHEEL_RPM_MIN;
 	conf->wheel_sensor.rpm_max       = APP_CUSTOM_CONF_WHEEL_RPM_MAX;
 	conf->wheel_sensor.ramp_time_pos = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS;
@@ -431,6 +433,9 @@ static void load_stored_config(custom_config_type* conf){
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER_ADDR)) {
 		conf->pedal_sensor.filter = v.as_float;
 	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM_ADDR)) {
+		conf->pedal_sensor.avg_above_rpm = v.as_float;
+	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_RPM_START_ADDR)) {
 		conf->pedal_sensor.rpm_start = v.as_float;
 	}
@@ -448,6 +453,9 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR)) {
 		conf->wheel_sensor.filter = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR)) {
+		conf->wheel_sensor.avg_above_rpm = v.as_float;
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_INVERT_DIR_ADDR)) {
 		conf->wheel_sensor.invert_direction = v.as_u32;
@@ -585,6 +593,11 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Pedal sensor filter set to %f", (double)config.pedal_sensor.filter);
 			v.as_float = config.pedal_sensor.filter;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER_ADDR);
+		} else if (strcmp(argv[1], "pedal_avg_above_rpm") == 0) {
+			config.pedal_sensor.avg_above_rpm = atof(argv[2]);
+			commands_printf("Pedal sensor avg above rpm set to %f", (double)config.pedal_sensor.avg_above_rpm);
+			v.as_float = config.pedal_sensor.avg_above_rpm;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM_ADDR);
         } else if (strcmp(argv[1], "pedal_rpm_start") == 0) {
             config.pedal_sensor.rpm_start = atof(argv[2]);
             commands_printf("Pedal RPM start set to %f", (double)config.pedal_sensor.rpm_start);
@@ -638,6 +651,11 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Wheel sensor filter set to %f", (double)config.wheel_sensor.filter);
 			v.as_float = config.wheel_sensor.filter;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR);
+		} else if (strcmp(argv[1], "wheel_avg_above_rpm") == 0) {
+			config.wheel_sensor.avg_above_rpm = atof(argv[2]);
+            commands_printf("Wheel sensor average above RPM set to %f", (double)config.wheel_sensor.avg_above_rpm);
+			v.as_float = config.wheel_sensor.avg_above_rpm;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR);
         } else if (strcmp(argv[1], "wheel_rpm_min") == 0) {
             config.wheel_sensor.rpm_min = atof(argv[2]);
             commands_printf("Wheel RPM min set to %f", (double)config.wheel_sensor.rpm_min);
@@ -925,6 +943,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("        Values: single_poll, single_int, quad_poll, quad_int");
 	commands_printf("      pedal_magnets - Number of pedal sensor magnets");
 	commands_printf("      pedal_filter - Pedal sensor filter (0 to 1 - 1 gives unfiltered value)");
+	commands_printf("      pedal_avg_above_rpm - Pedal sensor average above RPM value");
 	commands_printf("      pedal_rpm_start - Pedal RPM start value");
 	commands_printf("      pedal_rpm_end - Pedal RPM end value");
 	commands_printf("      pedal_rpm_min - Pedal RPM min value");
@@ -936,6 +955,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("        Values: single_poll, single_int, quad_poll, quad_int");
 	commands_printf("      wheel_magnets - Number of wheel sensor magnets");
 	commands_printf("      wheel_filter - Wheel sensor filter (0 to 1 - 1 gives unfiltered value)");
+	commands_printf("      wheel_avg_above_rpm - Wheel sensor average above RPM value");
 	commands_printf("      wheel_rpm_min - Wheel RPM min value");
 	commands_printf("      wheel_rpm_max - Wheel RPM max value");
 	commands_printf("      wheel_ramp_time_pos - Wheel ramp time positive value");
@@ -983,6 +1003,7 @@ static void terminal_get_config(int argc, const char **argv) {
 		config.pedal_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT ? "quad_int" : "unknown");
 	commands_printf("  Pedal sensor magnets: %d", config.pedal_sensor.magnets);
 	commands_printf("  Pedal sensor filter: %.2f", (double)config.pedal_sensor.filter);
+	commands_printf("  Pedal sensor avg above RPM: %.2f", (double)config.pedal_sensor.avg_above_rpm);
 	commands_printf("  Pedal RPM start: %.2f", (double)config.pedal_sensor.rpm_start);
 	commands_printf("  Pedal RPM end: %.2f", (double)config.pedal_sensor.rpm_end);
 	commands_printf("  Pedal RPM min: %.2f", (double)config.pedal_sensor.rpm_min);
@@ -996,6 +1017,7 @@ static void terminal_get_config(int argc, const char **argv) {
 		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT ? "quad_int" : "unknown");
 	commands_printf("  Wheel sensor magnets: %d", config.wheel_sensor.magnets);
 	commands_printf("  Wheel sensor filter: %.2f", (double)config.wheel_sensor.filter);
+	commands_printf("  Wheel sensor avg above RPM: %.2f", (double)config.wheel_sensor.avg_above_rpm);
 	commands_printf("  Wheel RPM min: %.2f", (double)config.wheel_sensor.rpm_min);
 	commands_printf("  Wheel RPM max: %.2f", (double)config.wheel_sensor.rpm_max);
 	commands_printf("  Wheel ramp time positive: %.2f", (double)config.wheel_sensor.ramp_time_pos);
@@ -1182,8 +1204,12 @@ static void update_pedal_speed_and_position(bool reset)
 		// quadrature encoder has 4 states, so we should observe 4 phase changes 
 		// in the same direction before we reach a specific state again. 
 		if (forward_direction_counter == 4) {
-			// average last 2 periods due to differences between the upward and downward magnet orientation
-			avg_period = 0.5 * (period + old_period);
+			if (pedal_speed > config.pedal_sensor.avg_above_rpm) {
+				// average last 2 periods due to differences between the upward and downward magnet orientation
+				avg_period = 0.5 * (period + old_period);
+			} else {
+				avg_period = period;
+			}
 
 			// apply simple low pass filtering.
 			// 1.0 means no filtering, 0.0 means infinitely strong filtering
@@ -1213,7 +1239,12 @@ static void update_pedal_speed_and_position(bool reset)
 		// if there was no measurement, check if the silent period is
 		// longer than the latest period and decrease estimated speed accordingly
 		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets;
-		avg_period = 0.5 * (period + old_period);		
+		if (pedal_speed > config.pedal_sensor.avg_above_rpm) {
+			// average last 2 periods due to differences between the upward and downward magnet orientation
+			avg_period = 0.5 * (period + old_period);
+		} else {
+			avg_period = period;
+		}
 		if ((60.0 / avg_period) < pedal_speed) {
 			pedal_speed = 60.0 / avg_period;
 		}	
@@ -1284,7 +1315,11 @@ static void update_wheel_speed(void)
 				return;
 			}
 
-			avg_period = 0.5 * (period + old_period);
+			if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
+				avg_period = 0.5 * (period + old_period);
+			} else {
+				avg_period = period;
+			}
 
 			UTILS_LP_FAST(period_filtered, avg_period, config.wheel_sensor.filter);
 
@@ -1307,7 +1342,12 @@ static void update_wheel_speed(void)
 				return;
 			}
 
-			avg_period = 0.5 * (period + old_period);		
+			if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
+				avg_period = 0.5 * (period + old_period);
+			} else {
+				avg_period = period;
+			}
+
 			if ((60.0 / avg_period) < wheel_speed) {
 				wheel_speed = 60.0 / avg_period;
 			}		
@@ -1336,7 +1376,11 @@ static void update_wheel_speed(void)
 				return;
 			}
 
-			avg_period = 0.5 * (period + old_period);
+			if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
+				avg_period = 0.5 * (period + old_period);
+			} else {
+				avg_period = period;
+			}
 
 			// apply simple low pass filtering.
 			// 1.0 means no filtering, 0.0 means infinitely strong filtering
@@ -1356,7 +1400,11 @@ static void update_wheel_speed(void)
 			// if there was no measurement, check if the silent period is
 			// longer than the latest period and decrease estimated speed accordingly
 			float period = (timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
-			avg_period = 0.5 * (period + old_period);		
+			if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
+				avg_period = 0.5 * (period + old_period);
+			} else {
+				avg_period = period;
+			}	
 			if ((60.0 / avg_period) < wheel_speed) {
 				wheel_speed = 60.0 / avg_period;
 			}		
