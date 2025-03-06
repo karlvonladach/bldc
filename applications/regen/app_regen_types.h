@@ -51,12 +51,12 @@ typedef enum {
 } custom_control_type;
 
 typedef enum {
-    CLUTCH_STATE_OPENING = 0,
-    CLUTCH_STATE_OPEN,
-    CLUTCH_STATE_SYNCING,
-    CLUTCH_STATE_SYNCED,
-    CLUTCH_STATE_CLOSING,
-    CLUTCH_STATE_CLOSED,
+    CLUTCH_STATE_OPENING = 10,
+    CLUTCH_STATE_OPEN = 0,
+    CLUTCH_STATE_SYNCING = 20,
+    CLUTCH_STATE_SYNCED = 25,
+    CLUTCH_STATE_CLOSING = 30,
+    CLUTCH_STATE_CLOSED = 35,
 } clutch_state_type;
 
 typedef enum {

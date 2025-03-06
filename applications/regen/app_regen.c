@@ -354,7 +354,7 @@ static THD_FUNCTION(my_thread, arg) {
 		//take care of clutch state transitions
 		update_clutch_state();
 
-		plot_points(PLOT_CLUTCH_STATE, timestamp, clutch_state == CLUTCH_STATE_OPEN ? 0 : (clutch_state == CLUTCH_STATE_CLOSED ? 30 : (clutch_state == CLUTCH_STATE_OPENING ? 10 : 20)));
+		plot_points(PLOT_CLUTCH_STATE, timestamp, clutch_state);
 
 		//control motor speed/current according to the current state variables
 		update_motor_control();
