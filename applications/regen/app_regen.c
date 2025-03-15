@@ -1297,130 +1297,90 @@ static void update_wheel_speed(void)
 {
 	static float old_period = 0;
 	static float period_filtered = 0;
-	static float wheel_sensor_timestamp_old = 0;
 	static float inactivity_time = 0;
 	static uint8_t HALL3_level_old =  1;
 	static float old_timestamp = 0;
-	float avg_period;
-	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	float new_timestamp = 0;
+	float period, avg_period;
+	float current_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 
 	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT) {
-		plot_points(PLOT_HALL3, timestamp, HALL3_int_cntr_xp);
+		plot_points(PLOT_HALL3, current_timestamp, HALL3_int_cntr_xp);
 		HALL3_int_cntr_xp = 0;
 
-		if (wheel_sensor_timestamp != 0){
-			float period = (wheel_sensor_timestamp - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
-
-			if (period < min_wheel_period) { //can't be that short, abort
-				return;
-			}
-
-			if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
-				avg_period = 0.5 * (period + old_period);
-			} else {
-				avg_period = period;
-			}
-
-			UTILS_LP_FAST(period_filtered, avg_period, config.wheel_sensor.filter);
-
-			if(period_filtered < min_wheel_period) { //can't be that short, abort
-				return;
-			}
-
-			wheel_speed = 60.0 / period_filtered;
-
-			old_period = period;
-			wheel_sensor_timestamp_old = wheel_sensor_timestamp;
-			wheel_sensor_timestamp = 0;
-			inactivity_time = 0.0;
-		} else {
-			// if there was no measurement, check if the silent period is
-			// longer than the latest period and decrease estimated speed accordingly
-			float period = (timestamp - wheel_sensor_timestamp_old) * (float)config.wheel_sensor.magnets;
-			
-			if (period < min_wheel_period) { //can't be that short, abort
-				return;
-			}
-
-			if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
-				avg_period = 0.5 * (period + old_period);
-			} else {
-				avg_period = period;
-			}
-
-			if ((60.0 / avg_period) < wheel_speed) {
-				wheel_speed = 60.0 / avg_period;
-			}		
-
-			// increase inactivity time whenever we are between two measurements
-			// does not necessarily mean that the wheel is not rotating, we just
-			// don't know when the next measurement will happen
-			inactivity_time += 1.0 / (float)config.update_rate_hz;
-
-			//if no wheel measurement for a given, long enough period, set RPM as zero
-			if(inactivity_time > max_wheel_period) {
-				wheel_speed = 0.0;
-			}
+		// new measurement is based on the intterupt timestamp
+		if (wheel_sensor_timestamp != 0) {
+			new_timestamp = wheel_sensor_timestamp;
 		}
+
+		wheel_sensor_timestamp = 0;
 	} else 
 	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL){
 		// read the wheel sensor state
 		HALL3_level = palReadPad(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1);
-		plot_points(PLOT_HALL3, timestamp, HALL3_level * 20);
+		plot_points(PLOT_HALL3, current_timestamp, HALL3_level * 20);
 
+		// new measurement is based on current timestamp if a falling edge was detected
 		if (HALL3_level == 1 && HALL3_level_old == 0){
-			// calculate the time of one full rotation from the time difference
-			float period = (timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
-
-			if (period < min_wheel_period) { //can't be that short, abort
-				return;
-			}
-
-			if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
-				avg_period = 0.5 * (period + old_period);
-			} else {
-				avg_period = period;
-			}
-
-			// apply simple low pass filtering.
-			// 1.0 means no filtering, 0.0 means infinitely strong filtering
-			UTILS_LP_FAST(period_filtered, avg_period, config.wheel_sensor.filter);
-
-			if(period_filtered < min_wheel_period) { //can't be that short, abort
-				return;
-			}
-
-			// calculate speed from rotation time
-			wheel_speed = 60.0 / period_filtered;
-
-			old_period = period;
-			old_timestamp = timestamp;
-			inactivity_time = 0.0;
-		} else {
-			// if there was no measurement, check if the silent period is
-			// longer than the latest period and decrease estimated speed accordingly
-			float period = (timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
-			if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
-				avg_period = 0.5 * (period + old_period);
-			} else {
-				avg_period = period;
-			}	
-			if ((60.0 / avg_period) < wheel_speed) {
-				wheel_speed = 60.0 / avg_period;
-			}		
-
-			// increase inactivity time whenever we are between two measurements
-			// does not necessarily mean that the wheel is not rotating, we just
-			// don't know when the next measurement will happen
-			inactivity_time += 1.0 / (float)config.update_rate_hz;
-
-			//if no wheel measurement for a given, long enough period, set RPM as zero
-			if(inactivity_time > max_wheel_period) {
-				wheel_speed = 0.0;
-			}
+			new_timestamp = current_timestamp;
 		}
 
 		HALL3_level_old = HALL3_level;
+	}
+
+	if (new_timestamp != 0){
+		// if there was new measurement, then calculate speed from elapsed time
+		period = (new_timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
+
+		if (period < min_wheel_period) { //can't be that short, abort
+			return;
+		}
+
+		if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
+			avg_period = 0.5 * (period + old_period);
+		} else {
+			avg_period = period;
+		}
+
+		UTILS_LP_FAST(period_filtered, avg_period, config.wheel_sensor.filter);
+
+		if(period_filtered < min_wheel_period) { //can't be that short, abort
+			return;
+		}
+
+		wheel_speed = 60.0 / period_filtered;
+
+		old_period = period;
+		old_timestamp = new_timestamp;
+		inactivity_time = 0.0;
+	} else {
+		// if there was no measurement, check if the silent period is
+		// longer than the latest period and decrease estimated speed accordingly
+		period = (current_timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
+		
+		if (period < min_wheel_period) { //can't be that short, abort
+			return;
+		}
+
+		if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
+			avg_period = 0.5 * (period + old_period);
+		} else {
+			avg_period = period;
+		}
+
+		if ((60.0 / avg_period) < wheel_speed) {
+			wheel_speed = 60.0 / avg_period;
+		}		
+
+		// increase inactivity time whenever we are between two measurements
+		// does not necessarily mean that the wheel is not rotating, we just
+		// don't know when the next measurement will happen
+		inactivity_time += 1.0 / (float)config.update_rate_hz;
+
+		//if no wheel measurement for a given, long enough period, set RPM as zero
+		if(inactivity_time > max_wheel_period) {
+			wheel_speed = 0.0;
+		}
 	}
 
 	// calculate relative wheel speed
