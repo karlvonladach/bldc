@@ -104,6 +104,7 @@ static volatile float pedal_brake_position = 0;
 static volatile float pedal_brake_position_rel = 0;
 static volatile float wheel_speed  = 0;    //WRPM
 static volatile float wheel_speed_rel = 0;
+static volatile float wheel_speed_pred = 0;
 static volatile float motor_speed  = 0;    //MWRPM
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
 static volatile uint8_t HALL1_level = 0;
@@ -345,6 +346,7 @@ static THD_FUNCTION(my_thread, arg) {
 		update_wheel_speed();
 
 		plot_points(PLOT_WHEEL_RPM, timestamp, wheel_speed);
+		plot_points(PLOT_WHEEL_PRED_RPM, timestamp, wheel_speed_pred);
 
 		//get motor speed
 		update_motor_speed();
@@ -875,11 +877,14 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
         } else if (strcmp(argv[1], "clutch_state") == 0) {
             plots_enabled |= (1 << PLOT_CLUTCH_STATE);
             commands_printf("Clutch State plot enabled");
+		} else if (strcmp(argv[1], "wrpm_pred") == 0) {
+			plots_enabled |= (1 << PLOT_WHEEL_PRED_RPM);
+			commands_printf("Predicted Wheel RPM plot enabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0xFFFFFFFF;
 			commands_printf("All plots enabled");
         } else {
-            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  all\r\n");
+            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -916,11 +921,14 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
         } else if (strcmp(argv[1], "clutch_state") == 0) {
             plots_enabled &= ~(1 << PLOT_CLUTCH_STATE);
             commands_printf("Clutch State plot disabled");
+		} else if (strcmp(argv[1], "wrpm_pred") == 0) {
+			plots_enabled &= ~(1 << PLOT_WHEEL_PRED_RPM);
+			commands_printf("Predicted Wheel RPM plot disabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0;
 			commands_printf("All plots disabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  all\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -979,9 +987,9 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging");
 	commands_printf("    Log groups: sensor, motor, clutch, error");
 	commands_printf("  enable_plot [plot_name] - Enable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, all");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, all");
 	commands_printf("  disable_plot [plot_name] - Disable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, all");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, all");
 	commands_printf("  getconfig - Get the current configuration settings");
 	commands_printf("  setpin [pin] [value] - Set a pin value");
 	commands_printf("    Pins: tx, rx, adc2");
@@ -1296,7 +1304,7 @@ static void update_pedal_speed_and_position(bool reset)
 static void update_wheel_speed(void)
 {
 	static float old_period = 0;
-	static float period_filtered = 0;
+	static float wheel_speed_filtered = 0;
 	static float inactivity_time = 0;
 	static uint8_t HALL3_level_old =  1;
 	static float old_timestamp = 0;
@@ -1342,15 +1350,23 @@ static void update_wheel_speed(void)
 			avg_period = period;
 		}
 
-		UTILS_LP_FAST(period_filtered, avg_period, config.wheel_sensor.filter);
-
-		if(period_filtered < min_wheel_period) { //can't be that short, abort
+		if(avg_period < min_wheel_period) { //can't be that short, abort
 			return;
 		}
 
-		wheel_speed = 60.0 / period_filtered;
+		wheel_speed = 60.0 / avg_period;
+		UTILS_LP_FAST(wheel_speed_filtered, wheel_speed, config.wheel_sensor.filter);
+		wheel_speed = wheel_speed_filtered;
+		if (wheel_speed < 0) {
+			wheel_speed = 0.0;
+		}
 
-		old_period = period;
+		wheel_speed_pred = (60.0 / old_period) + ((60.0 / avg_period) - (60.0 / old_period)) * 1.5;
+		if (wheel_speed_pred < 0) {
+			wheel_speed_pred = 0.0;
+		}
+
+		old_period = avg_period;
 		old_timestamp = new_timestamp;
 		inactivity_time = 0.0;
 	} else {
@@ -1370,7 +1386,11 @@ static void update_wheel_speed(void)
 
 		if ((60.0 / avg_period) < wheel_speed) {
 			wheel_speed = 60.0 / avg_period;
-		}		
+		}
+
+		if ((60.0 / avg_period) < wheel_speed_pred) {
+			wheel_speed_pred = 60.0 / avg_period;
+		}
 
 		// increase inactivity time whenever we are between two measurements
 		// does not necessarily mean that the wheel is not rotating, we just
@@ -1380,6 +1400,7 @@ static void update_wheel_speed(void)
 		//if no wheel measurement for a given, long enough period, set RPM as zero
 		if(inactivity_time > max_wheel_period) {
 			wheel_speed = 0.0;
+			wheel_speed_pred = 0.0;
 		}
 	}
 
@@ -1683,6 +1704,10 @@ static void init_plots(void) {
         plot_numbers[PLOT_HALL2] = plot_number++;
         commands_plot_add_graph("HALL2");
     }
+	if (plots_enabled & (1 << PLOT_WHEEL_PRED_RPM)) {
+		plot_numbers[PLOT_WHEEL_PRED_RPM] = plot_number++;
+		commands_plot_add_graph("Predicted Wheel RPM");
+	}
 }
 
 // Function to plot points if the plot is enabled
