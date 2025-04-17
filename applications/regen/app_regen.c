@@ -941,6 +941,7 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 static void terminal_cmd_help(int argc, const char **argv) {
 	(void)argc;
 	(void)argv;
+	commands_printf("Build time: %s %s\r\n", __DATE__, __TIME__);
 	commands_printf("Available commands:");
 	commands_printf("  set-speed [RPM] - Set the speed to RPM");
 	commands_printf("  config [parameter] [value] - Configure custom app parameters");
@@ -982,9 +983,9 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      clutch_max_rpm_open - Clutch maximum RPM for opening");
 	commands_printf("      clutch_max_rpm_close - Clutch maximum RPM for closing");
 	commands_printf("      clutch_mode - Clutch mode (closed, open, auto, manual)");
-	commands_printf("      update_rate - Update rate in Hz");
+	commands_printf("      update_rate - Sensor signal processing rate in Hz");
 	commands_printf("  clutch [open/close] - Open or close the clutch");
-	commands_printf("  log [log_group] [0/1] - Enable/disable logging");
+	commands_printf("  log [log_group] [0/1] - Enable/disable logging. Logs are grouped by functionality. Groups can be enabled/disabled separately.");
 	commands_printf("    Log groups: sensor, motor, clutch, error");
 	commands_printf("  enable_plot [plot_name] - Enable a plot");
 	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, all");
