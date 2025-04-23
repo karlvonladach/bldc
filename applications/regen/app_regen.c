@@ -392,6 +392,7 @@ static void load_default_config(custom_config_type* conf){
 	conf->pedal_sensor.invert_direction = APP_CUSTOM_CONF_PEDAL_INVERT_DIR;
 
 	conf->wheel_sensor.sensor_type   = APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE;
+	conf->wheel_sensor.poll_to_int_rpm = APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM;
 	conf->wheel_sensor.magnets       = APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS;
 	conf->wheel_sensor.filter        = APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER;
 	conf->wheel_sensor.avg_above_rpm = APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM;
@@ -449,6 +450,9 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE_ADDR)) {
 		conf->wheel_sensor.sensor_type = v.as_u32;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM_ADDR)) {
+		conf->wheel_sensor.poll_to_int_rpm = v.as_float;
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR)) {
 		conf->wheel_sensor.magnets = v.as_u32;
@@ -638,11 +642,19 @@ static void terminal_config(int argc, const char **argv) {
 			} else if (strcmp(argv[2], "quad_int") == 0) {
 			config.wheel_sensor.sensor_type = SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT;
 			commands_printf("Wheel sensor type set to QUADRATURE_INTERRUPT");
+			} else if (strcmp(argv[2], "single_poll_single_int") == 0) {
+			config.wheel_sensor.sensor_type = SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT;
+			commands_printf("Wheel sensor type set to SINGLE_POLL_SINGLE_INTERRUPT");
 			} else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  single_poll\r\n  single_int\r\n  quad_poll\r\n  quad_int\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  single_poll\r\n  single_int\r\n  quad_poll\r\n  quad_int\r\n single_poll_single_int\r\n");
 			}
 			v.as_u32 = config.wheel_sensor.sensor_type;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE_ADDR);
+		} else if (strcmp(argv[1], "wheel_poll_to_int_rpm") == 0) {
+			config.wheel_sensor.poll_to_int_rpm = atof(argv[2]);
+			commands_printf("Wheel sensor poll to int RPM set to %f", (double)config.wheel_sensor.poll_to_int_rpm);
+			v.as_float = config.wheel_sensor.poll_to_int_rpm;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM_ADDR);
         } else if (strcmp(argv[1], "wheel_magnets") == 0) {
             config.wheel_sensor.magnets = atoi(argv[2]);
             commands_printf("Wheel sensor magnets set to %d", config.wheel_sensor.magnets);
@@ -961,7 +973,8 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      pedal_ramp_time_neg - Pedal ramp time negative value");
 	commands_printf("      pedal_invert - Invert pedal sensor direction (0 or 1)");
 	commands_printf("      wheel_sensor_type - Wheel sensor type");
-	commands_printf("        Values: single_poll, single_int, quad_poll, quad_int");
+	commands_printf("        Values: single_poll, single_int, quad_poll, quad_int, single_poll_single_int");
+	commands_printf("      wheel_poll_to_int_rpm - WRPM at which the wheel sensor changes from poll to interrupt mode");
 	commands_printf("      wheel_magnets - Number of wheel sensor magnets");
 	commands_printf("      wheel_filter - Wheel sensor filter (0 to 1 - 1 gives unfiltered value)");
 	commands_printf("      wheel_avg_above_rpm - Wheel sensor average above RPM value");
@@ -1023,7 +1036,10 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Wheel sensor type: %s", config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL ? "single_poll" :
 		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT ? "single_int" :
 		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_POLL ? "quad_poll" :
-		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT ? "quad_int" : "unknown");
+		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT ? "quad_int" :
+		config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT ? "single_poll_single_int" :
+		"unknown");
+	commands_printf("  Wheel poll to int RPM: %.2f", (double)config.wheel_sensor.poll_to_int_rpm);
 	commands_printf("  Wheel sensor magnets: %d", config.wheel_sensor.magnets);
 	commands_printf("  Wheel sensor filter: %.2f", (double)config.wheel_sensor.filter);
 	commands_printf("  Wheel sensor avg above RPM: %.2f", (double)config.wheel_sensor.avg_above_rpm);
@@ -1313,18 +1329,26 @@ static void update_wheel_speed(void)
 	float period, avg_period;
 	float current_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 
-	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT) {
+	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT ||
+	    (
+		  config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT && 
+		  wheel_speed >= config.wheel_sensor.poll_to_int_rpm
+		)) {
 		plot_points(PLOT_HALL3, current_timestamp, HALL3_int_cntr_xp);
 		HALL3_int_cntr_xp = 0;
 
-		// new measurement is based on the intterupt timestamp
+		// new measurement is based on the interrupt timestamp
 		if (wheel_sensor_timestamp != 0) {
 			new_timestamp = wheel_sensor_timestamp;
 		}
 
 		wheel_sensor_timestamp = 0;
 	} else 
-	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL){
+	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL ||
+		(
+		  config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT && 
+		  wheel_speed < config.wheel_sensor.poll_to_int_rpm
+		)) {
 		// read the wheel sensor state
 		HALL3_level = palReadPad(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1);
 		plot_points(PLOT_HALL3, current_timestamp, HALL3_level * 20);

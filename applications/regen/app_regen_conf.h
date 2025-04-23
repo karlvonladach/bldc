@@ -47,9 +47,10 @@
 #define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG      0.15f   // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_PEDAL_INVERT_DIR         0       // 1/0 = invert/no invert
 
-#define APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE        SPEED_SENSOR_TYPE_SINGLE_INTERRUPT
+#define APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE        SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1       HW_HALL_ENC_GPIO3
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1        HW_HALL_ENC_PIN3
+#define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM    100.0f  // WRPM at which to switch from poll to interrupt mode
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS     12u     // including "virtual magnets"
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER      0.8     // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM      100.0f  // WRPM - average last two samples above this value
@@ -120,5 +121,6 @@
 #define APP_CUSTOM_CONF_WHEEL_RPM_MAX_ADDR               34
 #define APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM_ADDR         35
 #define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR         36
+#define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM_ADDR       37
 
 #endif /* APP_REGEN_CONF_H_ */

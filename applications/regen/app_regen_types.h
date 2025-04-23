@@ -72,7 +72,8 @@ typedef enum {
     SPEED_SENSOR_TYPE_SINGLE_INTERRUPT,
     SPEED_SENSOR_TYPE_SINGLE_POLL,
     SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT,
-	SPEED_SENSOR_TYPE_QUADRATURE_POLL
+	SPEED_SENSOR_TYPE_QUADRATURE_POLL,
+    SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT
 } speed_sensor_type;
 
 typedef enum {
@@ -82,6 +83,7 @@ typedef enum {
 
 typedef struct {
     speed_sensor_type sensor_type;
+    float poll_to_int_rpm;
     uint8_t magnets; 
 	float filter;
     float avg_above_rpm;
