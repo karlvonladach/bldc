@@ -1572,7 +1572,7 @@ static void update_motor_control()
 
 	if (command_line_speed >= 0){
 		set_motor_speed(command_line_speed);
-	} else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_SYNCED || clutch_state == CLUTCH_STATE_CLOSING){
+	} else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_SYNCED){
 		float target_speed = wheel_speed - config.clutch.sync_rpm_diff;
 		if (target_speed < 0){
 			target_speed = 0;
@@ -1580,6 +1580,11 @@ static void update_motor_control()
 		set_motor_speed(target_speed);
 		if (cnt % (config.update_rate_hz / 10) == 0){
 			print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(target_speed));
+		}
+	} else if (clutch_state == CLUTCH_STATE_CLOSING){
+		set_motor_speed(wheel_speed);
+		if (cnt % (config.update_rate_hz / 10) == 0){
+			print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(wheel_speed));
 		}
 	} else if (clutch_state == CLUTCH_STATE_CLOSED){
 		if (pedal_brake_position > 0){
