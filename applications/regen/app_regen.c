@@ -1474,6 +1474,8 @@ static void update_clutch_state(void)
 		if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff){
 			clutch_open_error_counter++;
 			print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN FAILED (%d)", (double)timestamp, clutch_open_error_counter);
+			close_clutch();
+			chThdSleepMilliseconds(1);
 			open_clutch();
 		} else {
 			clutch_open_error_counter = 0;
@@ -1497,6 +1499,8 @@ static void update_clutch_state(void)
 		if (abs(wheel_speed - motor_speed) > config.clutch.check_rpm_diff){
 			clutch_close_error_counter++;
 			print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSE FAILED / SYNC LOST (%d)", (double)timestamp, clutch_close_error_counter);
+			open_clutch();
+			chThdSleepMilliseconds(1);
 			close_clutch();
 		} else {
 			clutch_close_error_counter = 0;
