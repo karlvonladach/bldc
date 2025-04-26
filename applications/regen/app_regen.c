@@ -1535,7 +1535,7 @@ static void update_clutch_state(void)
 			open_clutch();
 		} else {
 			//if pedal speed = 0 and not braking then disconnect clutch after N seconds
-			if (pedal_speed == 0 && pedal_brake_position == 0){
+			if ((pedal_speed == 0 || pedal_torque == 0) && pedal_brake_position == 0){
 				pedal_activity_time = 0;
 				if (pedal_inactivity_time < config.clutch.wait_before_open){
 					pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
@@ -1546,7 +1546,7 @@ static void update_clutch_state(void)
 			}
 			//if pedal speed > 0 then start syncing motor to wheel after N seconds
 			// and set power based on torque and pedal speed
-			if (pedal_speed > 0){
+			if (pedal_speed > 0 && pedal_torque > 0){
 				pedal_inactivity_time = 0;
 				if (pedal_activity_time < config.clutch.wait_before_sync){
 					pedal_activity_time += 1.0 / (float)config.update_rate_hz;
