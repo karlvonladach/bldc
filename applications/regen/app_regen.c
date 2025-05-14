@@ -1482,7 +1482,11 @@ static void update_clutch_state(void)
 		}
 	} else
 	if (clutch_state == CLUTCH_STATE_SYNCING){
-		if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff || config.clutch.mode == CLUTCH_MODE_OPEN){
+		float target_speed = wheel_speed - config.clutch.sync_rpm_diff;
+		if (target_speed < 0){
+			target_speed = 0;
+		}
+		if (abs(target_speed - motor_speed) < config.clutch.check_rpm_diff){
 			clutch_state = CLUTCH_STATE_SYNCED;
 			print_log(LOG_GROUP_CLUTCH,"[%4.2f] SYNCED", (double)timestamp);
 			close_clutch();
