@@ -1635,7 +1635,7 @@ static void open_clutch(void)
 	//	print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH OPEN DISABLED DUE TO TOO MANY FAILURES", (double)clutch_timestamp);
 	//	return;
 	//}
-	if (clutch_state != CLUTCH_STATE_OPEN && clutch_state != CLUTCH_STATE_OPENING){ 
+	if (clutch_state != CLUTCH_STATE_OPEN && clutch_state != CLUTCH_STATE_OPENING && config.clutch.mode != CLUTCH_MODE_CLOSED){ 
 		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, 1);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_OPENING;
@@ -1649,7 +1649,7 @@ static void sync_clutch(void)
 	//	print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH SYNC DISABLED DUE TO TOO MANY FAILURES", (double)clutch_timestamp);
 	//	return;
 	//}
-	if (clutch_state == CLUTCH_STATE_OPEN || clutch_state == CLUTCH_STATE_OPENING){ 
+	if ((clutch_state == CLUTCH_STATE_OPEN || clutch_state == CLUTCH_STATE_OPENING) && config.clutch.mode != CLUTCH_MODE_OPEN){ 
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_SYNCING;
 		print_log(LOG_GROUP_CLUTCH,"[%4.2f] SYNCING...", (double)clutch_timestamp);
@@ -1662,7 +1662,7 @@ static void close_clutch(void)
 	//	print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH CLOSE DISABLED DUE TO TOO MANY FAILURES", (double)clutch_timestamp);
 	//	return;
 	//}
-	if (clutch_state != CLUTCH_STATE_CLOSED && clutch_state != CLUTCH_STATE_CLOSING){ 
+	if (clutch_state != CLUTCH_STATE_CLOSED && clutch_state != CLUTCH_STATE_CLOSING && config.clutch.mode != CLUTCH_MODE_OPEN){ 
 		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, 0);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_CLOSING;
