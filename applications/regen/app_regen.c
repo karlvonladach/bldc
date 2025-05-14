@@ -418,6 +418,7 @@ static void load_default_config(custom_config_type* conf){
 	conf->clutch.max_rpm_open		 = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN;
 	conf->clutch.max_rpm_close		 = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE;
 	conf->clutch.mode 				 = APP_CUSTOM_CONF_CLUTCH_MODE;
+	conf->clutch.invert_direction    = APP_CUSTOM_CONF_CLUTCH_INVERT_DIR;
 
 	conf->update_rate_hz = APP_CUSTOM_CONF_UPDATE_RATE_HZ;
 }
@@ -531,6 +532,9 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_RPM_MAX_ADDR)) {
 		conf->wheel_sensor.rpm_max = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_INVERT_DIR_ADDR)) {
+		conf->clutch.invert_direction = v.as_u32;
 	}
 }
 
@@ -788,8 +792,13 @@ static void terminal_config(int argc, const char **argv) {
             }
 			v.as_u32 = config.clutch.mode;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MODE_ADDR);
+        } else if (strcmp(argv[1], "clutch_invert") == 0) {
+            config.clutch.invert_direction = atoi(argv[2]);
+            commands_printf("Clutch invert direction set to %d", config.clutch.invert_direction);
+            v.as_u32 = config.clutch.invert_direction;
+            conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_INVERT_DIR_ADDR);
         } else {
-            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n  pedal_ramp_time_pos\r\n  pedal_ramp_time_neg\r\n  wheel_ramp_time_pos\r\n  wheel_ramp_time_neg\r\n  clutch_min_rpm\r\n  clutch_max_rpm_open\r\n  clutch_max_rpm_close\r\n  clutch_mode\r\n  pedal_rpm_min\r\n  pedal_rpm_max\r\n  wheel_rpm_min\r\n  wheel_rpm_max\r\n");
+            commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n  pedal_ramp_time_pos\r\n  pedal_ramp_time_neg\r\n  wheel_ramp_time_pos\r\n  wheel_ramp_time_neg\r\n  clutch_min_rpm\r\n  clutch_max_rpm_open\r\n  clutch_max_rpm_close\r\n  clutch_mode\r\n  pedal_rpm_min\r\n  pedal_rpm_max\r\n  wheel_rpm_min\r\n  wheel_rpm_max\r\n  clutch_invert\r\n");
         }
     } else {
         commands_printf("This command requires two arguments.\n");
@@ -996,6 +1005,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      clutch_max_rpm_open - Clutch maximum RPM for opening");
 	commands_printf("      clutch_max_rpm_close - Clutch maximum RPM for closing");
 	commands_printf("      clutch_mode - Clutch mode (closed, open, auto, manual)");
+	commands_printf("      clutch_invert - Invert clutch direction (0 or 1)");
 	commands_printf("      update_rate - Sensor signal processing rate in Hz");
 	commands_printf("  clutch [open/close] - Open or close the clutch");
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging. Logs are grouped by functionality. Groups can be enabled/disabled separately.");
@@ -1064,6 +1074,7 @@ static void terminal_get_config(int argc, const char **argv) {
 		config.clutch.mode == CLUTCH_MODE_OPEN ? "open" :
 		config.clutch.mode == CLUTCH_MODE_AUTO ? "auto" :
 		config.clutch.mode == CLUTCH_MODE_MANUAL ? "manual" : "unknown");
+	commands_printf("  Clutch invert direction: %d", config.clutch.invert_direction);
 	commands_printf("  Update rate: %d Hz", config.update_rate_hz);
 }
 
@@ -1650,7 +1661,7 @@ static void open_clutch(void)
 	//	return;
 	//}
 	if (clutch_state != CLUTCH_STATE_OPEN && clutch_state != CLUTCH_STATE_OPENING && config.clutch.mode != CLUTCH_MODE_CLOSED){ 
-		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, 1);
+		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, config.clutch.invert_direction ? 0 : 1);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_OPENING;
 		print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPENING...", (double)clutch_timestamp);
@@ -1677,7 +1688,7 @@ static void close_clutch(void)
 	//	return;
 	//}
 	if (clutch_state != CLUTCH_STATE_CLOSED && clutch_state != CLUTCH_STATE_CLOSING && config.clutch.mode != CLUTCH_MODE_OPEN){ 
-		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, 0);
+		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, config.clutch.invert_direction ? 1 : 0);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_CLOSING;
 		print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSING...", (double)clutch_timestamp);
