@@ -1582,9 +1582,9 @@ static void update_motor_control()
 			print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(target_speed));
 		}
 	} else if (clutch_state == CLUTCH_STATE_CLOSING){
-		set_motor_speed(wheel_speed);
+		mc_interface_set_current_rel(0.0);
 		if (cnt % (config.update_rate_hz / 10) == 0){
-			print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(wheel_speed));
+			print_log(LOG_GROUP_MOTOR,"[%4.2f] CURRENT set to %d", (double)timestamp, 0);
 		}
 	} else if (clutch_state == CLUTCH_STATE_CLOSED){
 		if (pedal_brake_position > 0){
