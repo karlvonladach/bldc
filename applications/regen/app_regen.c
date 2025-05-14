@@ -1456,12 +1456,14 @@ static void update_motor_speed(void)
 
 static void update_clutch_state(void)
 {
-	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
-	float elapsed_time = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - clutch_timestamp;
-	uint8_t clutch_must_close = 0;
-	uint8_t clutch_must_open = 0;
 	static float pedal_inactivity_time = 0;
 	static float pedal_activity_time = 0;
+	static float clutch_last_error_report_timestamp = 0;
+	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	float elapsed_time = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - clutch_timestamp;
+	float time_since_last_error_report = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - clutch_last_error_report_timestamp;
+	uint8_t clutch_must_close = 0;
+	uint8_t clutch_must_open = 0;
 
 	if (clutch_state == CLUTCH_STATE_OPENING){
 		if (elapsed_time > config.clutch.wait_before_check){
@@ -1473,12 +1475,16 @@ static void update_clutch_state(void)
 		// check if clutch was opened (motor should slow down)
 		if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff){
 			clutch_open_error_counter++;
-			print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN FAILED (%d)", (double)timestamp, clutch_open_error_counter);
+			if (time_since_last_error_report >= 1.0){
+				print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN FAILED (%d)", (double)timestamp, clutch_open_error_counter);
+				clutch_last_error_report_timestamp = timestamp;
+			}
 			close_clutch();
 			chThdSleepMilliseconds(1);
 			open_clutch();
 		} else {
 			clutch_open_error_counter = 0;
+			clutch_last_error_report_timestamp = 0;
 		}
 	} else
 	if (clutch_state == CLUTCH_STATE_SYNCING){
@@ -1502,12 +1508,16 @@ static void update_clutch_state(void)
 		// check if clutch was closed (motor should stay in sync with wheel)
 		if (abs(wheel_speed - motor_speed) > config.clutch.check_rpm_diff){
 			clutch_close_error_counter++;
-			print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSE FAILED / SYNC LOST (%d)", (double)timestamp, clutch_close_error_counter);
+			if (time_since_last_error_report >= 1.0){
+				print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSE FAILED / SYNC LOST (%d)", (double)timestamp, clutch_close_error_counter);
+				clutch_last_error_report_timestamp = timestamp;
+			}
 			open_clutch();
 			chThdSleepMilliseconds(1);
 			close_clutch();
 		} else {
 			clutch_close_error_counter = 0;
+			clutch_last_error_report_timestamp = 0;
 		}
 	}
 
