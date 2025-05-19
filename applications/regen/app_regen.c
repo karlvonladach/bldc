@@ -1525,7 +1525,7 @@ static void update_clutch_state(void)
 			}
 			open_clutch();
 			chThdSleepMilliseconds(1);
-			close_clutch();
+			sync_clutch();
 		} else {
 			clutch_close_error_counter = 0;
 			clutch_last_error_report_timestamp = 0;
