@@ -1478,8 +1478,22 @@ static void update_clutch_state(void)
 
 	if (clutch_state == CLUTCH_STATE_OPENING){
 		if (elapsed_time > config.clutch.wait_before_check){
-			clutch_state = CLUTCH_STATE_OPEN;
-			print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN", (double)timestamp);
+			// check if clutch was opened (motor should slow down)
+			if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff){
+				clutch_open_error_counter++;
+				if (time_since_last_error_report >= 1.0){
+					print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN FAILED (%d)", (double)timestamp, clutch_open_error_counter);
+					clutch_last_error_report_timestamp = timestamp;
+				}
+				close_clutch();
+				chThdSleepMilliseconds(1);
+				open_clutch();
+			} else {
+				clutch_open_error_counter = 0;
+				clutch_last_error_report_timestamp = 0;
+				clutch_state = CLUTCH_STATE_OPEN;
+				print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN", (double)timestamp);
+			}
 		}
 	} else
 	if (clutch_state == CLUTCH_STATE_OPEN && config.clutch.mode != CLUTCH_MODE_CLOSED){
@@ -1511,9 +1525,23 @@ static void update_clutch_state(void)
 	} else 
 	if (clutch_state == CLUTCH_STATE_CLOSING){
 		if (elapsed_time > config.clutch.wait_before_check){
-			clutch_state = CLUTCH_STATE_CLOSED;
-			print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSED", (double)timestamp);
-		}		
+			// check if clutch was closed (motor should stay in sync with wheel)
+			if (abs(wheel_speed - motor_speed) > config.clutch.check_rpm_diff){
+				clutch_close_error_counter++;
+				if (time_since_last_error_report >= 1.0){
+					print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSE FAILED / SYNC LOST (%d)", (double)timestamp, clutch_close_error_counter);
+					clutch_last_error_report_timestamp = timestamp;
+				}
+				open_clutch();
+				chThdSleepMilliseconds(1);
+				sync_clutch();
+			} else {
+				clutch_close_error_counter = 0;
+				clutch_last_error_report_timestamp = 0;
+				clutch_state = CLUTCH_STATE_CLOSED;
+				print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSED", (double)timestamp);
+			}
+		}
 	} else
 	if (clutch_state == CLUTCH_STATE_CLOSED && config.clutch.mode != CLUTCH_MODE_OPEN){
 		// check if clutch was closed (motor should stay in sync with wheel)
