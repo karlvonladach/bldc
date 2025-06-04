@@ -787,8 +787,11 @@ static void terminal_config(int argc, const char **argv) {
             } else if (strcmp(argv[2], "manual") == 0) {
                 config.clutch.mode = CLUTCH_MODE_MANUAL;
                 commands_printf("Clutch mode set to MANUAL");
+            } else if (strcmp(argv[2], "fullmanual") == 0) {
+                config.clutch.mode = CLUTCH_MODE_FULL_MANUAL;
+                commands_printf("Clutch mode set to FULL MANUAL");
         	} else {
-                commands_printf("Invalid value.\r\nValid values: closed, open, auto, manual");
+                commands_printf("Invalid value.\r\nValid values: closed, open, auto, manual, fullmanual\r\n");
             }
 			v.as_u32 = config.clutch.mode;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_MODE_ADDR);
@@ -1004,7 +1007,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      clutch_min_rpm - Clutch minimum RPM");
 	commands_printf("      clutch_max_rpm_open - Clutch maximum RPM for opening");
 	commands_printf("      clutch_max_rpm_close - Clutch maximum RPM for closing");
-	commands_printf("      clutch_mode - Clutch mode (closed, open, auto, manual)");
+	commands_printf("      clutch_mode - Clutch mode (closed, open, auto, manual, fullmanual)");
 	commands_printf("      clutch_invert - Invert clutch direction (0 or 1)");
 	commands_printf("      update_rate - Sensor signal processing rate in Hz");
 	commands_printf("  clutch [open/close] - Open or close the clutch");
@@ -1073,7 +1076,8 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Clutch mode: %s", config.clutch.mode == CLUTCH_MODE_CLOSED ? "closed" :
 		config.clutch.mode == CLUTCH_MODE_OPEN ? "open" :
 		config.clutch.mode == CLUTCH_MODE_AUTO ? "auto" :
-		config.clutch.mode == CLUTCH_MODE_MANUAL ? "manual" : "unknown");
+		config.clutch.mode == CLUTCH_MODE_MANUAL ? "manual" :
+		config.clutch.mode == CLUTCH_MODE_FULL_MANUAL ? "fullmanual" : "unknown");
 	commands_printf("  Clutch invert direction: %d", config.clutch.invert_direction);
 	commands_printf("  Update rate: %d Hz", config.update_rate_hz);
 }
@@ -1476,6 +1480,21 @@ static void update_clutch_state(void)
 	uint8_t clutch_must_close = 0;
 	uint8_t clutch_must_open = 0;
 
+	if (config.clutch.mode == CLUTCH_MODE_FULL_MANUAL) {
+		if (clutch_state == CLUTCH_STATE_OPENING) {
+			clutch_state = CLUTCH_STATE_OPEN;
+			print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN", (double)timestamp);
+		} else if (clutch_state == CLUTCH_STATE_SYNCING) {
+			clutch_state = CLUTCH_STATE_SYNCED;
+			print_log(LOG_GROUP_CLUTCH,"[%4.2f] SYNCED", (double)timestamp);
+			close_clutch();
+		} else if (clutch_state == CLUTCH_STATE_CLOSING) {
+			clutch_state = CLUTCH_STATE_CLOSED;
+			print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSED", (double)timestamp);
+		}
+		return;
+	}
+
 	if (clutch_state == CLUTCH_STATE_OPENING){
 		if (elapsed_time > config.clutch.wait_before_check){
 			// check if clutch was opened (motor should slow down)
@@ -1560,7 +1579,7 @@ static void update_clutch_state(void)
 		}
 	}
 
-	if (config.clutch.mode != CLUTCH_MODE_MANUAL) {
+	if (config.clutch.mode != CLUTCH_MODE_MANUAL && config.clutch.mode != CLUTCH_MODE_FULL_MANUAL) {
 			
 		//if wheel speed is too low then clutch must be kept closed for instant start
 		if (wheel_speed < config.clutch.min_rpm){

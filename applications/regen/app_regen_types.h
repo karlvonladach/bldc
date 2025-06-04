@@ -64,7 +64,8 @@ typedef enum {
     CLUTCH_MODE_CLOSED = 0,
     CLUTCH_MODE_OPEN,
     CLUTCH_MODE_AUTO,
-    CLUTCH_MODE_MANUAL
+    CLUTCH_MODE_MANUAL,
+    CLUTCH_MODE_FULL_MANUAL
 } clutch_mode_type;
 
 typedef enum {
