@@ -82,6 +82,7 @@
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE     350.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS      5u      // max attempts to open/close clutch
 #define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR        0       // 1/0 = invert/no invert
+#define APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK      1       // 1/0 = enabled/disabled
 
 #define APP_CUSTOM_CONF_UPDATE_RATE_HZ           500     // Hz - sensor signal processing and clutch control
 
@@ -124,5 +125,6 @@
 #define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR         36
 #define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM_ADDR       37
 #define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR_ADDR           38
+#define APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK_ADDR         39
 
 #endif /* APP_REGEN_CONF_H_ */

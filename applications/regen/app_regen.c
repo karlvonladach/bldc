@@ -419,6 +419,7 @@ static void load_default_config(custom_config_type* conf){
 	conf->clutch.max_rpm_close		 = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE;
 	conf->clutch.mode 				 = APP_CUSTOM_CONF_CLUTCH_MODE;
 	conf->clutch.invert_direction    = APP_CUSTOM_CONF_CLUTCH_INVERT_DIR;
+	conf->clutch.enable_check        = APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK;
 
 	conf->update_rate_hz = APP_CUSTOM_CONF_UPDATE_RATE_HZ;
 }
@@ -535,6 +536,9 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_INVERT_DIR_ADDR)) {
 		conf->clutch.invert_direction = v.as_u32;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK_ADDR)) {
+		conf->clutch.enable_check = v.as_u32;
 	}
 }
 
@@ -800,6 +804,11 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Clutch invert direction set to %d", config.clutch.invert_direction);
             v.as_u32 = config.clutch.invert_direction;
             conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_INVERT_DIR_ADDR);
+        } else if (strcmp(argv[1], "clutch_enable_check") == 0) {
+            config.clutch.enable_check = atoi(argv[2]);
+            commands_printf("Clutch check %s", config.clutch.enable_check ? "enabled" : "disabled");
+            v.as_u32 = config.clutch.enable_check;
+            conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK_ADDR);
         } else {
             commands_printf("Unknown parameter.\r\nValid parameters:\r\n  ctrl-type\r\n  pedal_magnets\r\n  pedal_filter\r\n  pedal_rpm_start\r\n  pedal_rpm_end\r\n  pedal_invert\r\n  wheel_magnets\r\n  wheel_filter\r\n  wheel_invert\r\n  brake_start\r\n  brake_end\r\n  brake_wait_release\r\n  brake_release_rpm\r\n  clutch_open\r\n  clutch_close\r\n  clutch_check\r\n  clutch_sync_diff\r\n  clutch_check_diff\r\n  update_rate\r\n  pedal_ramp_time_pos\r\n  pedal_ramp_time_neg\r\n  wheel_ramp_time_pos\r\n  wheel_ramp_time_neg\r\n  clutch_min_rpm\r\n  clutch_max_rpm_open\r\n  clutch_max_rpm_close\r\n  clutch_mode\r\n  pedal_rpm_min\r\n  pedal_rpm_max\r\n  wheel_rpm_min\r\n  wheel_rpm_max\r\n  clutch_invert\r\n");
         }
@@ -1009,6 +1018,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      clutch_max_rpm_close - Clutch maximum RPM for closing");
 	commands_printf("      clutch_mode - Clutch mode (closed, open, auto, manual, fullmanual)");
 	commands_printf("      clutch_invert - Invert clutch direction (0 or 1)");
+	commands_printf("      clutch_enable_check - Enable/disable continuous check of open/close success (0 or 1)");
 	commands_printf("      update_rate - Sensor signal processing rate in Hz");
 	commands_printf("  clutch [open/close] - Open or close the clutch");
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging. Logs are grouped by functionality. Groups can be enabled/disabled separately.");
@@ -1079,6 +1089,7 @@ static void terminal_get_config(int argc, const char **argv) {
 		config.clutch.mode == CLUTCH_MODE_MANUAL ? "manual" :
 		config.clutch.mode == CLUTCH_MODE_FULL_MANUAL ? "fullmanual" : "unknown");
 	commands_printf("  Clutch invert direction: %d", config.clutch.invert_direction);
+	commands_printf("  Clutch enable check: %d", config.clutch.enable_check);
 	commands_printf("  Update rate: %d Hz", config.update_rate_hz);
 }
 
@@ -1515,7 +1526,7 @@ static void update_clutch_state(void)
 			}
 		}
 	} else
-	if (clutch_state == CLUTCH_STATE_OPEN && config.clutch.mode != CLUTCH_MODE_CLOSED){
+	if (clutch_state == CLUTCH_STATE_OPEN && config.clutch.mode != CLUTCH_MODE_CLOSED && config.clutch.enable_check){
 		// check if clutch was opened (motor should slow down)
 		if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff){
 			clutch_open_error_counter++;
@@ -1562,7 +1573,7 @@ static void update_clutch_state(void)
 			}
 		}
 	} else
-	if (clutch_state == CLUTCH_STATE_CLOSED && config.clutch.mode != CLUTCH_MODE_OPEN){
+	if (clutch_state == CLUTCH_STATE_CLOSED && config.clutch.mode != CLUTCH_MODE_OPEN && config.clutch.enable_check){
 		// check if clutch was closed (motor should stay in sync with wheel)
 		if (abs(wheel_speed - motor_speed) > config.clutch.check_rpm_diff){
 			clutch_close_error_counter++;

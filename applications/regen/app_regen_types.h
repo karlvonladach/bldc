@@ -120,6 +120,7 @@ typedef struct {
     float max_rpm_open;
     float max_rpm_close;
     bool invert_direction;
+    bool enable_check;
 } clutch_config_type;
 
 typedef struct {
