@@ -1369,28 +1369,27 @@ static void update_wheel_speed(void)
 	float period, avg_period;
 	float current_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 
+	// read the wheel sensor state
+	HALL3_level = palReadPad(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1);
+
 	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT ||
 	    (
 		  config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT && 
 		  wheel_speed >= config.wheel_sensor.poll_to_int_rpm
 		)) {
-		plot_points(PLOT_HALL3, current_timestamp, HALL3_int_cntr_xp);
-		HALL3_int_cntr_xp = 0;
+		plot_points(PLOT_HALL3, current_timestamp, HALL3_int_cntr_xp * 10);
 
 		// new measurement is based on the interrupt timestamp
 		if (wheel_sensor_timestamp != 0) {
 			new_timestamp = wheel_sensor_timestamp;
 		}
 
-		wheel_sensor_timestamp = 0;
 	} else 
 	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL ||
 		(
 		  config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT && 
 		  wheel_speed < config.wheel_sensor.poll_to_int_rpm
 		)) {
-		// read the wheel sensor state
-		HALL3_level = palReadPad(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1);
 		plot_points(PLOT_HALL3, current_timestamp, HALL3_level * 20);
 
 		// new measurement is based on current timestamp if a falling edge was detected
@@ -1398,8 +1397,11 @@ static void update_wheel_speed(void)
 			new_timestamp = current_timestamp;
 		}
 
-		HALL3_level_old = HALL3_level;
 	}
+
+	HALL3_level_old = HALL3_level;
+	wheel_sensor_timestamp = 0;
+	HALL3_int_cntr_xp = 0;
 
 	if (new_timestamp != 0){
 		// if there was new measurement, then calculate speed from elapsed time
