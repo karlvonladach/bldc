@@ -1688,7 +1688,7 @@ static void update_motor_control()
 			print_log(LOG_GROUP_MOTOR,"[%4.2f] CURRENT set to %d", (double)timestamp, 0);
 		}
 	} else if (clutch_state == CLUTCH_STATE_CLOSED){
-		if (pedal_brake_position > 0){
+		if (pedal_brake_position >= config.back_pedal_brake.start_pos){
 			float brake_force = (pedal_brake_position - config.back_pedal_brake.start_pos) / (config.back_pedal_brake.end_pos - config.back_pedal_brake.start_pos);
 			mc_interface_set_brake_current_rel(brake_force);
 			if (cnt % (config.update_rate_hz / 10) == 0){
