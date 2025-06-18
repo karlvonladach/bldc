@@ -1656,6 +1656,8 @@ static void update_clutch_state(void)
 			}
 			//if pedal brake is active then start syncing motor to wheel immediately
 			if (pedal_brake_position > 0){
+				pedal_activity_time = 0;
+				pedal_inactivity_time = 0;
 				sync_clutch();
 			}
 		}
