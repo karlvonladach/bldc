@@ -416,6 +416,7 @@ static void load_default_config(custom_config_type* conf){
 	conf->clutch.wait_before_sync_loss = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS;
 	conf->clutch.sync_rpm_diff       = APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF;
 	conf->clutch.check_rpm_diff      = APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF;
+	conf->clutch.first_check_rpm_diff = APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF;
 	conf->clutch.min_rpm 			 = APP_CUSTOM_CONF_CLUTCH_MIN_RPM;
 	conf->clutch.max_rpm_open		 = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN;
 	conf->clutch.max_rpm_close		 = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE;
@@ -502,6 +503,9 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF_ADDR)) {
 		conf->clutch.check_rpm_diff = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF_ADDR)) {
+		conf->clutch.first_check_rpm_diff = v.as_float;
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_UPDATE_RATE_HZ_ADDR)) {
 		conf->update_rate_hz = v.as_u32;
@@ -756,6 +760,11 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Clutch check RPM diff set to %f", (double)config.clutch.check_rpm_diff);
 			v.as_float = config.clutch.check_rpm_diff;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF_ADDR);
+        } else if (strcmp(argv[1], "clutch_first_check_diff") == 0) {
+            config.clutch.first_check_rpm_diff = atof(argv[2]);
+            commands_printf("Clutch first check RPM diff set to %f", (double)config.clutch.first_check_rpm_diff);
+			v.as_float = config.clutch.first_check_rpm_diff;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF_ADDR);
         } else if (strcmp(argv[1], "update_rate") == 0) {
             config.update_rate_hz = atoi(argv[2]);
             commands_printf("Update rate set to %d Hz", config.update_rate_hz);
@@ -1047,6 +1056,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      clutch_sync_loss - Clutch wait before sync loss time");
 	commands_printf("      clutch_sync_diff - Clutch sync RPM difference");
 	commands_printf("      clutch_check_diff - Clutch check RPM difference");
+	commands_printf("      clutch_first_check_diff - Clutch first check RPM difference");
 	commands_printf("      clutch_min_rpm - Clutch minimum RPM");
 	commands_printf("      clutch_max_rpm_open - Clutch maximum RPM for opening");
 	commands_printf("      clutch_max_rpm_close - Clutch maximum RPM for closing");
@@ -1116,6 +1126,7 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Clutch wait before sync loss: %.2f", (double)config.clutch.wait_before_sync_loss);
 	commands_printf("  Clutch sync RPM diff: %.2f", (double)config.clutch.sync_rpm_diff);
 	commands_printf("  Clutch check RPM diff: %.2f", (double)config.clutch.check_rpm_diff);
+	commands_printf("  Clutch first check RPM diff: %.2f", (double)config.clutch.first_check_rpm_diff);
 	commands_printf("  Clutch min RPM: %.2f", (double)config.clutch.min_rpm);
 	commands_printf("  Clutch max RPM open: %.2f", (double)config.clutch.max_rpm_open);
 	commands_printf("  Clutch max RPM close: %.2f", (double)config.clutch.max_rpm_close);
@@ -1553,7 +1564,7 @@ static void update_clutch_state(void)
 	if (clutch_state == CLUTCH_STATE_OPENING){
 		if (elapsed_time > config.clutch.wait_before_check){
 			// check if clutch was opened (motor should slow down)
-			if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff){
+			if (abs(wheel_speed - motor_speed) < config.clutch.first_check_rpm_diff){
 				clutch_open_error_counter++;
 				if (time_since_last_error_report >= 1.0){
 					print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN FAILED (%d)", (double)timestamp, clutch_open_error_counter);
@@ -1602,10 +1613,10 @@ static void update_clutch_state(void)
 	if (clutch_state == CLUTCH_STATE_CLOSING){
 		if (elapsed_time > config.clutch.wait_before_check){
 			// check if clutch was closed (motor should stay in sync with wheel)
-			if (abs(wheel_speed - motor_speed) > config.clutch.check_rpm_diff){
+			if (abs(wheel_speed - motor_speed) > config.clutch.first_check_rpm_diff){
 				clutch_close_error_counter++;
 				if (time_since_last_error_report >= 1.0){
-					print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSE FAILED / SYNC LOST (%d)", (double)timestamp, clutch_close_error_counter);
+					print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSE FAILED (%d)", (double)timestamp, clutch_close_error_counter);
 					clutch_last_error_report_timestamp = timestamp;
 				}
 				open_clutch();
@@ -1624,7 +1635,7 @@ static void update_clutch_state(void)
 		if (abs(wheel_speed - motor_speed) > config.clutch.check_rpm_diff){
 			clutch_close_error_counter++;
 			if (time_since_last_error_report >= 1.0){
-				print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSE FAILED / SYNC LOST (%d)", (double)timestamp, clutch_close_error_counter);
+				print_log(LOG_GROUP_CLUTCH,"[%4.2f] SYNC LOST (%d)", (double)timestamp, clutch_close_error_counter);
 				clutch_last_error_report_timestamp = timestamp;
 			}
 			if (clutch_close_error_counter >= config.clutch.wait_before_sync_loss * config.update_rate_hz){
