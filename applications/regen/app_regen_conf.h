@@ -57,8 +57,9 @@
 #define APP_CUSTOM_CONF_WHEEL_RPM_MIN            10.0f   // WRPM - set 0 WRPM below this value
 #define APP_CUSTOM_CONF_WHEEL_RPM_MAX            1000.0f // WRPM - raise error above this value
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS      0.3f    // sec/fullscale (min to max)
-#define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG      0.3f   // sec/fullscale (min to max)
+#define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG      0.3f    // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_WHEEL_INVERT_DIR         0       // 1/0 = invert/no invert
+#define APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR 1.8f    // sec/sec - skipped period / normal period 
 
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE       TORQUE_SENSOR_TYPE_ADC
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PORT1      HW_ADC_EXT_GPIO
@@ -128,5 +129,6 @@
 #define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR_ADDR           38
 #define APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK_ADDR         39
 #define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR 40
+#define APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR_ADDR    41
 
 #endif /* APP_REGEN_CONF_H_ */

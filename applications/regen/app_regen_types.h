@@ -95,6 +95,7 @@ typedef struct {
 	float ramp_time_pos;
 	float ramp_time_neg;
 	bool invert_direction;
+    float skipped_magnet_threshold;
 } speed_sensor_config_type;
 
 typedef struct {

@@ -401,6 +401,7 @@ static void load_default_config(custom_config_type* conf){
 	conf->wheel_sensor.ramp_time_pos = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS;
 	conf->wheel_sensor.ramp_time_neg = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG;
 	conf->wheel_sensor.invert_direction = APP_CUSTOM_CONF_WHEEL_INVERT_DIR;
+	conf->wheel_sensor.skipped_magnet_threshold = APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR;
 
 	conf->torque_sensor.sensor_type  = APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE;
 
@@ -468,6 +469,9 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_INVERT_DIR_ADDR)) {
 		conf->wheel_sensor.invert_direction = v.as_u32;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR_ADDR)) {
+		conf->wheel_sensor.skipped_magnet_threshold = v.as_float;
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR)) {
 		conf->back_pedal_brake.start_pos = v.as_float;
@@ -697,6 +701,11 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Wheel sensor invert direction set to %d", config.wheel_sensor.invert_direction);
 			v.as_u32 = config.wheel_sensor.invert_direction;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_INVERT_DIR_ADDR);
+        } else if (strcmp(argv[1], "wheel_skip_threshold") == 0) {
+            config.wheel_sensor.skipped_magnet_threshold = atof(argv[2]);
+            commands_printf("Wheel sensor skipped magnet threshold set to %f", (double)config.wheel_sensor.skipped_magnet_threshold);
+			v.as_float = config.wheel_sensor.skipped_magnet_threshold;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR_ADDR);
         } else if (strcmp(argv[1], "brake_start") == 0) {
             config.back_pedal_brake.start_pos = atof(argv[2]);
             commands_printf("Back pedal brake start position set to %f", (double)config.back_pedal_brake.start_pos);
@@ -1027,6 +1036,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      wheel_ramp_time_pos - Wheel ramp time positive value");
 	commands_printf("      wheel_ramp_time_neg - Wheel ramp time negative value");
 	commands_printf("      wheel_invert - Invert wheel sensor direction (0 or 1)");
+	commands_printf("      wheel_skip_threshold - Wheel sensor skipped magnet threshold");
 	commands_printf("      brake_start - Back pedal brake start position");
 	commands_printf("      brake_end - Back pedal brake end position");
 	commands_printf("      brake_wait_release - Back pedal brake wait before release time");
@@ -1095,6 +1105,7 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Wheel ramp time positive: %.2f", (double)config.wheel_sensor.ramp_time_pos);
 	commands_printf("  Wheel ramp time negative: %.2f", (double)config.wheel_sensor.ramp_time_neg);
 	commands_printf("  Wheel sensor invert direction: %d", config.wheel_sensor.invert_direction);
+	commands_printf("  Wheel sensor skipped magnet threshold: %.2f", (double)config.wheel_sensor.skipped_magnet_threshold);
 	commands_printf("  Back pedal brake start position: %.2f", (double)config.back_pedal_brake.start_pos);
 	commands_printf("  Back pedal brake end position: %.2f", (double)config.back_pedal_brake.end_pos);
 	commands_printf("  Back pedal brake wait before release: %.2f", (double)config.back_pedal_brake.wait_before_release);
@@ -1420,6 +1431,12 @@ static void update_wheel_speed(void)
 
 		if (period < min_wheel_period) { //can't be that short, abort
 			return;
+		}
+
+		// try to detect missed magnet
+		if (config.wheel_sensor.skipped_magnet_threshold > 0.0f && period > config.wheel_sensor.skipped_magnet_threshold * old_period && 
+			wheel_speed > config.wheel_sensor.avg_above_rpm && pedal_brake_position > 0) {
+			period /= 2.0;
 		}
 
 		if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
