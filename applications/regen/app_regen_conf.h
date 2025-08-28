@@ -69,20 +69,21 @@
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM         30.0f  // WRPM
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE  0.5f  // seconds
 
-#define APP_CUSTOM_CONF_CLUTCH_MODE              CLUTCH_MODE_AUTO
-#define APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1        HW_UART_RX_PORT
-#define APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1         HW_UART_RX_PIN
-#define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN  0.5f    // seconds
-#define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC  0.1f    // seconds
-#define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK 0.7f    // seconds
-#define APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF     5.0f    // WRPM
-#define APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF    2.0f    // WRPM
-#define APP_CUSTOM_CONF_CLUTCH_MIN_RPM           50.0f   // WRPM
-#define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN      400.0f  // WRPM
-#define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE     350.0f  // WRPM
-#define APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS      5u      // max attempts to open/close clutch
-#define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR        0       // 1/0 = invert/no invert
-#define APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK      1       // 1/0 = enabled/disabled
+#define APP_CUSTOM_CONF_CLUTCH_MODE                  CLUTCH_MODE_AUTO
+#define APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1            HW_UART_RX_PORT
+#define APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1             HW_UART_RX_PIN
+#define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN      0.5f    // seconds
+#define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC      0.1f    // seconds
+#define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK     0.7f    // seconds
+#define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS 0.1f    // seconds
+#define APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF         5.0f    // WRPM
+#define APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF        2.0f    // WRPM
+#define APP_CUSTOM_CONF_CLUTCH_MIN_RPM               50.0f   // WRPM
+#define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN          400.0f  // WRPM
+#define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE         350.0f  // WRPM
+#define APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS          5u      // max attempts to open/close clutch
+#define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR            0       // 1/0 = invert/no invert
+#define APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK          1       // 1/0 = enabled/disabled
 
 #define APP_CUSTOM_CONF_UPDATE_RATE_HZ           500     // Hz - sensor signal processing and clutch control
 
@@ -126,5 +127,6 @@
 #define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM_ADDR       37
 #define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR_ADDR           38
 #define APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK_ADDR         39
+#define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR 40
 
 #endif /* APP_REGEN_CONF_H_ */

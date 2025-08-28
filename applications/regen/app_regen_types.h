@@ -114,6 +114,7 @@ typedef struct {
     float wait_before_open;
     float wait_before_sync;
     float wait_before_check;
+    float wait_before_sync_loss;
     float sync_rpm_diff;
     float check_rpm_diff;
     float min_rpm;

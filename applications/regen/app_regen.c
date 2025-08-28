@@ -412,6 +412,7 @@ static void load_default_config(custom_config_type* conf){
 	conf->clutch.wait_before_open    = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN;
 	conf->clutch.wait_before_sync   = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC;
 	conf->clutch.wait_before_check   = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK;
+	conf->clutch.wait_before_sync_loss = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS;
 	conf->clutch.sync_rpm_diff       = APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF;
 	conf->clutch.check_rpm_diff      = APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF;
 	conf->clutch.min_rpm 			 = APP_CUSTOM_CONF_CLUTCH_MIN_RPM;
@@ -485,6 +486,9 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_ADDR)) {
 		conf->clutch.wait_before_sync = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR)) {
+		conf->clutch.wait_before_sync_loss = v.as_float;
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK_ADDR)) {
 		conf->clutch.wait_before_check = v.as_float;
@@ -728,6 +732,11 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Clutch wait before check set to %f", (double)config.clutch.wait_before_check);
 			v.as_float = config.clutch.wait_before_check;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK_ADDR);
+        } else if (strcmp(argv[1], "clutch_sync_loss") == 0) {
+            config.clutch.wait_before_sync_loss = atof(argv[2]);
+            commands_printf("Clutch wait before sync loss set to %f", (double)config.clutch.wait_before_sync_loss);
+			v.as_float = config.clutch.wait_before_sync_loss;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR);
         } else if (strcmp(argv[1], "clutch_sync_diff") == 0) {
             config.clutch.sync_rpm_diff = atof(argv[2]);
             commands_printf("Clutch sync RPM diff set to %f", (double)config.clutch.sync_rpm_diff);
@@ -1025,6 +1034,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      clutch_open - Clutch wait before open time");
 	commands_printf("      clutch_close - Clutch wait before close time");
 	commands_printf("      clutch_check - Clutch wait before check time");
+	commands_printf("      clutch_sync_loss - Clutch wait before sync loss time");
 	commands_printf("      clutch_sync_diff - Clutch sync RPM difference");
 	commands_printf("      clutch_check_diff - Clutch check RPM difference");
 	commands_printf("      clutch_min_rpm - Clutch minimum RPM");
@@ -1092,6 +1102,7 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Clutch wait before open: %.2f", (double)config.clutch.wait_before_open);
 	commands_printf("  Clutch wait before sync: %.2f", (double)config.clutch.wait_before_sync);
 	commands_printf("  Clutch wait before check: %.2f", (double)config.clutch.wait_before_check);
+	commands_printf("  Clutch wait before sync loss: %.2f", (double)config.clutch.wait_before_sync_loss);
 	commands_printf("  Clutch sync RPM diff: %.2f", (double)config.clutch.sync_rpm_diff);
 	commands_printf("  Clutch check RPM diff: %.2f", (double)config.clutch.check_rpm_diff);
 	commands_printf("  Clutch min RPM: %.2f", (double)config.clutch.min_rpm);
@@ -1550,9 +1561,11 @@ static void update_clutch_state(void)
 				print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN FAILED (%d)", (double)timestamp, clutch_open_error_counter);
 				clutch_last_error_report_timestamp = timestamp;
 			}
-			close_clutch();
-			chThdSleepMilliseconds(1);
-			open_clutch();
+			if (clutch_open_error_counter >= config.clutch.wait_before_sync_loss * config.update_rate_hz){
+			    close_clutch();
+			    chThdSleepMilliseconds(1);
+			    open_clutch();
+			}
 		} else {
 			clutch_open_error_counter = 0;
 			clutch_last_error_report_timestamp = 0;
@@ -1597,9 +1610,11 @@ static void update_clutch_state(void)
 				print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSE FAILED / SYNC LOST (%d)", (double)timestamp, clutch_close_error_counter);
 				clutch_last_error_report_timestamp = timestamp;
 			}
-			open_clutch();
-			chThdSleepMilliseconds(1);
-			sync_clutch();
+			if (clutch_close_error_counter >= config.clutch.wait_before_sync_loss * config.update_rate_hz){
+				open_clutch();
+				chThdSleepMilliseconds(1);
+				sync_clutch();
+			}
 		} else {
 			clutch_close_error_counter = 0;
 			clutch_last_error_report_timestamp = 0;
