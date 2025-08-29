@@ -71,6 +71,7 @@ static void update_motor_control(void);
 static void open_clutch(void);
 static void sync_clutch(void);
 static void close_clutch(void);
+static void new_clutch_state(clutch_state_type cs);
 static void set_motor_speed(float mwrpm);
 static void enable_interrupt(void);
 static void init_plots(void);
@@ -121,6 +122,14 @@ static volatile uint8_t clutch_open_error_counter = 0;
 static volatile uint8_t clutch_close_error_counter = 0;
 static volatile uint32_t HALL3_int_cntr_xp = 0;
 static volatile uint32_t HALL3_int_cntr_rt = 0;
+static volatile char* clutch_state_str[] = {
+	"OPENING",
+	"OPEN",
+	"SYNCING",
+	"SYNCED",
+	"CLOSING",
+	"CLOSED"
+};
 
 // Called when the custom application is started. Start our
 // threads here and set up callbacks.
@@ -404,13 +413,13 @@ static void load_default_config(custom_config_type* conf){
 	conf->back_pedal_brake.wait_before_release = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE;
 	conf->back_pedal_brake.release_rpm = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM;
 	conf->back_pedal_brake.sync_start_pos = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS;
-	conf->back_pedal_brake.sync_timeout = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_TIMEOUT;
 	conf->back_pedal_brake.current_ramp_time = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME;
 
 	conf->clutch.wait_before_open    = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN;
 	conf->clutch.wait_before_sync   = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC;
 	conf->clutch.wait_before_check   = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK;
 	conf->clutch.wait_before_sync_loss = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS;
+	conf->clutch.sync_timeout        = APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT;
 	conf->clutch.sync_rpm_diff       = APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF;
 	conf->clutch.check_rpm_diff      = APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF;
 	conf->clutch.first_check_rpm_diff = APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF;
@@ -486,9 +495,6 @@ static void load_stored_config(custom_config_type* conf){
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS_ADDR)) {
 		conf->back_pedal_brake.sync_start_pos = v.as_float;
 	}
-	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_TIMEOUT_ADDR)) {
-		conf->back_pedal_brake.sync_timeout = v.as_float;
-	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME_ADDR)) {
 		conf->back_pedal_brake.current_ramp_time = v.as_float;
 	}
@@ -500,6 +506,9 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR)) {
 		conf->clutch.wait_before_sync_loss = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT_ADDR)) {
+		conf->clutch.sync_timeout = v.as_float;
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK_ADDR)) {
 		conf->clutch.wait_before_check = v.as_float;
@@ -741,11 +750,11 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Back pedal brake sync start position set to %f", (double)config.back_pedal_brake.sync_start_pos);
 			v.as_float = config.back_pedal_brake.sync_start_pos;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS_ADDR);
-        } else if (strcmp(argv[1], "brake_sync_timeout") == 0) {
-            config.back_pedal_brake.sync_timeout = atof(argv[2]);
-            commands_printf("Back pedal brake sync timeout set to %f", (double)config.back_pedal_brake.sync_timeout);
-			v.as_float = config.back_pedal_brake.sync_timeout;
-			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_TIMEOUT_ADDR);
+        } else if (strcmp(argv[1], "clutch_sync_timeout") == 0) {
+            config.clutch.sync_timeout = atof(argv[2]);
+            commands_printf("Clutch sync timeout set to %f", (double)config.clutch.sync_timeout);
+			v.as_float = config.clutch.sync_timeout;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT_ADDR);
         } else if (strcmp(argv[1], "brake_current_ramp_time") == 0) {
             config.back_pedal_brake.current_ramp_time = atof(argv[2]);
             commands_printf("Back pedal brake current ramp time set to %f", (double)config.back_pedal_brake.current_ramp_time);
@@ -1072,12 +1081,12 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      brake_wait_release - Back pedal brake wait before release time");
 	commands_printf("      brake_release_rpm - Back pedal brake release RPM");
 	commands_printf("      brake_sync_start_pos - Back pedal brake sync start position");
-	commands_printf("      brake_sync_timeout - Back pedal brake sync timeout");
 	commands_printf("      brake_current_ramp_time - Back pedal brake current ramp time");
 	commands_printf("      clutch_open - Clutch wait before open time");
 	commands_printf("      clutch_close - Clutch wait before close time");
 	commands_printf("      clutch_check - Clutch wait before check time");
 	commands_printf("      clutch_sync_loss - Clutch wait before sync loss time");
+	commands_printf("      clutch_sync_timeout - Clutch sync timeout");
 	commands_printf("      clutch_sync_diff - Clutch sync RPM difference");
 	commands_printf("      clutch_check_diff - Clutch check RPM difference");
 	commands_printf("      clutch_first_check_diff - Clutch first check RPM difference");
@@ -1145,12 +1154,12 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Back pedal brake wait before release: %.2f", (double)config.back_pedal_brake.wait_before_release);
 	commands_printf("  Back pedal brake release RPM: %.2f", (double)config.back_pedal_brake.release_rpm);
 	commands_printf("  Back pedal brake sync start position: %.2f", (double)config.back_pedal_brake.sync_start_pos);
-	commands_printf("  Back pedal brake sync timeout: %.2f", (double)config.back_pedal_brake.sync_timeout);
 	commands_printf("  Back pedal brake current ramp time: %.2f", (double)config.back_pedal_brake.current_ramp_time);
 	commands_printf("  Clutch wait before open: %.2f", (double)config.clutch.wait_before_open);
 	commands_printf("  Clutch wait before sync: %.2f", (double)config.clutch.wait_before_sync);
 	commands_printf("  Clutch wait before check: %.2f", (double)config.clutch.wait_before_check);
 	commands_printf("  Clutch wait before sync loss: %.2f", (double)config.clutch.wait_before_sync_loss);
+	commands_printf("  Clutch sync timeout: %.2f", (double)config.clutch.sync_timeout);
 	commands_printf("  Clutch sync RPM diff: %.2f", (double)config.clutch.sync_rpm_diff);
 	commands_printf("  Clutch check RPM diff: %.2f", (double)config.clutch.check_rpm_diff);
 	commands_printf("  Clutch first check RPM diff: %.2f", (double)config.clutch.first_check_rpm_diff);
@@ -1401,7 +1410,7 @@ static void update_pedal_speed_and_position(bool reset)
 			brake_inactivity_time += 1.0 / (float)config.update_rate_hz;
 
 			//if brake is not active for a given, long enough period, reset counters
-			if(brake_inactivity_time > config.back_pedal_brake.sync_timeout) {
+			if(brake_inactivity_time > config.clutch.sync_timeout) {
 				backward_direction_counter = 0.0;
 				pedal_brake_position = 0.0;
 			}
@@ -1646,16 +1655,22 @@ static void update_clutch_state(void)
 		}
 	} else
 	if (clutch_state == CLUTCH_STATE_SYNCING){
-		float target_speed = wheel_speed - config.clutch.sync_rpm_diff;
-		if (target_speed < 0){
-			target_speed = 0;
-		}
+		float target_speed = MAX((wheel_speed - config.clutch.sync_rpm_diff), 0);
 		if (abs(target_speed - motor_speed) < config.clutch.check_rpm_diff){
-			clutch_state = CLUTCH_STATE_SYNCED;
-			print_log(LOG_GROUP_CLUTCH,"[%4.2f] SYNCED", (double)timestamp);
-			close_clutch();
+			new_clutch_state(CLUTCH_STATE_SYNCED);
 		}
 	} else 
+	if (clutch_state == CLUTCH_STATE_SYNCED) {
+		if (pedal_speed > 0 && pedal_brake_position_rel > 0) {
+			close_clutch();
+		} else 
+		if (pedal_brake_position_rel > 0) {
+			close_clutch();
+		} else 
+		if (elapsed_time > config.clutch.sync_timeout) {
+			new_clutch_state(CLUTCH_STATE_OPEN);
+		}
+	}
 	if (clutch_state == CLUTCH_STATE_CLOSING){
 		if (elapsed_time > config.clutch.wait_before_check){
 			// check if clutch was closed (motor should stay in sync with wheel)
@@ -1860,6 +1875,13 @@ static void close_clutch(void)
 		clutch_state = CLUTCH_STATE_CLOSING;
 		print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSING...", (double)clutch_timestamp);
 	}
+}
+
+static void new_clutch_state(clutch_state_type cs)
+{
+	clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	clutch_state = cs;
+	print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH %s", (double)clutch_timestamp, (int)clutch_state_str[clutch_state]);
 }
 
 static void set_motor_speed(float mwrpm) {

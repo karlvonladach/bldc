@@ -94,7 +94,7 @@ typedef struct {
     float rpm_max;
 	float ramp_time_pos;
 	float ramp_time_neg;
-	bool invert_direction;
+	bool  invert_direction;
     float skipped_magnet_threshold;
 } speed_sensor_config_type;
 
@@ -109,7 +109,6 @@ typedef struct {
     float release_rpm;
     float wait_before_release;
     float sync_start_pos;
-    float sync_timeout;
     float current_ramp_time;
 } brake_config_type;
 
@@ -119,6 +118,7 @@ typedef struct {
     float wait_before_sync;
     float wait_before_check;
     float wait_before_sync_loss;
+    float sync_timeout;
     float sync_rpm_diff;
     float first_check_rpm_diff;
     float check_rpm_diff;
