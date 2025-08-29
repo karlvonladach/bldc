@@ -1766,7 +1766,7 @@ static void update_motor_control()
 			print_log(LOG_GROUP_MOTOR,"[%4.2f] CURRENT set to %d", (double)timestamp, 0);
 		}
 	} else if (clutch_state == CLUTCH_STATE_CLOSED){
-		if (pedal_brake_position_rel >= 0.0){
+		if (pedal_brake_position_rel > 0){
 			mc_interface_set_brake_current_rel(pedal_brake_position_rel);
 			if (cnt % (config.update_rate_hz / 10) == 0){
 				print_log(LOG_GROUP_MOTOR,"[%4.2f] BREAK set to %d%%", (double)timestamp, (int)floor(pedal_brake_position_rel*100));
