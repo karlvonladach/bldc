@@ -405,6 +405,7 @@ static void load_default_config(custom_config_type* conf){
 	conf->back_pedal_brake.release_rpm = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM;
 	conf->back_pedal_brake.sync_start_pos = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS;
 	conf->back_pedal_brake.sync_timeout = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_TIMEOUT;
+	conf->back_pedal_brake.current_ramp_time = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME;
 
 	conf->clutch.wait_before_open    = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN;
 	conf->clutch.wait_before_sync   = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC;
@@ -487,6 +488,9 @@ static void load_stored_config(custom_config_type* conf){
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_TIMEOUT_ADDR)) {
 		conf->back_pedal_brake.sync_timeout = v.as_float;
+	}
+	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME_ADDR)) {
+		conf->back_pedal_brake.current_ramp_time = v.as_float;
 	}
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN_ADDR)) {
 		conf->clutch.wait_before_open = v.as_float;
@@ -742,6 +746,11 @@ static void terminal_config(int argc, const char **argv) {
             commands_printf("Back pedal brake sync timeout set to %f", (double)config.back_pedal_brake.sync_timeout);
 			v.as_float = config.back_pedal_brake.sync_timeout;
 			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_TIMEOUT_ADDR);
+        } else if (strcmp(argv[1], "brake_current_ramp_time") == 0) {
+            config.back_pedal_brake.current_ramp_time = atof(argv[2]);
+            commands_printf("Back pedal brake current ramp time set to %f", (double)config.back_pedal_brake.current_ramp_time);
+			v.as_float = config.back_pedal_brake.current_ramp_time;
+			conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME_ADDR);
         } else if (strcmp(argv[1], "clutch_open") == 0) {
             config.clutch.wait_before_open = atof(argv[2]);
             commands_printf("Clutch wait before open set to %f", (double)config.clutch.wait_before_open);
@@ -1064,6 +1073,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("      brake_release_rpm - Back pedal brake release RPM");
 	commands_printf("      brake_sync_start_pos - Back pedal brake sync start position");
 	commands_printf("      brake_sync_timeout - Back pedal brake sync timeout");
+	commands_printf("      brake_current_ramp_time - Back pedal brake current ramp time");
 	commands_printf("      clutch_open - Clutch wait before open time");
 	commands_printf("      clutch_close - Clutch wait before close time");
 	commands_printf("      clutch_check - Clutch wait before check time");
@@ -1136,6 +1146,7 @@ static void terminal_get_config(int argc, const char **argv) {
 	commands_printf("  Back pedal brake release RPM: %.2f", (double)config.back_pedal_brake.release_rpm);
 	commands_printf("  Back pedal brake sync start position: %.2f", (double)config.back_pedal_brake.sync_start_pos);
 	commands_printf("  Back pedal brake sync timeout: %.2f", (double)config.back_pedal_brake.sync_timeout);
+	commands_printf("  Back pedal brake current ramp time: %.2f", (double)config.back_pedal_brake.current_ramp_time);
 	commands_printf("  Clutch wait before open: %.2f", (double)config.clutch.wait_before_open);
 	commands_printf("  Clutch wait before sync: %.2f", (double)config.clutch.wait_before_sync);
 	commands_printf("  Clutch wait before check: %.2f", (double)config.clutch.wait_before_check);
@@ -1767,9 +1778,12 @@ static void update_motor_control()
 		}
 	} else if (clutch_state == CLUTCH_STATE_CLOSED){
 		if (pedal_brake_position_rel > 0){
-			mc_interface_set_brake_current_rel(pedal_brake_position_rel);
+			static float brake_current = 0;
+			static systime_t last_time = 0;
+			apply_ramping(&brake_current, &last_time, pedal_brake_position_rel, config.back_pedal_brake.current_ramp_time, config.back_pedal_brake.current_ramp_time);
+			mc_interface_set_brake_current_rel(brake_current);
 			if (cnt % (config.update_rate_hz / 10) == 0){
-				print_log(LOG_GROUP_MOTOR,"[%4.2f] BREAK set to %d%%", (double)timestamp, (int)floor(pedal_brake_position_rel*100));
+				print_log(LOG_GROUP_MOTOR,"[%4.2f] BREAK set to %d%%", (double)timestamp, (int)floor(brake_current*100));
 			}
 		} else if (pedal_speed > 0){
 			switch (config.ctrl_type){

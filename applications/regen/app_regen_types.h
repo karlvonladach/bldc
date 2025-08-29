@@ -110,6 +110,7 @@ typedef struct {
     float wait_before_release;
     float sync_start_pos;
     float sync_timeout;
+    float current_ramp_time;
 } brake_config_type;
 
 typedef struct {
