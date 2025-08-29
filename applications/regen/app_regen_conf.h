@@ -54,7 +54,7 @@
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS     24u     // including "virtual magnets"
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER      0.8     // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM      35.0f   // WRPM - average last two samples above this value
-#define APP_CUSTOM_CONF_WHEEL_RPM_MIN            10.0f   // WRPM - set 0 WRPM below this value
+#define APP_CUSTOM_CONF_WHEEL_RPM_MIN            5.0f   // WRPM - set 0 WRPM below this value
 #define APP_CUSTOM_CONF_WHEEL_RPM_MAX            1000.0f // WRPM - raise error above this value
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS      0.3f    // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG      0.3f    // sec/fullscale (min to max)
@@ -78,7 +78,7 @@
 #define APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1             HW_UART_RX_PIN
 #define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN      0.5f    // seconds
 #define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC      0.1f    // seconds
-#define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK     0.7f    // seconds
+#define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK     0.22f   // seconds
 #define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS 0.1f    // seconds
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF         5.0f    // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF  8.0f    // WRPM
@@ -87,7 +87,7 @@
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN          400.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE         350.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS          5u      // max attempts to open/close clutch
-#define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR            0       // 1/0 = invert/no invert
+#define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR            1       // 1/0 = invert/no invert
 #define APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK          1       // 1/0 = enabled/disabled
 
 #define APP_CUSTOM_CONF_UPDATE_RATE_HZ           500     // Hz - sensor signal processing and clutch control
