@@ -123,12 +123,19 @@ static volatile uint8_t clutch_close_error_counter = 0;
 static volatile uint32_t HALL3_int_cntr_xp = 0;
 static volatile uint32_t HALL3_int_cntr_rt = 0;
 static volatile char* clutch_state_str[] = {
-	"OPENING",
-	"OPEN",
-	"SYNCING",
-	"SYNCED",
-	"CLOSING",
-	"CLOSED"
+    "OPEN",
+    "OPEN (ERROR)",
+    "OPENING",
+    "OPENING TEMPORARILY",
+    "WAITING",
+    "SYNCING",
+    "SYNCED",
+    "CLOSING",
+    "CLOSING TEMPORARILY",
+    "CLOSED (FLOAT)",
+    "CLOSED (BRAKE)",
+    "CLOSED (ASSIST)",
+    "CLOSED (ERROR)"
 };
 
 // Called when the custom application is started. Start our
@@ -366,7 +373,7 @@ static THD_FUNCTION(my_thread, arg) {
 
 		//if wheel speed is small then release brake after N seconds
 		// note: motor speed is measured here because of the instability of wrpm in interrupt mode
-		if (clutch_state == CLUTCH_STATE_CLOSED && motor_speed < config.back_pedal_brake.release_rpm && pedal_brake_position > 0){
+		if (clutch_state == CLUTCH_STATE_CLOSED_BRAKE && motor_speed < config.back_pedal_brake.release_rpm && pedal_brake_position > 0){
 			if (wheel_inactivity_time < config.back_pedal_brake.wait_before_release){
 				wheel_inactivity_time += 1.0 / (float)config.update_rate_hz;
 				if (wheel_inactivity_time >= config.back_pedal_brake.wait_before_release){
@@ -1592,14 +1599,8 @@ static void update_motor_speed(void)
 
 static void update_clutch_state(void)
 {
-	static float pedal_inactivity_time = 0;
-	static float pedal_activity_time = 0;
-	static float clutch_last_error_report_timestamp = 0;
 	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 	float elapsed_time = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - clutch_timestamp;
-	float time_since_last_error_report = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - clutch_last_error_report_timestamp;
-	uint8_t clutch_must_close = 0;
-	uint8_t clutch_must_open = 0;
 
 	if (config.clutch.mode == CLUTCH_MODE_FULL_MANUAL) {
 		if (clutch_state == CLUTCH_STATE_OPENING) {
@@ -1610,229 +1611,248 @@ static void update_clutch_state(void)
 			print_log(LOG_GROUP_CLUTCH,"[%4.2f] SYNCED", (double)timestamp);
 			close_clutch();
 		} else if (clutch_state == CLUTCH_STATE_CLOSING) {
-			clutch_state = CLUTCH_STATE_CLOSED;
+			clutch_state = CLUTCH_STATE_CLOSED_FLOAT;
 			print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSED", (double)timestamp);
 		}
 		return;
 	}
 
-	if (clutch_state == CLUTCH_STATE_OPENING){
-		if (elapsed_time > config.clutch.wait_before_check){
-			// check if clutch was opened (motor should slow down)
-			if (abs(wheel_speed - motor_speed) < config.clutch.first_check_rpm_diff){
-				clutch_open_error_counter++;
-				if (time_since_last_error_report >= 1.0){
-					print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN FAILED (%d)", (double)timestamp, clutch_open_error_counter);
-					clutch_last_error_report_timestamp = timestamp;
-				}
-				close_clutch();
-				chThdSleepMilliseconds(1);
-				open_clutch();
-			} else {
-				clutch_open_error_counter = 0;
-				clutch_last_error_report_timestamp = 0;
-				clutch_state = CLUTCH_STATE_OPEN;
-				print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN", (double)timestamp);
-			}
-		}
-	} else
-	if (clutch_state == CLUTCH_STATE_OPEN && config.clutch.mode != CLUTCH_MODE_CLOSED && config.clutch.enable_check){
-		// check if clutch was opened (motor should slow down)
-		if (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff){
-			clutch_open_error_counter++;
-			if (time_since_last_error_report >= 1.0){
-				print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN FAILED (%d)", (double)timestamp, clutch_open_error_counter);
-				clutch_last_error_report_timestamp = timestamp;
-			}
-			if (clutch_open_error_counter >= config.clutch.wait_before_sync_loss * config.update_rate_hz){
-			    close_clutch();
-			    chThdSleepMilliseconds(1);
-			    open_clutch();
-			}
-		} else {
-			clutch_open_error_counter = 0;
-			clutch_last_error_report_timestamp = 0;
-		}
-	} else
-	if (clutch_state == CLUTCH_STATE_SYNCING){
-		float target_speed = MAX((wheel_speed - config.clutch.sync_rpm_diff), 0);
-		if (abs(target_speed - motor_speed) < config.clutch.check_rpm_diff){
-			new_clutch_state(CLUTCH_STATE_SYNCED);
-		}
-	} else 
-	if (clutch_state == CLUTCH_STATE_SYNCED) {
-		if (pedal_speed > 0 && pedal_brake_position_rel > 0) {
-			close_clutch();
-		} else 
-		if (pedal_brake_position_rel > 0) {
-			close_clutch();
-		} else 
-		if (elapsed_time > config.clutch.sync_timeout) {
-			new_clutch_state(CLUTCH_STATE_OPEN);
-		}
-	}
-	if (clutch_state == CLUTCH_STATE_CLOSING){
-		if (elapsed_time > config.clutch.wait_before_check){
-			// check if clutch was closed (motor should stay in sync with wheel)
-			if (abs(wheel_speed - motor_speed) > config.clutch.first_check_rpm_diff){
-				clutch_close_error_counter++;
-				if (time_since_last_error_report >= 1.0){
-					print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSE FAILED (%d)", (double)timestamp, clutch_close_error_counter);
-					clutch_last_error_report_timestamp = timestamp;
-				}
-				open_clutch();
-				chThdSleepMilliseconds(1);
-				sync_clutch();
-			} else {
-				clutch_close_error_counter = 0;
-				clutch_last_error_report_timestamp = 0;
-				clutch_state = CLUTCH_STATE_CLOSED;
-				print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLOSED", (double)timestamp);
-			}
-		}
-	} else
-	if (clutch_state == CLUTCH_STATE_CLOSED && config.clutch.mode != CLUTCH_MODE_OPEN && config.clutch.enable_check){
-		// check if clutch was closed (motor should stay in sync with wheel)
-		if (abs(wheel_speed - motor_speed) > config.clutch.check_rpm_diff){
-			clutch_close_error_counter++;
-			if (time_since_last_error_report >= 1.0){
-				print_log(LOG_GROUP_CLUTCH,"[%4.2f] SYNC LOST (%d)", (double)timestamp, clutch_close_error_counter);
-				clutch_last_error_report_timestamp = timestamp;
-			}
-			if (clutch_close_error_counter >= config.clutch.wait_before_sync_loss * config.update_rate_hz){
-				open_clutch();
-				chThdSleepMilliseconds(1);
-				sync_clutch();
-			}
-		} else {
-			clutch_close_error_counter = 0;
-			clutch_last_error_report_timestamp = 0;
-		}
-	}
+	bool too_slow          = (wheel_speed < config.clutch.min_rpm);
+	bool too_fast          = (wheel_speed > config.clutch.max_rpm_open);
+	bool not_too_fast      = (wheel_speed < config.clutch.max_rpm_close);
+	bool diff_to_target_small_enough = (abs(MAX((wheel_speed - config.clutch.sync_rpm_diff), 0) - motor_speed) < config.clutch.first_check_rpm_diff);
+	bool diff_small_enough = (abs(wheel_speed - motor_speed) < config.clutch.first_check_rpm_diff);
+	bool diff_large_enough = (abs(wheel_speed - motor_speed) > config.clutch.first_check_rpm_diff);
+	bool diff_too_small    = (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff) && (wheel_speed > config.clutch.check_rpm_diff);
+	bool diff_too_large    = (abs(wheel_speed - motor_speed) > config.clutch.check_rpm_diff);
+	bool pedaling          = (pedal_speed > 0 && pedal_torque > 0);
+	bool braking           = (pedal_brake_position > config.back_pedal_brake.start_pos); // or (pedal_brake_position_rel > 0);
+	bool brake_tentative   = (pedal_brake_position > config.back_pedal_brake.sync_start_pos);
+	bool manual_mode       = (config.clutch.mode == CLUTCH_MODE_FULL_MANUAL);
+	bool auto_mode         = (config.clutch.mode == CLUTCH_MODE_AUTO);
 
-	if (config.clutch.mode != CLUTCH_MODE_MANUAL && config.clutch.mode != CLUTCH_MODE_FULL_MANUAL) {
-			
-		//if wheel speed is too low then clutch must be kept closed for instant start
-		if (wheel_speed < config.clutch.min_rpm){
-			clutch_must_close = 1;
-		} else {
-			clutch_must_close = 0;
-		}
-			
-		//if wheel speed is too high then clutch must be kept open to save the motor
-		if (wheel_speed > config.clutch.max_rpm_open){
-			clutch_must_open = 1;
-		}
-		if (wheel_speed < config.clutch.max_rpm_close){
-			clutch_must_open = 0;
-		}
-
-		//if wheel speed is too low then clutch must be kept closed for instant start
-		if (clutch_must_close){
-			pedal_activity_time = 0;
-			pedal_inactivity_time = 0;
-			sync_clutch();
-		} else if (clutch_must_open){
-			pedal_activity_time = 0;
-			pedal_inactivity_time = 0;
-			open_clutch();
-		} else {
-			//if pedal speed = 0 and not braking then disconnect clutch after N seconds
-			if ((pedal_speed == 0 || pedal_torque == 0) && pedal_brake_position < config.back_pedal_brake.sync_start_pos){
-				pedal_activity_time = 0;
-				if (pedal_inactivity_time < config.clutch.wait_before_open){
-					pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
-					if (pedal_inactivity_time >= config.clutch.wait_before_open){
-						open_clutch();
-					}
-				}
+	switch (clutch_state) {
+		case CLUTCH_STATE_OPEN:
+			if (too_slow && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_SYNCING);
 			}
-			//if pedal speed > 0 then start syncing motor to wheel after N seconds
-			// and set power based on torque and pedal speed
-			if (pedal_speed > 0 && pedal_torque > 0){
-				pedal_inactivity_time = 0;
-				if (pedal_activity_time < config.clutch.wait_before_sync){
-					pedal_activity_time += 1.0 / (float)config.update_rate_hz;
-					if (pedal_activity_time >= config.clutch.wait_before_sync){
-						sync_clutch();
-					}
-				}
+			else if (diff_too_small) { // got stuck closed
+				new_clutch_state(CLUTCH_STATE_OPEN_ERROR);
 			}
-			//if pedal brake is active then start syncing motor to wheel immediately
-			if (pedal_brake_position >= config.back_pedal_brake.sync_start_pos){
-				pedal_activity_time = 0;
-				pedal_inactivity_time = 0;
-				sync_clutch();
+			else if (pedaling && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_WAITING);
 			}
-		}
+			else if (brake_tentative && not_too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_SYNCING);
+			}
+			break;
+		case CLUTCH_STATE_OPEN_ERROR:
+			if (too_slow && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_SYNCING);
+			}
+			else if (diff_large_enough) { // got out of closed
+				new_clutch_state(CLUTCH_STATE_OPEN);
+			}
+			else if (elapsed_time > config.clutch.wait_before_sync_loss) { // stuck for too long, try to open
+				new_clutch_state(CLUTCH_STATE_CLOSING_TMP);
+			}
+			break;
+		case CLUTCH_STATE_WAITING:
+			if (too_slow && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_SYNCING);
+			}
+			else if (!pedaling && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_OPEN);
+			}
+			else if (elapsed_time > config.clutch.wait_before_sync && not_too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_SYNCING);
+			}
+			break;
+		case CLUTCH_STATE_SYNCING:
+			if (too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_OPEN);
+			} 
+			else if (diff_to_target_small_enough) {
+				new_clutch_state(CLUTCH_STATE_SYNCED);
+			}
+			else if (elapsed_time > config.clutch.sync_timeout) { // took too long, open again
+				new_clutch_state(CLUTCH_STATE_OPEN);
+			}
+			break;
+		case CLUTCH_STATE_SYNCED:
+			if (too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_OPEN);
+			} 
+			else if (pedaling && not_too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
+			else if (braking && not_too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
+			else if (manual_mode) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
+			else if (elapsed_time > config.clutch.sync_timeout && auto_mode) { // took too long, open again
+				new_clutch_state(CLUTCH_STATE_OPEN);
+			}
+			break;
+		case CLUTCH_STATE_CLOSING:
+			if (too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_OPENING);
+			} 
+			else if (elapsed_time > config.clutch.wait_before_check && diff_small_enough && pedaling ) {
+				new_clutch_state(CLUTCH_STATE_CLOSED_ASSIST);
+			}
+			else if (elapsed_time > config.clutch.wait_before_check && diff_small_enough && braking ) {
+				new_clutch_state(CLUTCH_STATE_CLOSED_BRAKE);
+			}
+			else if (elapsed_time > config.clutch.wait_before_check && diff_small_enough && !pedaling && !braking) {
+				new_clutch_state(CLUTCH_STATE_CLOSED_FLOAT);
+			}
+			else if (elapsed_time > config.clutch.wait_before_check && !diff_small_enough ) { // closing unsuccessful, retry
+				new_clutch_state(CLUTCH_STATE_OPENING_TMP);
+			}
+			break;
+		case CLUTCH_STATE_CLOSING_TMP:
+			if (elapsed_time > config.clutch.wait_before_check) {
+				new_clutch_state(CLUTCH_STATE_OPENING);
+			}
+			break;
+		case CLUTCH_STATE_CLOSED_FLOAT:
+			if (too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_OPENING);
+			} 
+			else if (diff_too_large) { // got out of closed
+				new_clutch_state(CLUTCH_STATE_CLOSED_ERROR);
+			}
+			else if (pedaling) {
+				new_clutch_state(CLUTCH_STATE_CLOSED_ASSIST);
+			}
+			else if (braking) {
+				new_clutch_state(CLUTCH_STATE_CLOSED_BRAKE);
+			}
+			else if (elapsed_time > config.clutch.wait_before_open) {
+				new_clutch_state(CLUTCH_STATE_OPENING);
+			}
+			break;
+		case CLUTCH_STATE_CLOSED_BRAKE:
+			if (too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_OPENING);
+			} 
+			else if (diff_too_large) { // got out of closed
+				new_clutch_state(CLUTCH_STATE_CLOSED_ERROR);
+			}
+			else if (!braking) {
+				new_clutch_state(CLUTCH_STATE_CLOSED_FLOAT);
+			}
+			break;
+		case CLUTCH_STATE_CLOSED_ASSIST:
+			if (too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_OPENING);
+			} 
+			else if (diff_too_large) { // got out of closed
+				new_clutch_state(CLUTCH_STATE_CLOSED_ERROR);
+			}
+			else if (!pedaling) {
+				new_clutch_state(CLUTCH_STATE_CLOSED_FLOAT);
+			}
+			break;
+		case CLUTCH_STATE_CLOSED_ERROR:
+			if (too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_OPENING);
+			} 
+			else if (diff_small_enough && pedaling) {
+				new_clutch_state(CLUTCH_STATE_CLOSED_ASSIST);
+			}
+			else if (diff_small_enough && braking) {
+				new_clutch_state(CLUTCH_STATE_CLOSED_BRAKE);
+			}
+			else if (diff_small_enough && !pedaling && !braking) {
+				new_clutch_state(CLUTCH_STATE_CLOSED_FLOAT);
+			}
+			else if (elapsed_time > config.clutch.wait_before_sync_loss) { // out of sync for too long, try to sync again
+				new_clutch_state(CLUTCH_STATE_OPENING_TMP);
+			}
+			break;
+		case CLUTCH_STATE_OPENING:
+			if (too_slow && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_SYNCING);
+			}
+			else if (elapsed_time > config.clutch.wait_before_check && diff_large_enough) { // opening successful
+				new_clutch_state(CLUTCH_STATE_OPEN);
+			}
+			else if (elapsed_time > config.clutch.wait_before_check && !diff_large_enough) { // opening failed
+				new_clutch_state(CLUTCH_STATE_CLOSING_TMP);
+			}
+			else if (pedaling && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_WAITING);
+			}
+			else if (brake_tentative && not_too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_SYNCING);
+			}
+			break;
+		case CLUTCH_STATE_OPENING_TMP:
+			if (elapsed_time > config.clutch.wait_before_check) {
+				new_clutch_state(CLUTCH_STATE_SYNCING);
+			}
+			break;
+		default:
+			break;
 	}
 }
 
 static void update_motor_control()
 {
+	char log_text[64];
 	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 	static uint32_t cnt = 0;
-	
-	cnt++;
 
 	if (command_line_speed >= 0){
 		set_motor_speed(command_line_speed);
-	} else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_SYNCED){
-		float target_speed = wheel_speed - config.clutch.sync_rpm_diff;
-		if (target_speed < 0){
-			target_speed = 0;
-		}
+		sprintf(log_text, "RPM set to %4.0f", (double)(command_line_speed));
+	} 
+	else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_SYNCED) {
+		float target_speed = MAX((wheel_speed - config.clutch.sync_rpm_diff), 0);
 		set_motor_speed(target_speed);
-		if (cnt % (config.update_rate_hz / 10) == 0){
-			print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, (double)(target_speed));
+		sprintf(log_text, "RPM set to %4.0f", (double)(target_speed));
+	} 
+	else if (clutch_state == CLUTCH_STATE_CLOSED_BRAKE) {
+		static float brake_current = 0;
+		static systime_t last_time = 0;
+		apply_ramping(&brake_current, &last_time, pedal_brake_position_rel, config.back_pedal_brake.current_ramp_time, config.back_pedal_brake.current_ramp_time);
+		mc_interface_set_brake_current_rel(brake_current);
+		sprintf(log_text, "break current set to %d%%", (int)floor(brake_current*100));
+	} 
+	else if (clutch_state == CLUTCH_STATE_CLOSED_ASSIST) {
+		switch (config.ctrl_type){
+			case CUSTOM_CTRL_TYPE_NONE:
+				break;
+			case CUSTOM_CTRL_TYPE_PID:
+				set_motor_speed(pedal_speed);
+				sprintf(log_text, "RPM set to %4.0f", (double)(pedal_speed));
+				break;
+			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED: 
+				mc_interface_set_current_rel(pedal_speed_rel);
+				sprintf(log_text, "current set to %d%%", (int)(pedal_speed_rel*100));
+				break;
+			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE: 
+				mc_interface_set_current_rel(pedal_torque_rel);
+				sprintf(log_text, "current set to %d%%", (int)(pedal_torque_rel*100));
+				break;
+			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE:
+				mc_interface_set_current_rel(pedal_speed_rel * pedal_torque_rel);
+				sprintf(log_text, "current set to %d%%", (int)(pedal_speed_rel * pedal_torque_rel * 100));
+				break;
+			default: 
+				break;
 		}
-	} else if (clutch_state == CLUTCH_STATE_CLOSING){
+	} else {
 		mc_interface_set_current_rel(0.0);
-		if (cnt % (config.update_rate_hz / 10) == 0){
-			print_log(LOG_GROUP_MOTOR,"[%4.2f] CURRENT set to %d", (double)timestamp, 0);
-		}
-	} else if (clutch_state == CLUTCH_STATE_CLOSED){
-		if (pedal_brake_position_rel > 0){
-			static float brake_current = 0;
-			static systime_t last_time = 0;
-			apply_ramping(&brake_current, &last_time, pedal_brake_position_rel, config.back_pedal_brake.current_ramp_time, config.back_pedal_brake.current_ramp_time);
-			mc_interface_set_brake_current_rel(brake_current);
-			if (cnt % (config.update_rate_hz / 10) == 0){
-				print_log(LOG_GROUP_MOTOR,"[%4.2f] BREAK set to %d%%", (double)timestamp, (int)floor(brake_current*100));
-			}
-		} else if (pedal_speed > 0){
-			switch (config.ctrl_type){
-				case CUSTOM_CTRL_TYPE_NONE:
-					break;
-				case CUSTOM_CTRL_TYPE_PID:
-					set_motor_speed(pedal_speed);
-					if (cnt % (config.update_rate_hz / 10) == 0){
-						print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f (tmp solution)", (double)timestamp, (double)(pedal_speed));
-					}
-					break;
-				case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED: 
-					mc_interface_set_current_rel(pedal_speed_rel);
-					break;
-				case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE: 
-					mc_interface_set_current_rel(pedal_torque_rel);
-					break;
-				case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE:
-					mc_interface_set_current_rel(pedal_speed_rel * pedal_torque_rel);
-					break;
-				default: 
-					break;
-			}
-		} else {
-			if (cnt % (config.update_rate_hz / 10) == 0){
-				print_log(LOG_GROUP_MOTOR,"[%4.2f] RPM set to %4.0f", (double)timestamp, 0);
-			}
-			mc_interface_set_current_rel(0.0);
-		}
-	} else { //clutch open or opening
-		if (cnt % (config.update_rate_hz / 10) == 0){
-			print_log(LOG_GROUP_MOTOR,"[%4.2f] CURRENT set to %d", (double)timestamp, 0);
-		}
-		mc_interface_set_current_rel(0.0);
+		sprintf(log_text, "current set to %d%%", 0);
+	}
+
+	if (cnt++ % (config.update_rate_hz / 10) == 0){
+		print_log(LOG_GROUP_MOTOR,"[%4.2f] %s", (double)timestamp, log_text);
 	}
 }
 
@@ -1869,7 +1889,8 @@ static void close_clutch(void)
 	//	print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH CLOSE DISABLED DUE TO TOO MANY FAILURES", (double)clutch_timestamp);
 	//	return;
 	//}
-	if (clutch_state != CLUTCH_STATE_CLOSED && clutch_state != CLUTCH_STATE_CLOSING && config.clutch.mode != CLUTCH_MODE_OPEN){ 
+	if (clutch_state != CLUTCH_STATE_CLOSED_FLOAT && clutch_state != CLUTCH_STATE_CLOSED_BRAKE && clutch_state != CLUTCH_STATE_CLOSED_ASSIST && clutch_state != CLUTCH_STATE_CLOSED_ERROR && 
+		clutch_state != CLUTCH_STATE_CLOSING && config.clutch.mode != CLUTCH_MODE_OPEN){ 
 		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, config.clutch.invert_direction ? 1 : 0);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_CLOSING;
@@ -1879,9 +1900,28 @@ static void close_clutch(void)
 
 static void new_clutch_state(clutch_state_type cs)
 {
-	clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
-	clutch_state = cs;
-	print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH %s", (double)clutch_timestamp, (int)clutch_state_str[clutch_state]);
+	if (cs == CLUTCH_STATE_OPENING) {
+		open_clutch();
+	} else 
+	if (cs == CLUTCH_STATE_SYNCING) {
+		sync_clutch();
+	} else
+	if (cs == CLUTCH_STATE_CLOSING) {
+		close_clutch();
+	} else 
+	if (cs == CLUTCH_STATE_OPENING_TMP) {
+		open_clutch();
+		clutch_state = CLUTCH_STATE_OPENING_TMP;
+	} else
+	if (cs == CLUTCH_STATE_CLOSING_TMP) {
+		close_clutch();
+		clutch_state = CLUTCH_STATE_CLOSING_TMP;
+	} else {
+	    clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	    clutch_state = cs;
+	    print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH %s", (double)clutch_timestamp, (int)clutch_state_str[clutch_state]);
+	}
+	update_clutch_state();
 }
 
 static void set_motor_speed(float mwrpm) {
