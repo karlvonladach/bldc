@@ -76,11 +76,10 @@ typedef enum {
 } clutch_mode_type;
 
 typedef enum {
-    SPEED_SENSOR_TYPE_NONE = 0,
+    SPEED_SENSOR_TYPE_SINGLE_POLL = 0,
     SPEED_SENSOR_TYPE_SINGLE_INTERRUPT,
-    SPEED_SENSOR_TYPE_SINGLE_POLL,
-    SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT,
 	SPEED_SENSOR_TYPE_QUADRATURE_POLL,
+    SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT,
     SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT
 } speed_sensor_type;
 
@@ -146,5 +145,29 @@ typedef struct {
 	//float current_scaling;
 	uint32_t update_rate_hz;
 } custom_config_type;
+
+// Config parameter types
+typedef enum {
+    CONFIG_TYPE_FLOAT,
+    CONFIG_TYPE_UINT32,
+    CONFIG_TYPE_BOOL,
+    CONFIG_TYPE_ENUM
+} config_param_type_t;
+
+// Config parameter structure
+typedef struct {
+    const char* name;                // Terminal command name
+    const char* description;         // Help text description
+    config_param_type_t type;        // Parameter type
+    void* config_ptr;                // Pointer to config field
+    uint16_t eeprom_addr;            // EEPROM address
+    union {
+        float float_default;
+        uint32_t uint32_default;
+        bool bool_default;
+        uint32_t enum_default;
+    } default_value;
+    const char* enum_values;         // For enum types, comma-separated values
+} config_param_t;
 
 #endif /* APP_REGEN_TYPES_H_ */
