@@ -198,9 +198,9 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR}, NULL},
     
     // Back pedal brake config
-    {"brake_start", "Back pedal brake start position", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR, 
+    {"brake_start_pos", "Back pedal brake start position", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS}, NULL},
-    {"brake_end", "Back pedal brake end position", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.end_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS_ADDR, 
+    {"brake_end_pos", "Back pedal brake end position", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.end_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS}, NULL},
     {"brake_wait_release", "Back pedal brake wait before release time", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.wait_before_release, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE}, NULL},
@@ -212,13 +212,13 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME}, NULL},
     
     // Clutch config
-    {"clutch_open", "Clutch wait before open time", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_open, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN_ADDR, 
+    {"clutch_wait_open", "Clutch wait before open time", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_open, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN}, NULL},
-    {"clutch_sync", "Clutch wait before sync time", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_ADDR, 
+    {"clutch_wait_sync", "Clutch wait before sync time", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC}, NULL},
-    {"clutch_check", "Clutch wait before check time", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_check, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK_ADDR, 
+    {"clutch_wait_check", "Clutch wait before check time", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_check, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK}, NULL},
-    {"clutch_sync_loss", "Clutch wait before sync loss time", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync_loss, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR, 
+    {"clutch_wait_sync_loss", "Clutch wait before sync loss time", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync_loss, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS}, NULL},
     {"clutch_sync_timeout", "Clutch sync timeout", CONFIG_TYPE_FLOAT, &config.clutch.sync_timeout, APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT}, NULL},
