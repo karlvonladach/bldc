@@ -1474,13 +1474,13 @@ static void update_clutch_state(void)
 			if (too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_OPENING);
 			} 
-			else if (diff_small_enough && pedaling) {
+			else if (!diff_too_large && pedaling) {
 				new_clutch_state(CLUTCH_STATE_CLOSED_ASSIST);
 			}
-			else if (diff_small_enough && braking) {
+			else if (!diff_too_large && braking) {
 				new_clutch_state(CLUTCH_STATE_CLOSED_BRAKE);
 			}
-			else if (diff_small_enough && !pedaling && !braking) {
+			else if (!diff_too_large && !pedaling && !braking) {
 				new_clutch_state(CLUTCH_STATE_CLOSED_FLOAT);
 			}
 			else if (elapsed_time > config.clutch.wait_before_sync_loss) { // out of sync for too long, try to sync again
