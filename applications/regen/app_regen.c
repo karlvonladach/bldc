@@ -1549,7 +1549,7 @@ static void update_motor_control()
 				sprintf(log_text, "current set to %d%%", (int)(pedal_speed_rel*100));
 				break;
 			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE: 
-				mc_interface_set_current_rel(pedal_torque_rel);
+				mc_interface_set_current_rel((pedal_speed >= config.pedal_sensor.rpm_start) ? pedal_torque_rel : 0);
 				sprintf(log_text, "current set to %d%%", (int)(pedal_torque_rel*100));
 				break;
 			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE:
