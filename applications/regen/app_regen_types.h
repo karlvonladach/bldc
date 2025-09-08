@@ -64,7 +64,8 @@ typedef enum {
     CLUTCH_STATE_CLOSED_FLOAT = 33,
     CLUTCH_STATE_CLOSED_BRAKE = 35,
     CLUTCH_STATE_CLOSED_ASSIST = 37,
-    CLUTCH_STATE_CLOSED_ERROR = 40
+    CLUTCH_STATE_CLOSED_ERROR = 40,
+    CLUTCH_STATE_ERROR = 50
 } clutch_state_type;
 
 typedef enum {
@@ -133,6 +134,8 @@ typedef struct {
     float max_rpm_close;
     bool invert_direction;
     bool enable_check;
+    uint32_t error_limit;
+    float error_period;
 } clutch_config_type;
 
 typedef struct {

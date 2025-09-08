@@ -72,6 +72,7 @@ static void update_motor_speed(void);
 static void update_clutch_state(void);
 static void update_motor_control(void);
 
+static void record_clutch_operation(void);
 static void open_clutch(void);
 static void sync_clutch(void);
 static void close_clutch(void);
@@ -125,6 +126,9 @@ static volatile float wheel_sensor_timestamp = 0;
 static volatile float clutch_timestamp = 0;
 static volatile uint8_t clutch_open_error_counter = 0;
 static volatile uint8_t clutch_close_error_counter = 0;
+static volatile float clutch_operation_timestamps[CLUTCH_OPERATION_BUFFER_SIZE];
+static volatile uint32_t clutch_operation_buffer_index = 0;
+static volatile uint32_t clutch_operation_count = 0;
 static volatile uint32_t HALL3_int_cntr_xp = 0;
 static volatile uint32_t HALL3_int_cntr_rt = 0;
 static volatile char* clutch_state_str[] = {
@@ -140,7 +144,8 @@ static volatile char* clutch_state_str[] = {
     "CLOSED (FLOAT)",
     "CLOSED (BRAKE)",
     "CLOSED (ASSIST)",
-    "CLOSED (ERROR)"
+    "CLOSED (ERROR)",
+	"ERROR"
 };
 
 // Config table - add new parameters here
@@ -240,6 +245,10 @@ static const config_param_t config_table[] = {
      {.bool_default = APP_CUSTOM_CONF_CLUTCH_INVERT_DIR}, NULL},
     {"clutch_enable_check", "Enable/disable continuous check of open/close success (0 or 1)", CONFIG_TYPE_BOOL, &config.clutch.enable_check, APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK_ADDR, 
      {.bool_default = APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK}, NULL},
+	{"clutch_error_limit", "Clutch error limit before disabling (number of errors)", CONFIG_TYPE_UINT32, &config.clutch.error_limit, APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT_ADDR, 
+	 {.uint32_default = APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT}, NULL},
+	{"clutch_error_period", "Clutch error period (seconds)", CONFIG_TYPE_FLOAT, &config.clutch.error_period, APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD_ADDR, 
+	 {.float_default = APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD}, NULL},
     
     // Other config
     {"update_rate", "Sensor signal processing rate in Hz", CONFIG_TYPE_UINT32, &config.update_rate_hz, APP_CUSTOM_CONF_UPDATE_RATE_HZ_ADDR, 
@@ -1569,6 +1578,34 @@ static void update_motor_control()
 	}
 }
 
+static void record_clutch_operation(void)
+{
+	float current_time = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	
+	// Add current operation to buffer
+	clutch_operation_timestamps[clutch_operation_buffer_index] = current_time;
+	clutch_operation_buffer_index = (clutch_operation_buffer_index + 1) % CLUTCH_OPERATION_BUFFER_SIZE;
+	
+	if (clutch_operation_count < CLUTCH_OPERATION_BUFFER_SIZE) {
+		clutch_operation_count++;
+	}
+	
+	// Count operations in the last N seconds
+	uint32_t operations_in_last_n_seconds = 0;
+	for (uint32_t i = 0; i < clutch_operation_count; i++) {
+		if ((current_time - clutch_operation_timestamps[i]) <= config.clutch.error_period) {
+			operations_in_last_n_seconds++;
+		}
+	}
+	
+	// Log error if more than M operations in the last N seconds
+	if (operations_in_last_n_seconds > config.clutch.error_limit) {
+		print_log(LOG_GROUP_CLUTCH, "[%4.2f] EXCESSIVE CLUTCH OPERATIONS: %d operations in last %4.0f seconds!", 
+				  (double)current_time, operations_in_last_n_seconds, (double)config.clutch.error_period);
+		new_clutch_state(CLUTCH_STATE_ERROR);
+	}
+}
+
 static void open_clutch(void)
 {
 	//if (clutch_open_error_counter > APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS){
@@ -1576,6 +1613,7 @@ static void open_clutch(void)
 	//	return;
 	//}
 	if (clutch_state != CLUTCH_STATE_OPEN && clutch_state != CLUTCH_STATE_OPENING && config.clutch.mode != CLUTCH_MODE_CLOSED){ 
+		record_clutch_operation();
 		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, config.clutch.invert_direction ? 0 : 1);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_OPENING;
@@ -1604,6 +1642,7 @@ static void close_clutch(void)
 	//}
 	if (clutch_state != CLUTCH_STATE_CLOSED_FLOAT && clutch_state != CLUTCH_STATE_CLOSED_BRAKE && clutch_state != CLUTCH_STATE_CLOSED_ASSIST && clutch_state != CLUTCH_STATE_CLOSED_ERROR && 
 		clutch_state != CLUTCH_STATE_CLOSING && config.clutch.mode != CLUTCH_MODE_OPEN){ 
+		record_clutch_operation();
 		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, config.clutch.invert_direction ? 1 : 0);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_CLOSING;

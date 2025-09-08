@@ -86,9 +86,11 @@
 #define APP_CUSTOM_CONF_CLUTCH_MIN_RPM               50.0f   // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN          400.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE         350.0f  // WRPM
-#define APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS          5u      // max attempts to open/close clutch
 #define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR            1       // 1/0 = invert/no invert
 #define APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK          1       // 1/0 = enabled/disabled
+#define APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT           15      // max errors in defined period before disabling clutch
+#define APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD          60.0f   // seconds - period for counting clutch errors
+#define CLUTCH_OPERATION_BUFFER_SIZE                 30      // Clutch operation tracking for excessive operation detection
 
 #define APP_CUSTOM_CONF_UPDATE_RATE_HZ           500     // Hz - sensor signal processing and clutch control
 
@@ -138,5 +140,7 @@
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS_ADDR 43
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT_ADDR             44
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME_ADDR 45
+#define APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT_ADDR              46
+#define APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD_ADDR             47
 
 #endif /* APP_REGEN_CONF_H_ */
