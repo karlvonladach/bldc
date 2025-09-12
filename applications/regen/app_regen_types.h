@@ -133,7 +133,6 @@ typedef struct {
     float max_rpm_open;
     float max_rpm_close;
     bool invert_direction;
-    bool enable_check;
     uint32_t error_limit;
     float error_period;
 } clutch_config_type;

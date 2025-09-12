@@ -87,7 +87,6 @@
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN          400.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE         350.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR            1       // 1/0 = invert/no invert
-#define APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK          1       // 1/0 = enabled/disabled
 #define APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT           15      // max errors in defined period before disabling clutch
 #define APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD          60.0f   // seconds - period for counting clutch errors
 #define CLUTCH_OPERATION_BUFFER_SIZE                 16      // must be larger than APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT
@@ -133,7 +132,7 @@
 #define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR             36
 #define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM_ADDR           37
 #define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR_ADDR               38
-#define APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK_ADDR             39
+//#define APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK_ADDR             39
 #define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR    40
 #define APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR_ADDR        41
 #define APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF_ADDR     42

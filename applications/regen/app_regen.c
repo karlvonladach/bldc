@@ -243,8 +243,6 @@ static const config_param_t config_table[] = {
      {.enum_default = APP_CUSTOM_CONF_CLUTCH_MODE}, "closed,open,auto,manual,fullmanual"},
     {"clutch_invert", "Invert clutch direction (0 or 1)", CONFIG_TYPE_BOOL, &config.clutch.invert_direction, APP_CUSTOM_CONF_CLUTCH_INVERT_DIR_ADDR, 
      {.bool_default = APP_CUSTOM_CONF_CLUTCH_INVERT_DIR}, NULL},
-    {"clutch_enable_check", "Enable/disable continuous check of open/close success (0 or 1)", CONFIG_TYPE_BOOL, &config.clutch.enable_check, APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK_ADDR, 
-     {.bool_default = APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK}, NULL},
 	{"clutch_error_limit", "Clutch error limit before disabling (number of errors)", CONFIG_TYPE_UINT32, &config.clutch.error_limit, APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT_ADDR, 
 	 {.uint32_default = APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT}, NULL},
 	{"clutch_error_period", "Clutch error period (seconds)", CONFIG_TYPE_FLOAT, &config.clutch.error_period, APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD_ADDR, 
