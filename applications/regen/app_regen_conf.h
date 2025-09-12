@@ -90,7 +90,7 @@
 #define APP_CUSTOM_CONF_CLUTCH_ENABLE_CHECK          1       // 1/0 = enabled/disabled
 #define APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT           15      // max errors in defined period before disabling clutch
 #define APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD          60.0f   // seconds - period for counting clutch errors
-#define CLUTCH_OPERATION_BUFFER_SIZE                 30      // Clutch operation tracking for excessive operation detection
+#define CLUTCH_OPERATION_BUFFER_SIZE                 16      // must be larger than APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT
 
 #define APP_CUSTOM_CONF_UPDATE_RATE_HZ           500     // Hz - sensor signal processing and clutch control
 
