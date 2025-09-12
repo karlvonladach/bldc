@@ -1350,7 +1350,7 @@ static void update_clutch_state(void)
 	bool pedaling          = (pedal_speed > 0 && pedal_torque > 0);
 	bool braking           = (pedal_brake_position > config.back_pedal_brake.start_pos); // or (pedal_brake_position_rel > 0);
 	bool brake_tentative   = (pedal_brake_position > config.back_pedal_brake.sync_start_pos);
-	bool manual_mode       = (config.clutch.mode == CLUTCH_MODE_FULL_MANUAL);
+	bool manual_mode       = (config.clutch.mode == CLUTCH_MODE_MANUAL);
 	bool auto_mode         = (config.clutch.mode == CLUTCH_MODE_AUTO);
 
 	switch (clutch_state) {
@@ -1372,7 +1372,7 @@ static void update_clutch_state(void)
 			if (too_slow && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_SYNCING);
 			}
-			else if (diff_large_enough) { // got out of closed
+			else if (!diff_too_small) { // got out of closed
 				new_clutch_state(CLUTCH_STATE_OPEN);
 			}
 			else if (elapsed_time > config.clutch.wait_before_sync_loss) { // stuck for too long, try to open
@@ -1673,7 +1673,6 @@ static void new_clutch_state(clutch_state_type cs)
 	    clutch_state = cs;
 	    print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH %s", (double)clutch_timestamp, (int)clutch_state_str[clutch_state]);
 	}
-	update_clutch_state();
 }
 
 static void set_motor_speed(float mwrpm) {
