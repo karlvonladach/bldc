@@ -458,6 +458,8 @@ static THD_FUNCTION(my_thread, arg) {
 		//measure torque
 		update_pedal_torque();
 
+		plot_points(PLOT_TORQUE, timestamp, pedal_torque*100);
+
 		//measure pedal forward speed or backward position
 		update_pedal_speed_and_position(FALSE);
 
@@ -791,6 +793,9 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 		} else if (strcmp(argv[1], "wrpm_pred") == 0) {
 			plots_enabled |= (1 << PLOT_WHEEL_PRED_RPM);
 			commands_printf("Predicted Wheel RPM plot enabled");
+		} else if (strcmp(argv[1], "torque") == 0) {
+			plots_enabled |= (1 << PLOT_TORQUE);
+			commands_printf("Torque plot enabled");
 		} else if (strcmp(argv[1], "essential") == 0) {
 			plots_enabled |= (1 << PLOT_PEDAL_RPM);
 			plots_enabled |= (1 << PLOT_BRAKE_POS);
@@ -802,7 +807,7 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 			plots_enabled = 0xFFFFFFFF;
 			commands_printf("All plots enabled");
         } else {
-            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  essential\r\n  all\r\n");
+            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  essential\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -842,6 +847,9 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 		} else if (strcmp(argv[1], "wrpm_pred") == 0) {
 			plots_enabled &= ~(1 << PLOT_WHEEL_PRED_RPM);
 			commands_printf("Predicted Wheel RPM plot disabled");
+		} else if (strcmp(argv[1], "torque") == 0) {
+			plots_enabled &= ~(1 << PLOT_TORQUE);
+			commands_printf("Torque plot disabled");
 		} else if (strcmp(argv[1], "essential") == 0) {
 			plots_enabled &= ~(1 << PLOT_PEDAL_RPM);
 			plots_enabled &= ~(1 << PLOT_BRAKE_POS);
@@ -853,7 +861,7 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 			plots_enabled = 0;
 			commands_printf("All plots disabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  essential\r\n  all\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  essential\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -1772,6 +1780,10 @@ static void init_plots(void) {
 	if (plots_enabled & (1 << PLOT_WHEEL_PRED_RPM)) {
 		plot_numbers[PLOT_WHEEL_PRED_RPM] = plot_number++;
 		commands_plot_add_graph("Predicted Wheel RPM");
+	}
+	if (plots_enabled & (1 << PLOT_TORQUE)) {
+		plot_numbers[PLOT_TORQUE] = plot_number++;
+		commands_plot_add_graph("Pedal Torque");
 	}
 }
 
