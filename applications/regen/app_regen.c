@@ -884,6 +884,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	}
 	
 	commands_printf("  clutch [open/close] - Open or close the clutch");
+	commands_printf("  clutchstate [state number] - Set the clutch state (for debugging)");
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging. Logs are grouped by functionality. Groups can be enabled/disabled separately.");
 	commands_printf("    Log groups: sensor, motor, clutch, error");
 	commands_printf("  enable_plot [plot_name] - Enable a plot");
