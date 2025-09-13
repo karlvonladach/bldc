@@ -187,6 +187,10 @@ static const config_param_t config_table[] = {
     {"wheel_skip_threshold", "Wheel sensor skipped magnet threshold", CONFIG_TYPE_FLOAT, &config.wheel_sensor.skipped_magnet_threshold, APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR}, NULL},
     
+	// Torque sensor config
+	{"torque_sensor_type", "Torque sensor type", CONFIG_TYPE_ENUM, &config.torque_sensor.sensor_type, APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE_ADDR, 
+	 {.enum_default = APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE}, "none,adc"},
+
     // Back pedal brake config
     {"brake_start_pos", "Back pedal brake start position", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS}, NULL},
