@@ -58,7 +58,7 @@ static void load_config_from_eeprom(void);
 static void terminal_set_speed(int argc, const char **argv);
 static void terminal_config(int argc, const char **argv);
 static void terminal_clutch(int argc, const char **argv);
-static void terminal_clutchstate(int argc, const char **argv);
+static void terminal_clutch_state(int argc, const char **argv);
 static void terminal_log(int argc, const char **argv);
 static void terminal_cmd_enable_plot(int argc, const char **argv);
 static void terminal_cmd_disable_plot(int argc, const char **argv);
@@ -292,10 +292,10 @@ void app_custom_start(void) {
 			terminal_clutch);
 
     terminal_register_command_callback(
-			"clutchstate",
+			"clutch_state",
 			"Set the clutch state",
 			"[state number]",
-			terminal_clutchstate);
+			terminal_clutch_state);
 
 	terminal_register_command_callback(
 			"log",
@@ -748,7 +748,7 @@ static void terminal_clutch(int argc, const char **argv) {
 }
 
 // Callback function for the terminal command with arguments.
-static void terminal_clutchstate(int argc, const char **argv) {
+static void terminal_clutch_state(int argc, const char **argv) {
 	if (argc == 2) {
 		int cs;
 		sscanf(argv[1], "%d", &cs);
@@ -884,7 +884,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	}
 	
 	commands_printf("  clutch [open/close] - Open or close the clutch");
-	commands_printf("  clutchstate [state number] - Set the clutch state (for debugging)");
+	commands_printf("  clutch_state [state number] - Set the clutch state (for debugging)");
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging. Logs are grouped by functionality. Groups can be enabled/disabled separately.");
 	commands_printf("    Log groups: sensor, motor, clutch, error");
 	commands_printf("  enable_plot [plot_name] - Enable a plot");
