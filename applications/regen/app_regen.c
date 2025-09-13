@@ -58,6 +58,7 @@ static void load_config_from_eeprom(void);
 static void terminal_set_speed(int argc, const char **argv);
 static void terminal_config(int argc, const char **argv);
 static void terminal_clutch(int argc, const char **argv);
+static void terminal_clutchstate(int argc, const char **argv);
 static void terminal_log(int argc, const char **argv);
 static void terminal_cmd_enable_plot(int argc, const char **argv);
 static void terminal_cmd_disable_plot(int argc, const char **argv);
@@ -299,11 +300,19 @@ void app_custom_start(void) {
 			"Configure custom app parameters",
 			"[parameter] [value]",
 			terminal_config);
+
 	terminal_register_command_callback(
 			"clutch",
 			"Open or close the clutch",
 			"[open/close]",
 			terminal_clutch);
+
+    terminal_register_command_callback(
+			"clutchstate",
+			"Set the clutch state",
+			"[state number]",
+			terminal_clutchstate);
+
 	terminal_register_command_callback(
 			"log",
 			"Enable/disable logging",
@@ -749,6 +758,17 @@ static void terminal_clutch(int argc, const char **argv) {
 		} else {
 			commands_printf("Invalid value.\r\nValid values:\r\n  open\r\n  close\r\n");
 		}
+	} else {
+		commands_printf("This command requires one argument.\n");
+	}
+}
+
+// Callback function for the terminal command with arguments.
+static void terminal_clutchstate(int argc, const char **argv) {
+	if (argc == 2) {
+		int cs;
+		sscanf(argv[1], "%d", &cs);
+		clutch_state = cs;
 	} else {
 		commands_printf("This command requires one argument.\n");
 	}
