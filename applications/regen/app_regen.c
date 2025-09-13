@@ -1627,11 +1627,7 @@ static void record_clutch_operation(void)
 
 static void open_clutch(void)
 {
-	//if (clutch_open_error_counter > APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS){
-	//	print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH OPEN DISABLED DUE TO TOO MANY FAILURES", (double)clutch_timestamp);
-	//	return;
-	//}
-	if (clutch_state != CLUTCH_STATE_OPEN && clutch_state != CLUTCH_STATE_OPENING && config.clutch.mode != CLUTCH_MODE_CLOSED){ 
+	if (config.clutch.mode != CLUTCH_MODE_CLOSED){ 
 		record_clutch_operation();
 		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, config.clutch.invert_direction ? 0 : 1);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
@@ -1642,11 +1638,7 @@ static void open_clutch(void)
 
 static void sync_clutch(void)
 {
-	//if (clutch_close_error_counter > APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS){
-	//	print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH SYNC DISABLED DUE TO TOO MANY FAILURES", (double)clutch_timestamp);
-	//	return;
-	//}
-	if ((clutch_state == CLUTCH_STATE_OPEN || clutch_state == CLUTCH_STATE_OPENING) && config.clutch.mode != CLUTCH_MODE_OPEN){ 
+	if (config.clutch.mode != CLUTCH_MODE_OPEN){ 
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 		clutch_state = CLUTCH_STATE_SYNCING;
 		print_log(LOG_GROUP_CLUTCH,"[%4.2f] SYNCING...", (double)clutch_timestamp);
@@ -1655,12 +1647,7 @@ static void sync_clutch(void)
 
 static void close_clutch(void)
 {
-	//if (clutch_close_error_counter > APP_CUSTOM_CONF_CLUTCH_MAX_ATTEMPTS){
-	//	print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH CLOSE DISABLED DUE TO TOO MANY FAILURES", (double)clutch_timestamp);
-	//	return;
-	//}
-	if (clutch_state != CLUTCH_STATE_CLOSED_FLOAT && clutch_state != CLUTCH_STATE_CLOSED_BRAKE && clutch_state != CLUTCH_STATE_CLOSED_ASSIST && clutch_state != CLUTCH_STATE_CLOSED_ERROR && 
-		clutch_state != CLUTCH_STATE_CLOSING && config.clutch.mode != CLUTCH_MODE_OPEN){ 
+	if (config.clutch.mode != CLUTCH_MODE_OPEN){ 
 		record_clutch_operation();
 		palWritePad(APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1, APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1, config.clutch.invert_direction ? 1 : 0);
 		clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
