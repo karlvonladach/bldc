@@ -132,22 +132,6 @@ static volatile uint32_t clutch_operation_buffer_index = 0;
 static volatile uint32_t clutch_operation_count = 0;
 static volatile uint32_t HALL3_int_cntr_xp = 0;
 static volatile uint32_t HALL3_int_cntr_rt = 0;
-static volatile char* clutch_state_str[] = {
-    "OPEN",
-    "OPEN (ERROR)",
-    "OPENING",
-    "OPENING TEMPORARILY",
-    "WAITING",
-    "SYNCING",
-    "SYNCED",
-    "CLOSING",
-    "CLOSING TEMPORARILY",
-    "CLOSED (FLOAT)",
-    "CLOSED (BRAKE)",
-    "CLOSED (ASSIST)",
-    "CLOSED (ERROR)",
-	"ERROR"
-};
 
 // Config table - add new parameters here
 static const config_param_t config_table[] = {
@@ -1690,9 +1674,27 @@ static void new_clutch_state(clutch_state_type cs)
 		close_clutch();
 		clutch_state = CLUTCH_STATE_CLOSING_TMP;
 	} else {
+		char *clutch_state_str;
+		switch (cs) {
+			case CLUTCH_STATE_OPEN: clutch_state_str = "OPEN"; break;
+			case CLUTCH_STATE_OPEN_ERROR: clutch_state_str = "OPEN (ERROR)"; break;
+			case CLUTCH_STATE_OPENING: clutch_state_str = "OPENING"; break;
+			case CLUTCH_STATE_OPENING_TMP: clutch_state_str = "OPENING TEMPORARILY"; break;
+			case CLUTCH_STATE_WAITING: clutch_state_str = "WAITING"; break;
+			case CLUTCH_STATE_SYNCING: clutch_state_str = "SYNCING"; break;
+			case CLUTCH_STATE_SYNCED: clutch_state_str = "SYNCED"; break;
+			case CLUTCH_STATE_CLOSING: clutch_state_str = "CLOSING"; break;
+			case CLUTCH_STATE_CLOSING_TMP: clutch_state_str = "CLOSING TEMPORARILY"; break;
+			case CLUTCH_STATE_CLOSED_FLOAT: clutch_state_str = "CLOSED (FLOAT)"; break;
+			case CLUTCH_STATE_CLOSED_BRAKE: clutch_state_str = "CLOSED (BRAKE)"; break;
+			case CLUTCH_STATE_CLOSED_ASSIST: clutch_state_str = "CLOSED (ASSIST)"; break;
+			case CLUTCH_STATE_CLOSED_ERROR: clutch_state_str = "CLOSED (ERROR)"; break;
+			case CLUTCH_STATE_ERROR: clutch_state_str = "ERROR"; break;
+			default: clutch_state_str = "UNKNOWN"; break;
+		}
 	    clutch_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 	    clutch_state = cs;
-	    print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH %s", (double)clutch_timestamp, (int)clutch_state_str[clutch_state]);
+	    print_log(LOG_GROUP_CLUTCH,"[%4.2f] CLUTCH %s", (double)clutch_timestamp, clutch_state_str);
 	}
 }
 
