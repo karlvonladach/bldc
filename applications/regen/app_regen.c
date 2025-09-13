@@ -1409,6 +1409,9 @@ static void update_clutch_state(void)
 			else if (braking && not_too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
+			else if (!pedaling && !brake_tentative && not_too_fast && auto_mode) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
 			else if (manual_mode) {
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
