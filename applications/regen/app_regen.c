@@ -1413,7 +1413,8 @@ static void update_clutch_state(void)
 			else if (diff_to_target_small_enough) {
 				new_clutch_state(CLUTCH_STATE_SYNCED);
 			}
-			else if (elapsed_time > config.clutch.sync_timeout) { // took too long, open again
+			else if (elapsed_time > config.clutch.sync_timeout) {
+				update_pedal_speed_and_position(TRUE); // reset brake position to avoid immediate re-sync
 				new_clutch_state(CLUTCH_STATE_OPEN);
 			}
 			break;
@@ -1433,7 +1434,8 @@ static void update_clutch_state(void)
 			else if (manual_mode) {
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
-			else if (elapsed_time > config.clutch.sync_timeout && auto_mode) { // took too long, open again
+			else if (elapsed_time > config.clutch.sync_timeout && auto_mode) {
+				update_pedal_speed_and_position(TRUE); // reset brake position to avoid immediate re-sync
 				new_clutch_state(CLUTCH_STATE_OPEN);
 			}
 			break;
