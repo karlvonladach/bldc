@@ -1026,7 +1026,6 @@ static void update_pedal_speed_and_position(bool reset)
 	static float brake_inactivity_time = 0;
 
 	if (reset) {
-		old_state = 0;
 		old_timestamp = 0;
 		old_period = 0;
 		inactivity_time = 0;
