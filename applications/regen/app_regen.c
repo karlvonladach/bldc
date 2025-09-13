@@ -1360,7 +1360,7 @@ static void update_clutch_state(void)
 	bool not_too_fast      = (wheel_speed < config.clutch.max_rpm_close);
 	bool diff_to_target_small_enough = (abs(MAX((wheel_speed - config.clutch.sync_rpm_diff), 0) - motor_speed) < config.clutch.first_check_rpm_diff);
 	bool diff_small_enough = (abs(wheel_speed - motor_speed) < config.clutch.first_check_rpm_diff);
-	bool diff_large_enough = (abs(wheel_speed - motor_speed) > config.clutch.first_check_rpm_diff);
+	bool diff_large_enough = (abs(wheel_speed - motor_speed) > config.clutch.open_check_rpm_diff);
 	bool diff_too_small    = (abs(wheel_speed - motor_speed) < config.clutch.open_check_rpm_diff) && (wheel_speed > config.clutch.open_check_rpm_diff);
 	bool diff_too_large    = (abs(wheel_speed - motor_speed) > config.clutch.closed_check_rpm_diff);
 	bool pedaling          = (pedal_speed > 0 && pedal_torque > 0);
