@@ -214,8 +214,10 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT}, NULL},
     {"clutch_sync_diff", "Clutch sync RPM difference", CONFIG_TYPE_FLOAT, &config.clutch.sync_rpm_diff, APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF}, NULL},
-    {"clutch_check_diff", "Clutch check RPM difference", CONFIG_TYPE_FLOAT, &config.clutch.check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF_ADDR, 
-     {.float_default = APP_CUSTOM_CONF_CLUTCH_CHECK_RPM_DIFF}, NULL},
+    {"clutch_closed_check_diff", "Clutch closed check RPM difference", CONFIG_TYPE_FLOAT, &config.clutch.closed_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF_ADDR, 
+     {.float_default = APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF}, NULL},
+	{"clutch_open_check_diff", "Clutch open check RPM difference", CONFIG_TYPE_FLOAT, &config.clutch.open_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF_ADDR, 
+	 {.float_default = APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF}, NULL},
     {"clutch_first_check_diff", "Clutch first check RPM difference", CONFIG_TYPE_FLOAT, &config.clutch.first_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF}, NULL},
     {"clutch_min_rpm", "Clutch minimum RPM", CONFIG_TYPE_FLOAT, &config.clutch.min_rpm, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_ADDR, 
@@ -1348,8 +1350,8 @@ static void update_clutch_state(void)
 	bool diff_to_target_small_enough = (abs(MAX((wheel_speed - config.clutch.sync_rpm_diff), 0) - motor_speed) < config.clutch.first_check_rpm_diff);
 	bool diff_small_enough = (abs(wheel_speed - motor_speed) < config.clutch.first_check_rpm_diff);
 	bool diff_large_enough = (abs(wheel_speed - motor_speed) > config.clutch.first_check_rpm_diff);
-	bool diff_too_small    = (abs(wheel_speed - motor_speed) < config.clutch.check_rpm_diff) && (wheel_speed > config.clutch.check_rpm_diff);
-	bool diff_too_large    = (abs(wheel_speed - motor_speed) > config.clutch.check_rpm_diff);
+	bool diff_too_small    = (abs(wheel_speed - motor_speed) < config.clutch.open_check_rpm_diff) && (wheel_speed > config.clutch.open_check_rpm_diff);
+	bool diff_too_large    = (abs(wheel_speed - motor_speed) > config.clutch.closed_check_rpm_diff);
 	bool pedaling          = (pedal_speed > 0 && pedal_torque > 0);
 	bool braking           = (pedal_brake_position > config.back_pedal_brake.start_pos); // or (pedal_brake_position_rel > 0);
 	bool brake_tentative   = (pedal_brake_position > config.back_pedal_brake.sync_start_pos);
