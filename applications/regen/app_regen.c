@@ -1474,7 +1474,7 @@ static void update_clutch_state(void)
 			else if (braking) {
 				new_clutch_state(CLUTCH_STATE_CLOSED_BRAKE);
 			}
-			else if (elapsed_time > config.clutch.wait_before_open) {
+			else if (elapsed_time > config.clutch.wait_before_open && !too_slow && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_OPENING);
 			}
 			break;
