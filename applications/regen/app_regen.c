@@ -1444,7 +1444,10 @@ static void update_clutch_state(void)
 			}
 			else if (too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_OPEN);
-			} 
+			}
+			else if (!diff_to_target_small_enough) {
+				new_clutch_state(CLUTCH_STATE_SYNCING);
+			}
 			else if (pedaling && not_too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
