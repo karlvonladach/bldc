@@ -1463,7 +1463,7 @@ static void update_clutch_state(void)
 			}
 			break;
 		case CLUTCH_STATE_CLOSING:
-			if (too_fast && auto_mode) {
+			if (elapsed_time > config.clutch.wait_before_check && too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_OPENING);
 			} 
 			else if (elapsed_time > config.clutch.wait_before_check && diff_small_enough && pedaling ) {
@@ -1547,10 +1547,10 @@ static void update_clutch_state(void)
 			}
 			break;
 		case CLUTCH_STATE_OPENING:
-			if (stopped) {
+			if (elapsed_time > config.clutch.wait_before_check && stopped) {
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
-			else if (too_slow && auto_mode) {
+			else if (elapsed_time > config.clutch.wait_before_check && too_slow && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_SYNCING);
 			}
 			else if (elapsed_time > config.clutch.wait_before_check && diff_large_enough) { // opening successful
@@ -1559,10 +1559,10 @@ static void update_clutch_state(void)
 			else if (elapsed_time > config.clutch.wait_before_check && !diff_large_enough) { // opening failed
 				new_clutch_state(CLUTCH_STATE_CLOSING_TMP);
 			}
-			else if (pedaling && auto_mode) {
+			else if (elapsed_time > config.clutch.wait_before_check && pedaling && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_WAITING);
 			}
-			else if (brake_tentative && not_too_fast && auto_mode) {
+			else if (elapsed_time > config.clutch.wait_before_check && brake_tentative && not_too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_SYNCING);
 			}
 			break;
