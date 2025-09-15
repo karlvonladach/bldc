@@ -131,7 +131,8 @@ typedef struct {
     float first_check_rpm_diff;
     float closed_check_rpm_diff;
     float open_check_rpm_diff;
-    float min_rpm;
+    float min_rpm_open;
+    float min_rpm_close;
     float max_rpm_open;
     float max_rpm_close;
     bool invert_direction;

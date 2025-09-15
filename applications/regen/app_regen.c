@@ -224,8 +224,10 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF}, NULL},
     {"clutch_first_check_diff", "Clutch first check RPM difference", CONFIG_TYPE_FLOAT, &config.clutch.first_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF}, NULL},
-    {"clutch_min_rpm", "Clutch minimum RPM", CONFIG_TYPE_FLOAT, &config.clutch.min_rpm, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_ADDR, 
-     {.float_default = APP_CUSTOM_CONF_CLUTCH_MIN_RPM}, NULL},
+	{"clutch_min_rpm_open", "Clutch minimum RPM for opening", CONFIG_TYPE_FLOAT, &config.clutch.min_rpm_open, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN_ADDR, 
+	 {.float_default = APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN}, NULL},
+	{"clutch_min_rpm_close", "Clutch minimum RPM for closing", CONFIG_TYPE_FLOAT, &config.clutch.min_rpm_close, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_CLOSE_ADDR, 
+	 {.float_default = APP_CUSTOM_CONF_CLUTCH_MIN_RPM_CLOSE}, NULL},
     {"clutch_max_rpm_open", "Clutch maximum RPM for opening", CONFIG_TYPE_FLOAT, &config.clutch.max_rpm_open, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN}, NULL},
     {"clutch_max_rpm_close", "Clutch maximum RPM for closing", CONFIG_TYPE_FLOAT, &config.clutch.max_rpm_close, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE_ADDR, 
@@ -1360,9 +1362,10 @@ static void update_clutch_state(void)
 	}
 
 	bool stopped           = (wheel_speed < config.wheel_sensor.rpm_min && motor_speed < config.wheel_sensor.rpm_min);
-	bool too_slow          = (wheel_speed < config.clutch.min_rpm);
-	bool too_fast          = (wheel_speed > config.clutch.max_rpm_open);
+	bool too_slow          = (wheel_speed < config.clutch.min_rpm_close);
+	bool not_too_slow      = (wheel_speed > config.clutch.min_rpm_open);
 	bool not_too_fast      = (wheel_speed < config.clutch.max_rpm_close);
+	bool too_fast          = (wheel_speed > config.clutch.max_rpm_open);
 	bool diff_to_target_small_enough = (abs(MAX((wheel_speed - config.clutch.sync_rpm_diff), 0) - motor_speed) < config.clutch.first_check_rpm_diff);
 	bool diff_small_enough = (abs(wheel_speed - motor_speed) < config.clutch.first_check_rpm_diff);
 	bool diff_large_enough = (abs(wheel_speed - motor_speed) > config.clutch.open_check_rpm_diff);
@@ -1497,7 +1500,7 @@ static void update_clutch_state(void)
 			else if (braking) {
 				new_clutch_state(CLUTCH_STATE_CLOSED_BRAKE);
 			}
-			else if (elapsed_time > config.clutch.wait_before_open && !too_slow && auto_mode) {
+			else if (elapsed_time > config.clutch.wait_before_open && not_too_slow && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_OPENING);
 			}
 			break;
