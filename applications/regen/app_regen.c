@@ -1341,6 +1341,10 @@ static void update_clutch_state(void)
 	float elapsed_time = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - clutch_timestamp;
 
 	if (config.clutch.mode == CLUTCH_MODE_FULL_MANUAL) {
+		if (wheel_speed < config.wheel_sensor.rpm_min && motor_speed < config.wheel_sensor.rpm_min) {
+			close_clutch();	
+		}
+
 		if (clutch_state == CLUTCH_STATE_OPENING) {
 			clutch_state = CLUTCH_STATE_OPEN;
 			print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN", (double)timestamp);
@@ -1355,6 +1359,7 @@ static void update_clutch_state(void)
 		return;
 	}
 
+	bool stopped           = (wheel_speed < config.wheel_sensor.rpm_min && motor_speed < config.wheel_sensor.rpm_min);
 	bool too_slow          = (wheel_speed < config.clutch.min_rpm);
 	bool too_fast          = (wheel_speed > config.clutch.max_rpm_open);
 	bool not_too_fast      = (wheel_speed < config.clutch.max_rpm_close);
@@ -1371,7 +1376,10 @@ static void update_clutch_state(void)
 
 	switch (clutch_state) {
 		case CLUTCH_STATE_OPEN:
-			if (too_slow && auto_mode) {
+			if (stopped) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
+			else if (too_slow && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_SYNCING);
 			}
 			else if (diff_too_small) { // got stuck closed
@@ -1385,7 +1393,10 @@ static void update_clutch_state(void)
 			}
 			break;
 		case CLUTCH_STATE_OPEN_ERROR:
-			if (too_slow && auto_mode) {
+			if (stopped) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
+			else if (too_slow && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_SYNCING);
 			}
 			else if (!diff_too_small) { // got out of closed
@@ -1396,7 +1407,10 @@ static void update_clutch_state(void)
 			}
 			break;
 		case CLUTCH_STATE_WAITING:
-			if (too_slow && auto_mode) {
+			if (stopped) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
+			else if (too_slow && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_SYNCING);
 			}
 			else if (!pedaling && auto_mode) {
@@ -1407,7 +1421,10 @@ static void update_clutch_state(void)
 			}
 			break;
 		case CLUTCH_STATE_SYNCING:
-			if (too_fast && auto_mode) {
+			if (stopped) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
+			else if (too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_OPEN);
 			} 
 			else if (diff_to_target_small_enough) {
@@ -1419,7 +1436,10 @@ static void update_clutch_state(void)
 			}
 			break;
 		case CLUTCH_STATE_SYNCED:
-			if (too_fast && auto_mode) {
+			if (stopped) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
+			else if (too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_OPEN);
 			} 
 			else if (pedaling && not_too_fast && auto_mode) {
@@ -1457,7 +1477,10 @@ static void update_clutch_state(void)
 			}
 			break;
 		case CLUTCH_STATE_CLOSING_TMP:
-			if (elapsed_time > config.clutch.wait_before_check) {
+			if (stopped) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
+			else if (elapsed_time > config.clutch.wait_before_check) {
 				new_clutch_state(CLUTCH_STATE_OPENING);
 			}
 			break;
@@ -1501,7 +1524,10 @@ static void update_clutch_state(void)
 			}
 			break;
 		case CLUTCH_STATE_CLOSED_ERROR:
-			if (too_fast && auto_mode) {
+			if (stopped) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
+			else if (too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_OPENING);
 			} 
 			else if (!diff_too_large && pedaling) {
@@ -1518,7 +1544,10 @@ static void update_clutch_state(void)
 			}
 			break;
 		case CLUTCH_STATE_OPENING:
-			if (too_slow && auto_mode) {
+			if (stopped) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
+			else if (too_slow && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_SYNCING);
 			}
 			else if (elapsed_time > config.clutch.wait_before_check && diff_large_enough) { // opening successful
@@ -1535,7 +1564,10 @@ static void update_clutch_state(void)
 			}
 			break;
 		case CLUTCH_STATE_OPENING_TMP:
-			if (elapsed_time > config.clutch.wait_before_check) {
+			if (stopped) {
+				new_clutch_state(CLUTCH_STATE_CLOSING);
+			}
+			else if (elapsed_time > config.clutch.wait_before_check) {
 				new_clutch_state(CLUTCH_STATE_SYNCING);
 			}
 			break;
