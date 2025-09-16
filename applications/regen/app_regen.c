@@ -1343,10 +1343,6 @@ static void update_clutch_state(void)
 	float elapsed_time = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY - clutch_timestamp;
 
 	if (config.clutch.mode == CLUTCH_MODE_FULL_MANUAL) {
-		if (wheel_speed < config.wheel_sensor.rpm_min && motor_speed < config.wheel_sensor.rpm_min) {
-			close_clutch();	
-		}
-
 		if (clutch_state == CLUTCH_STATE_OPENING) {
 			clutch_state = CLUTCH_STATE_OPEN;
 			print_log(LOG_GROUP_CLUTCH,"[%4.2f] OPEN", (double)timestamp);
