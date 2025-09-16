@@ -45,7 +45,7 @@
 
 // Threads
 static THD_FUNCTION(my_thread, arg);
-static THD_WORKING_AREA(my_thread_wa, 1024);
+static THD_WORKING_AREA(my_thread_wa, 2048);
 
 // Private functions
 static const config_param_t* find_config_param(const char* name);
@@ -586,22 +586,21 @@ static bool set_config_value(const config_param_t* param, const char* value_str)
             // Parse enum value from string
             uint32_t enum_val = 0;
             const char* enum_values = param->enum_values;
-            char* enum_copy = malloc(strlen(enum_values) + 1);
-            strcpy(enum_copy, enum_values);
-            
+            char enum_copy[128];
+            strncpy(enum_copy, enum_values, sizeof(enum_copy) - 1);
+            enum_copy[sizeof(enum_copy) - 1] = '\0';
+
             char* token = strtok(enum_copy, ",");
             while (token != NULL) {
                 if (strcmp(token, value_str) == 0) {
                     *(uint32_t*)param->config_ptr = enum_val;
                     v.as_u32 = enum_val;
-                    free(enum_copy);
                     conf_general_store_eeprom_var_custom(&v, param->eeprom_addr);
                     return true;
                 }
                 enum_val++;
                 token = strtok(NULL, ",");
             }
-            free(enum_copy);
             commands_printf("Invalid enum value '%s'\r\n", value_str);
 			commands_printf("  Valid values: %s\r\n", param->enum_values);
             return false;
