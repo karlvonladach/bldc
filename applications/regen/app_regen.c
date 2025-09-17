@@ -375,9 +375,6 @@ void app_custom_configure(app_configuration *conf) {
 	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR)) {
 		plots_enabled = v.as_u32;
 	}
-	if (conf_general_read_eeprom_var_custom(&v, APP_CUSTOM_LOG_GROUPS_ENABLED_ADDR)) {
-		log_groups_enabled = v.as_u32;
-	}
 
 	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC) {
 		config_adc = conf->app_adc_conf;
@@ -692,7 +689,6 @@ static void terminal_config(int argc, const char **argv) {
 }
 
 static void terminal_log(int argc, const char **argv) {
-	eeprom_var v;
 	if (argc == 3) {
 		int en = 0;
 		sscanf(argv[2], "%d", &en);
@@ -730,8 +726,6 @@ static void terminal_log(int argc, const char **argv) {
 		} else {
 			commands_printf("Unknown group.\r\nValid groups:\r\n  sensor\r\n  motor\r\n  clutch\r\n  error\r\n");
 		}
-		v.as_u32 = log_groups_enabled;
-		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_LOG_GROUPS_ENABLED_ADDR);
 	} else {
 		commands_printf("This command requires two arguments. Usage:\r\n  log [log_group] [0/1]");
 		commands_printf("Valid groups:\r\n  sensor\r\n  motor\r\n  clutch\r\n  error\r\n");
@@ -1824,7 +1818,7 @@ static void print_log(log_group_t log_group, const char* format, ...) {
 		char buf[256];
 		vsnprintf(buf, sizeof(buf), format, arg);
 		commands_printf("%s", buf);
-    }
+	}
 	va_end(arg);
 }
 
