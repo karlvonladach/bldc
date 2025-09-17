@@ -234,11 +234,6 @@ static void update_clutch_state(void)
 			else if (diff_to_target_small_enough) {
 				new_clutch_state(CLUTCH_STATE_SYNCED);
 			}
-			else if (elapsed_time > config.clutch.sync_timeout) {
-				//update_pedal_speed_and_position(TRUE); // reset brake position to avoid immediate re-sync
-                pedal_brake_position = 0;
-				new_clutch_state(CLUTCH_STATE_OPEN);
-			}
 			break;
 		case CLUTCH_STATE_SYNCED:
 			if (stopped) {
