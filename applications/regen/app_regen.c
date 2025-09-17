@@ -1818,12 +1818,14 @@ static void plot_points(plot_index_t plot, float x, float y) {
 
 static void print_log(log_group_t log_group, const char* format, ...) {
 	va_list arg;
-	va_start (arg, format);
+	va_start(arg, format);
 
 	if (log_groups_enabled & (1 << log_group)) {
-        commands_printf(format, arg);
+		char buf[256];
+		vsnprintf(buf, sizeof(buf), format, arg);
+		commands_printf("%s", buf);
     }
-	va_end (arg);
+	va_end(arg);
 }
 
 static void apply_ramping(float *value, systime_t *last_time, float target, float ramp_time_pos, float ramp_time_neg) {
