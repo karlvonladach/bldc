@@ -1433,13 +1433,13 @@ static void update_clutch_state(void)
 			else if (!diff_to_target_small_enough) {
 				new_clutch_state(CLUTCH_STATE_SYNCING);
 			}
+			else if (too_slow && auto_mode) {
+                new_clutch_state(CLUTCH_STATE_CLOSING);
+            }
 			else if (pedaling && not_too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
 			else if (braking && not_too_fast && auto_mode) {
-				new_clutch_state(CLUTCH_STATE_CLOSING);
-			}
-			else if (!pedaling && !brake_tentative && not_too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
 			else if (manual_mode) {
