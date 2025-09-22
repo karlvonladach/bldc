@@ -99,7 +99,7 @@ static char* clutch_state_str;
 static clutch_state_type last_clutch_state;
 static int transition_counter;
 static float last_transition_time;
-static clutch_state_type clutch_state_record[50];
+static clutch_state_type clutch_state_record[60];
 static char linebuf[500];
 
 static void init()
@@ -261,7 +261,7 @@ static void update_clutch_state(void)
 				//update_pedal_speed_and_position(TRUE); // reset brake position to avoid immediate re-sync
                 pedal_brake_position = 0;
 				new_clutch_state(CLUTCH_STATE_OPEN);                
-			}
+            }
 			else if (elapsed_time > config.clutch.sync_timeout && auto_mode) {
 				//update_pedal_speed_and_position(TRUE); // reset brake position to avoid immediate re-sync
                 pedal_brake_position = 0;
@@ -285,7 +285,7 @@ static void update_clutch_state(void)
 				new_clutch_state(CLUTCH_STATE_OPENING_TMP);
 			}
 			break;
-		case CLUTCH_STATE_CLOSING_TMP:
+		case CLUTCH_STATE_CLOSING_TMP:            
 			if (stopped) {
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
@@ -392,8 +392,8 @@ int main()
 
     init();
 
-    printf(" ##  | Wheel RPM     | Motor RPM     | Clutch State  | Brake Pos     | Pedal Speed   | Pedal Torque   || Result                                | Transitions\n");
-    printf("-----------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------\n");
+    printf(" ##  | Wheel RPM     | Motor RPM     | Clutch State  | Brake Pos     | Pedal Speed   | Pedal Torque   || Result                                 | Transitions\n");
+    printf("------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------\n");
 
     for (int i=0; i<NUM_WRPM_CASES; i++) {
         for (int k=0; k<NUM_MWRPM_CASES; k++) {
@@ -632,18 +632,36 @@ int main()
                             last_transition_time = 0;
 
                             // Simulate time progression and update clutch state
-                            for (time=0; time<5; time+=0.1) {
+                            for (time=0; time<6; time+=0.1) {
                                 clutch_state_record[(int)(time*10)] = clutch_state;
                                 update_clutch_state();
                                 if (clutch_state != last_clutch_state) {
                                     transition_counter++;
                                     last_transition_time = time;
                                 }
+                                // For testing purposes let's suppose that temporary closing and re-opening fixes the open error
+                                if (last_clutch_state == CLUTCH_STATE_CLOSING_TMP && clutch_state == CLUTCH_STATE_OPENING) {
+                                    motor_speed = 0;
+                                }
+                                // For testing purposes let's suppose that temporary opening and re-closing fixes the closed error
+                                //if (last_clutch_state == CLUTCH_STATE_OPENING_TMP && clutch_state == CLUTCH_STATE_SYNCING) {
+                                //    motor_speed = target_speed;
+                                //}
+                                // For testing purposes let's suppose that syncing always succeeds
+                                if (last_clutch_state == CLUTCH_STATE_SYNCING && clutch_state == CLUTCH_STATE_SYNCING) {
+                                    motor_speed = target_speed;
+                                }
+                                // For testing purposes let's suppose that opening always succeeds
+                                if (last_clutch_state == CLUTCH_STATE_OPENING && clutch_state == CLUTCH_STATE_OPENING) {
+                                    motor_speed = 0;
+                                }
+
+
                                 last_clutch_state = clutch_state;
                             }
 
-                            if (last_transition_time > 3) {
-                                printf("|| unstable    (%2d transitions in 5 sec) | ", transition_counter);
+                            if (last_transition_time > 4.5) {
+                                printf("|| unstable    (%2d transitions / %1.1f sec) | ", transition_counter, last_transition_time);
                             } else {
                                 // Print result
                                 switch (clutch_state) {
@@ -690,11 +708,11 @@ int main()
                                         clutch_state_str = "UNKNOWN       ";
                                         break;
                                 }
-                                printf("|| %s (after %2d transitions) | ", clutch_state_str, transition_counter);
+                                printf("|| %s (after %2d tr / %1.1f sec) | ", clutch_state_str, transition_counter, last_transition_time);
                             }
-                            for (int h=0; h<50; h++) {
+                            for (int h=0; h<60; h++) {
                                 printf("%2d", clutch_state_record[h]);
-                                if (h<49) {
+                                if (h<(60-1)) {
                                     printf("-");
                                 } else {
                                     printf("\n");
