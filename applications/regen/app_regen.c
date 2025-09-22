@@ -1445,6 +1445,10 @@ static void update_clutch_state(void)
 			else if (manual_mode) {
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
+			else if (elapsed_time > config.clutch.wait_before_open && !brake_tentative && auto_mode){
+				update_pedal_speed_and_position(TRUE); // reset brake position to avoid immediate re-sync
+				new_clutch_state(CLUTCH_STATE_OPEN);                
+            }
 			else if (elapsed_time > config.clutch.sync_timeout && auto_mode) {
 				update_pedal_speed_and_position(TRUE); // reset brake position to avoid immediate re-sync
 				new_clutch_state(CLUTCH_STATE_OPEN);
