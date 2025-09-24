@@ -214,7 +214,9 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK}, NULL},
     {"clutch_wait_sync_loss", "Clutch wait time before sync loss in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync_loss, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS}, NULL},
-    {"clutch_sync_timeout", "Clutch sync timeout in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_timeout, APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT_ADDR, 
+    {"clutch_desync_time", "Time for motor to slow down after clutch is opened in seconds", CONFIG_TYPE_FLOAT, &config.clutch.desync_time, APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME_ADDR, 
+	 {.float_default = APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME}, NULL},
+	{"clutch_sync_timeout", "Clutch sync timeout in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_timeout, APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT}, NULL},
     {"clutch_sync_diff", "Clutch sync target WRPM difference", CONFIG_TYPE_FLOAT, &config.clutch.sync_rpm_diff, APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF}, NULL},
@@ -1374,7 +1376,7 @@ static void update_clutch_state(void)
 			else if (too_slow && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_SYNCING);
 			}
-			else if (diff_too_small) { // got stuck closed
+			else if (elapsed_time > config.clutch.desync_time && diff_too_small) { // got stuck closed
 				new_clutch_state(CLUTCH_STATE_OPEN_ERROR);
 			}
 			else if (pedaling && auto_mode) {

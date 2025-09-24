@@ -123,6 +123,7 @@ static void init()
     config.clutch.sync_timeout = APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT;
     config.clutch.wait_before_check = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK;
     config.clutch.wait_before_open = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN;
+    config.clutch.desync_time = APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME;
     //config.clutch.mode = APP_CUSTOM_CONF_CLUTCH_MODE;
     config.clutch.mode = CLUTCH_MODE_AUTO;
 
@@ -186,7 +187,7 @@ static void update_clutch_state(void)
 			else if (too_slow && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_SYNCING);
 			}
-			else if (diff_too_small) { // got stuck closed
+			else if (elapsed_time > config.clutch.desync_time && diff_too_small) { // got stuck closed
 				new_clutch_state(CLUTCH_STATE_OPEN_ERROR);
 			}
 			else if (pedaling && auto_mode) {
