@@ -93,6 +93,7 @@
 #define CLUTCH_OPERATION_BUFFER_SIZE                  10     // must be larger than APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT
 #define APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD           10.0f  // seconds - period for counting clutch errors
 #define APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME             0.1f  // seconds - time for the motor to slow down after opening
+#define APP_CUSTOM_CONF_CLUTCH_SYNC_TIME               0.02f // seconds - time for ensuring stable sync
 
 #define APP_CUSTOM_CONF_UPDATE_RATE_HZ               500     // Hz - sensor signal processing and clutch control
 
@@ -148,5 +149,6 @@
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE_ADDR              49
 #define APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN_ADDR             50
 #define APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME_ADDR              51
+#define APP_CUSTOM_CONF_CLUTCH_SYNC_TIME_ADDR                52
 
 #endif /* APP_REGEN_CONF_H_ */

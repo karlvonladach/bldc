@@ -214,7 +214,9 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK}, NULL},
     {"clutch_wait_sync_loss", "Clutch wait time before sync loss in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync_loss, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS}, NULL},
-    {"clutch_desync_time", "Time for motor to slow down after clutch is opened in seconds", CONFIG_TYPE_FLOAT, &config.clutch.desync_time, APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME_ADDR, 
+    {"clutch_sync_time", "Time for ensuring stable sync in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_time, APP_CUSTOM_CONF_CLUTCH_SYNC_TIME_ADDR, 
+	 {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_TIME}, NULL},
+	{"clutch_desync_time", "Time for motor to slow down after clutch is opened in seconds", CONFIG_TYPE_FLOAT, &config.clutch.desync_time, APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME}, NULL},
 	{"clutch_sync_timeout", "Clutch sync timeout in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_timeout, APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT}, NULL},
@@ -1438,13 +1440,13 @@ static void update_clutch_state(void)
 			else if (too_slow && auto_mode) {
                 new_clutch_state(CLUTCH_STATE_CLOSING);
             }
-			else if (pedaling && not_too_fast && auto_mode) {
+			else if (elapsed_time > config.clutch.sync_time && pedaling && not_too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
-			else if (braking && not_too_fast && auto_mode) {
+			else if (elapsed_time > config.clutch.sync_time && braking && not_too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
-			else if (manual_mode) {
+			else if (elapsed_time > config.clutch.sync_time && manual_mode) {
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
 			else if (elapsed_time > config.clutch.wait_before_open && !brake_tentative && auto_mode){
