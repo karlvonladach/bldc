@@ -522,17 +522,17 @@ static void display_config_value(const config_param_t *param) {
     switch (param->type) {
         case CONFIG_TYPE_FLOAT: {
             float value = *(float*)param->config_ptr;
-            commands_printf("  %26s: %.2f (%s)", param->name, (double)value, param->description);
+            commands_printf("  %s: %.2f   (%s)", param->name, (double)value, param->description);
             break;
         }
         case CONFIG_TYPE_UINT32: {
             uint32_t value = *(uint32_t*)param->config_ptr;
-            commands_printf("  %26s: %u (%s)", param->name, value, param->description);
+            commands_printf("  %s: %u   (%s)", param->name, value, param->description);
             break;
         }
         case CONFIG_TYPE_BOOL: {
             uint32_t value = *(uint32_t*)param->config_ptr;
-            commands_printf("  %26s: %s", param->name, value ? "enabled" : "disabled");
+            commands_printf("  %s: %s   (%s)", param->name, value ? "enabled" : "disabled", param->description);
             break;
         }
         case CONFIG_TYPE_ENUM: {
@@ -555,7 +555,7 @@ static void display_config_value(const config_param_t *param) {
 					idx++;
 				}
 			}
-            commands_printf("  %26s: %s (%s)", param->name, str_value, param->description);
+            commands_printf("  %s: %s   (%s)", param->name, str_value, param->description);
             break;
         }
     }
