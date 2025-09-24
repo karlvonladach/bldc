@@ -142,49 +142,49 @@ static const config_param_t config_table[] = {
     // Pedal sensor config
     {"pedal_sensor_type", "Pedal sensor encoding type", CONFIG_TYPE_ENUM, &config.pedal_sensor.sensor_type, APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE_ADDR, 
      {.enum_default = APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE}, "single_poll,single_int,quad_poll,quad_int"},
-    {"pedal_magnets", "Number of pedal sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.pedal_sensor.magnets, APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS_ADDR, 
+    {"pedal_magnets", "[count] Number of pedal sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.pedal_sensor.magnets, APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS_ADDR, 
      {.uint32_default = APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS}, NULL},
-    {"pedal_filter", "Pedal sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.pedal_sensor.filter, APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER_ADDR, 
+    {"pedal_filter", "[0.0-1.0] Pedal sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.pedal_sensor.filter, APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER}, NULL},
-    {"pedal_avg_above_rpm", "CRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.pedal_sensor.avg_above_rpm, APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM_ADDR, 
+    {"pedal_avg_above_rpm", "[rpm] CRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.pedal_sensor.avg_above_rpm, APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM}, NULL},
-    {"pedal_rpm_start", "CRPM start of boost range", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_start, APP_CUSTOM_CONF_PEDAL_RPM_START_ADDR, 
+    {"pedal_rpm_start", "[rpm] CRPM start of boost range", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_start, APP_CUSTOM_CONF_PEDAL_RPM_START_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_RPM_START}, NULL},
-    {"pedal_rpm_end", "CRPM end of boost range", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_end, APP_CUSTOM_CONF_PEDAL_RPM_END_ADDR, 
+    {"pedal_rpm_end", "[rpm] CRPM end of boost range", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_end, APP_CUSTOM_CONF_PEDAL_RPM_END_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_RPM_END}, NULL},
-    {"pedal_rpm_min", "CRPM minimum threshold - set 0 CRPM below this value", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_min, APP_CUSTOM_CONF_PEDAL_RPM_MIN_ADDR, 
+    {"pedal_rpm_min", "[rpm] CRPM minimum threshold - set 0 CRPM below this value", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_min, APP_CUSTOM_CONF_PEDAL_RPM_MIN_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_RPM_MIN}, NULL},
-    {"pedal_rpm_max", "CRPM maximum threshold - raise error above this value", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_max, APP_CUSTOM_CONF_PEDAL_RPM_MAX_ADDR, 
+    {"pedal_rpm_max", "[rpm] CRPM maximum threshold - raise error above this value", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_max, APP_CUSTOM_CONF_PEDAL_RPM_MAX_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_RPM_MAX}, NULL},
-    {"pedal_ramp_time_pos", "Pedal positive ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.pedal_sensor.ramp_time_pos, APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS_ADDR, 
+    {"pedal_ramp_time_pos", "[sec] Pedal positive ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.pedal_sensor.ramp_time_pos, APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS}, NULL},
-    {"pedal_ramp_time_neg", "Pedal negative ramp time in sec/fullscale from max to min", CONFIG_TYPE_FLOAT, &config.pedal_sensor.ramp_time_neg, APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG_ADDR, 
+    {"pedal_ramp_time_neg", "[sec] Pedal negative ramp time in sec/fullscale from max to min", CONFIG_TYPE_FLOAT, &config.pedal_sensor.ramp_time_neg, APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG}, NULL},
-    {"pedal_invert", "Invert pedal sensor direction: 1=invert, 0=no invert", CONFIG_TYPE_BOOL, &config.pedal_sensor.invert_direction, APP_CUSTOM_CONF_PEDAL_INVERT_DIR_ADDR, 
+    {"pedal_invert", "[0/1] Invert pedal sensor direction: 1=invert, 0=no invert", CONFIG_TYPE_BOOL, &config.pedal_sensor.invert_direction, APP_CUSTOM_CONF_PEDAL_INVERT_DIR_ADDR, 
      {.bool_default = APP_CUSTOM_CONF_PEDAL_INVERT_DIR}, NULL},
     
     // Wheel sensor config
     {"wheel_sensor_type", "Wheel sensor encoding type", CONFIG_TYPE_ENUM, &config.wheel_sensor.sensor_type, APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE_ADDR, 
      {.enum_default = APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE}, "single_poll,single_int,quad_poll,quad_int,single_poll_single_int"},
-    {"wheel_poll_to_int_rpm", "WRPM threshold at which to switch from polling to interrupt mode", CONFIG_TYPE_FLOAT, &config.wheel_sensor.poll_to_int_rpm, APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM_ADDR, 
+    {"wheel_poll_to_int_rpm", "[rpm] WRPM threshold at which to switch from polling to interrupt mode", CONFIG_TYPE_FLOAT, &config.wheel_sensor.poll_to_int_rpm, APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM}, NULL},
-    {"wheel_magnets", "Number of wheel sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.wheel_sensor.magnets, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR, 
+    {"wheel_magnets", "[count] Number of wheel sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.wheel_sensor.magnets, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR, 
      {.uint32_default = APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS}, NULL},
-    {"wheel_filter", "Wheel sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.filter, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR, 
+    {"wheel_filter", "[0.0-1.0] Wheel sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.filter, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER}, NULL},
-    {"wheel_avg_above_rpm", "WRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.wheel_sensor.avg_above_rpm, APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR, 
+    {"wheel_avg_above_rpm", "[rpm] WRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.wheel_sensor.avg_above_rpm, APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM}, NULL},
-    {"wheel_rpm_min", "WRPM minimum threshold - set 0 WRPM below this value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.rpm_min, APP_CUSTOM_CONF_WHEEL_RPM_MIN_ADDR, 
+    {"wheel_rpm_min", "[rpm] WRPM minimum threshold - set 0 WRPM below this value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.rpm_min, APP_CUSTOM_CONF_WHEEL_RPM_MIN_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_RPM_MIN}, NULL},
-    {"wheel_rpm_max", "WRPM maximum threshold - raise error above this value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.rpm_max, APP_CUSTOM_CONF_WHEEL_RPM_MAX_ADDR, 
+    {"wheel_rpm_max", "[rpm] WRPM maximum threshold - raise error above this value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.rpm_max, APP_CUSTOM_CONF_WHEEL_RPM_MAX_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_RPM_MAX}, NULL},
-    {"wheel_ramp_time_pos", "Wheel positive ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.wheel_sensor.ramp_time_pos, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS_ADDR, 
+    {"wheel_ramp_time_pos", "[sec] Wheel positive ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.wheel_sensor.ramp_time_pos, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS}, NULL},
-    {"wheel_ramp_time_neg", "Wheel negative ramp time in sec/fullscale from max to min", CONFIG_TYPE_FLOAT, &config.wheel_sensor.ramp_time_neg, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG_ADDR, 
+    {"wheel_ramp_time_neg", "[sec] Wheel negative ramp time in sec/fullscale from max to min", CONFIG_TYPE_FLOAT, &config.wheel_sensor.ramp_time_neg, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG}, NULL},
-    {"wheel_invert", "Invert wheel sensor direction: 1=invert, 0=no invert", CONFIG_TYPE_BOOL, &config.wheel_sensor.invert_direction, APP_CUSTOM_CONF_WHEEL_INVERT_DIR_ADDR, 
+    {"wheel_invert", "[0/1] Invert wheel sensor direction: 1=invert, 0=no invert", CONFIG_TYPE_BOOL, &config.wheel_sensor.invert_direction, APP_CUSTOM_CONF_WHEEL_INVERT_DIR_ADDR, 
      {.bool_default = APP_CUSTOM_CONF_WHEEL_INVERT_DIR}, NULL},
-    {"wheel_skip_threshold", "Wheel sensor skipped magnet threshold ratio: skipped period / normal period", CONFIG_TYPE_FLOAT, &config.wheel_sensor.skipped_magnet_threshold, APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR_ADDR, 
+    {"wheel_skip_threshold", "[0.0-1.0] Wheel sensor skipped magnet threshold ratio: skipped period / normal period", CONFIG_TYPE_FLOAT, &config.wheel_sensor.skipped_magnet_threshold, APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR}, NULL},
     
 	// Torque sensor config
@@ -192,61 +192,61 @@ static const config_param_t config_table[] = {
 	 {.enum_default = APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE}, "none,adc"},
 
     // Back pedal brake config
-    {"brake_start_pos", "Back pedal brake start position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR, 
+    {"brake_start_pos", "[deg] Back pedal brake start position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS}, NULL},
-    {"brake_end_pos", "Back pedal brake end position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.end_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS_ADDR, 
+    {"brake_end_pos", "[deg] Back pedal brake end position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.end_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS}, NULL},
-    {"brake_wait_release", "Back pedal brake wait time before release in seconds", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.wait_before_release, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE_ADDR, 
+    {"brake_wait_release", "[sec] Back pedal brake wait time before release in seconds", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.wait_before_release, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE}, NULL},
-    {"brake_release_rpm", "WRPM below which back pedal brake release is started", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.release_rpm, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM_ADDR, 
+    {"brake_release_rpm", "[rpm] WRPM below which back pedal brake release is started", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.release_rpm, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM}, NULL},
-    {"brake_sync_start_pos", "Back pedal brake sync start position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.sync_start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS_ADDR, 
+    {"brake_sync_start_pos", "[deg] Back pedal brake sync start position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.sync_start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS}, NULL},
-    {"brake_current_ramp_time", "Back pedal brake current ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.current_ramp_time, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME_ADDR, 
+    {"brake_current_ramp_time", "[sec] Back pedal brake current ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.current_ramp_time, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME}, NULL},
     
     // Clutch config
-    {"clutch_wait_open", "Clutch wait time before opening in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_open, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN_ADDR, 
+    {"clutch_open_wait", "[sec] Clutch wait time before opening in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_open, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN}, NULL},
-    {"clutch_wait_sync", "Clutch wait time before sync in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_ADDR, 
+    {"clutch_sync_assist_wait", "[sec] Clutch wait time before sync in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC}, NULL},
-    {"clutch_wait_check", "Clutch wait time before check in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_check, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK_ADDR, 
+    {"clutch_check_wait", "[sec] Clutch wait time before check in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_check, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK}, NULL},
-    {"clutch_wait_sync_loss", "Clutch wait time before sync loss in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync_loss, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR, 
+    {"clutch_error_wait", "[sec] Clutch wait time before sync loss in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync_loss, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS}, NULL},
-    {"clutch_sync_time", "Time for ensuring stable sync in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_time, APP_CUSTOM_CONF_CLUTCH_SYNC_TIME_ADDR, 
+    {"clutch_sync_time", "[sec] Time for ensuring stable sync in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_time, APP_CUSTOM_CONF_CLUTCH_SYNC_TIME_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_TIME}, NULL},
-	{"clutch_desync_time", "Time for motor to slow down after clutch is opened in seconds", CONFIG_TYPE_FLOAT, &config.clutch.desync_time, APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME_ADDR, 
+	{"clutch_desync_time", "[sec] Time for motor to slow down after clutch is opened in seconds", CONFIG_TYPE_FLOAT, &config.clutch.desync_time, APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME}, NULL},
-	{"clutch_sync_timeout", "Clutch sync timeout in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_timeout, APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT_ADDR, 
+	{"clutch_sync_brake_timeout", "[sec] Clutch sync timeout in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_timeout, APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT}, NULL},
-    {"clutch_sync_diff", "Clutch sync target WRPM difference", CONFIG_TYPE_FLOAT, &config.clutch.sync_rpm_diff, APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF_ADDR, 
+    {"clutch_sync_diff", "[rpm] Clutch sync target WRPM difference", CONFIG_TYPE_FLOAT, &config.clutch.sync_rpm_diff, APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF}, NULL},
-    {"clutch_closed_check_diff", "Clutch closed check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.closed_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF_ADDR, 
+    {"clutch_closed_check_diff", "[rpm] Clutch closed check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.closed_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF}, NULL},
-	{"clutch_open_check_diff", "Clutch open check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.open_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF_ADDR, 
+	{"clutch_open_check_diff", "[rpm] Clutch open check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.open_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF}, NULL},
-    {"clutch_first_check_diff", "Clutch sync check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.first_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF_ADDR, 
+    {"clutch_sync_check_diff", "[rpm] Clutch sync check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.first_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF}, NULL},
-	{"clutch_min_rpm_open", "WRPM above which clutch can be opened", CONFIG_TYPE_FLOAT, &config.clutch.min_rpm_open, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN_ADDR, 
+	{"clutch_min_rpm_open", "[rpm] WRPM above which clutch can be opened", CONFIG_TYPE_FLOAT, &config.clutch.min_rpm_open, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN}, NULL},
-	{"clutch_min_rpm_close", "WRPM below which clutch must be closed", CONFIG_TYPE_FLOAT, &config.clutch.min_rpm_close, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_CLOSE_ADDR, 
+	{"clutch_min_rpm_close", "[rpm] WRPM below which clutch must be closed", CONFIG_TYPE_FLOAT, &config.clutch.min_rpm_close, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_CLOSE_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_MIN_RPM_CLOSE}, NULL},
-    {"clutch_max_rpm_open", "WRPM above which clutch must be opened", CONFIG_TYPE_FLOAT, &config.clutch.max_rpm_open, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN_ADDR, 
+    {"clutch_max_rpm_open", "[rpm] WRPM above which clutch must be opened", CONFIG_TYPE_FLOAT, &config.clutch.max_rpm_open, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN}, NULL},
-    {"clutch_max_rpm_close", "WRPM below which clutch can be closed", CONFIG_TYPE_FLOAT, &config.clutch.max_rpm_close, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE_ADDR, 
+    {"clutch_max_rpm_close", "[rpm] WRPM below which clutch can be closed", CONFIG_TYPE_FLOAT, &config.clutch.max_rpm_close, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE}, NULL},
     {"clutch_mode", "Clutch operation mode", CONFIG_TYPE_ENUM, &config.clutch.mode, APP_CUSTOM_CONF_CLUTCH_MODE_ADDR, 
      {.enum_default = APP_CUSTOM_CONF_CLUTCH_MODE}, "closed,open,auto,manual,fullmanual"},
     {"clutch_invert", "Invert clutch direction: 1=invert, 0=no invert", CONFIG_TYPE_BOOL, &config.clutch.invert_direction, APP_CUSTOM_CONF_CLUTCH_INVERT_DIR_ADDR, 
      {.bool_default = APP_CUSTOM_CONF_CLUTCH_INVERT_DIR}, NULL},
-	{"clutch_error_limit", "Maximum number of clutch errors in defined period before disabling clutch", CONFIG_TYPE_UINT32, &config.clutch.error_limit, APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT_ADDR, 
+	{"clutch_error_limit", "[count] Maximum number of clutch errors in defined period before disabling clutch", CONFIG_TYPE_UINT32, &config.clutch.error_limit, APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT_ADDR, 
 	 {.uint32_default = APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT}, NULL},
-	{"clutch_error_period", "Clutch error counting period in seconds", CONFIG_TYPE_FLOAT, &config.clutch.error_period, APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD_ADDR, 
+	{"clutch_error_period", "[sec] Clutch error counting period in seconds", CONFIG_TYPE_FLOAT, &config.clutch.error_period, APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD}, NULL},
     
     // Other config
-    {"update_rate", "Sensor signal processing and clutch control rate in Hz", CONFIG_TYPE_UINT32, &config.update_rate_hz, APP_CUSTOM_CONF_UPDATE_RATE_HZ_ADDR, 
+    {"update_rate", "[Hz] Sensor signal processing and clutch control rate in Hz", CONFIG_TYPE_UINT32, &config.update_rate_hz, APP_CUSTOM_CONF_UPDATE_RATE_HZ_ADDR, 
      {.uint32_default = APP_CUSTOM_CONF_UPDATE_RATE_HZ}, NULL}
 };
 
@@ -522,17 +522,17 @@ static void display_config_value(const config_param_t *param) {
     switch (param->type) {
         case CONFIG_TYPE_FLOAT: {
             float value = *(float*)param->config_ptr;
-            commands_printf("  %s: %.2f", param->description, (double)value);
+            commands_printf("  %26s: %.2f (%s)", param->name, (double)value, param->description);
             break;
         }
         case CONFIG_TYPE_UINT32: {
             uint32_t value = *(uint32_t*)param->config_ptr;
-            commands_printf("  %s: %u", param->description, value);
+            commands_printf("  %26s: %u (%s)", param->name, value, param->description);
             break;
         }
         case CONFIG_TYPE_BOOL: {
             uint32_t value = *(uint32_t*)param->config_ptr;
-            commands_printf("  %s: %s", param->description, value ? "enabled" : "disabled");
+            commands_printf("  %26s: %s", param->name, value ? "enabled" : "disabled");
             break;
         }
         case CONFIG_TYPE_ENUM: {
@@ -555,7 +555,7 @@ static void display_config_value(const config_param_t *param) {
 					idx++;
 				}
 			}
-            commands_printf("  %s: %s", param->description, str_value);
+            commands_printf("  %26s: %s (%s)", param->name, str_value, param->description);
             break;
         }
     }
