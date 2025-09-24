@@ -77,22 +77,22 @@
 #define APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1             HW_UART_RX_PIN
 #define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN        0.5f  // seconds
 #define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC        0.1f  // seconds
-#define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK       0.22f // seconds
+#define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK       0.25f // seconds
 #define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS   0.1f  // seconds
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT            2.0f  // seconds
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF           1.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF    8.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF  40.0f  // WRPM
-#define APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF    10.0f  // WRPM
+#define APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF     5.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN           55.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MIN_RPM_CLOSE          45.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN          400.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE         350.0f  // WRPM
-#define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR              1     // 1/0 = invert/no invert
+#define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR              0     // 1/0 = invert/no invert
 #define APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT             6     // max errors in defined period before disabling clutch
 #define CLUTCH_OPERATION_BUFFER_SIZE                  10     // must be larger than APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT
 #define APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD           10.0f  // seconds - period for counting clutch errors
-#define APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME             0.1f  // seconds - time for the motor to slow down after opening
+#define APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME             0.3f  // seconds - time for the motor to slow down after opening
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_TIME               0.02f // seconds - time for ensuring stable sync
 
 #define APP_CUSTOM_CONF_UPDATE_RATE_HZ               500     // Hz - sensor signal processing and clutch control
