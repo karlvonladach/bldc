@@ -140,6 +140,7 @@ typedef struct {
     bool invert_direction;
     uint32_t error_limit;
     float error_period;
+    bool sync_while_closing;
 } clutch_config_type;
 
 typedef struct {

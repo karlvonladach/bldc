@@ -94,6 +94,7 @@
 #define APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD           10.0f  // seconds - period for counting clutch errors
 #define APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME             0.3f  // seconds - time for the motor to slow down after opening
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_TIME               0.02f // seconds - time for ensuring stable sync
+#define APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING      0     // 1/0 = enable/disable motor to wheel sync while clutch is closing
 
 #define APP_CUSTOM_CONF_UPDATE_RATE_HZ               500     // Hz - sensor signal processing and clutch control
 
@@ -150,5 +151,6 @@
 #define APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN_ADDR             50
 #define APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME_ADDR              51
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_TIME_ADDR                52
+#define APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING_ADDR       53
 
 #endif /* APP_REGEN_CONF_H_ */

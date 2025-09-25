@@ -244,7 +244,9 @@ static const config_param_t config_table[] = {
 	 {.uint32_default = APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT}, NULL},
 	{"clutch_error_period", "[sec] Clutch error counting period in seconds", CONFIG_TYPE_FLOAT, &config.clutch.error_period, APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD}, NULL},
-    
+	{"clutch_sync_while_closing", "[0/1] Enable/disable sync while clutch is closing: 1=enable, 0=disable", CONFIG_TYPE_BOOL, &config.clutch.sync_while_closing, APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING_ADDR, 
+	 {.bool_default = APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING}, NULL},
+
     // Other config
     {"update_rate", "[Hz] Sensor signal processing and clutch control rate in Hz", CONFIG_TYPE_UINT32, &config.update_rate_hz, APP_CUSTOM_CONF_UPDATE_RATE_HZ_ADDR, 
      {.uint32_default = APP_CUSTOM_CONF_UPDATE_RATE_HZ}, NULL}
@@ -1589,6 +1591,16 @@ static void update_motor_control()
 		float target_speed = MAX((wheel_speed - config.clutch.sync_rpm_diff), 0);
 		set_motor_speed(target_speed);
 		sprintf(log_text, "RPM set to %4.0f", (double)(target_speed));
+	} 
+	else if (clutch_state == CLUTCH_STATE_CLOSING || clutch_state == CLUTCH_STATE_CLOSING_TMP) {
+		if (config.clutch.sync_while_closing){
+			float target_speed = wheel_speed;
+			set_motor_speed(target_speed);
+			sprintf(log_text, "RPM set to %4.0f", (double)(target_speed));
+		} else {
+			mc_interface_set_current_rel(0.0);
+			sprintf(log_text, "current set to %d%%", 0);
+		}
 	} 
 	else if (clutch_state == CLUTCH_STATE_CLOSED_BRAKE) {
 		static float brake_current = 0;
