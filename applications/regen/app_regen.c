@@ -67,7 +67,7 @@ static void terminal_get_config(int argc, const char **argv);
 static void terminal_set_pin(int argc, const char **argv);
 
 static void update_pedal_torque(void);
-static void update_pedal_speed_and_position(bool reset);
+static void update_pedal_speed_and_position(float set_brake_position);
 static void update_wheel_speed(void);
 static void update_motor_speed(void);
 static void update_clutch_state(void);
@@ -204,7 +204,9 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS}, NULL},
     {"brake_current_ramp_time", "[sec] Back pedal brake current ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.current_ramp_time, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME}, NULL},
-    
+	{"brake_reset_pos_percent", "[0.0-1.0] Percentage of brake position set just after closing", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.reset_pos_percent, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RESET_POS_PERCENT_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RESET_POS_PERCENT}, NULL},
+	 
     // Clutch config
     {"clutch_open_wait", "[sec] Clutch wait time before opening in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_open, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN}, NULL},
@@ -470,7 +472,7 @@ static THD_FUNCTION(my_thread, arg) {
 		plot_points(PLOT_TORQUE, timestamp, pedal_torque*100);
 
 		//measure pedal forward speed or backward position
-		update_pedal_speed_and_position(FALSE);
+		update_pedal_speed_and_position(-1);
 
 		plot_points(PLOT_PEDAL_RPM, timestamp, pedal_speed);
         plot_points(PLOT_BRAKE_POS, timestamp, pedal_brake_position);
@@ -500,7 +502,7 @@ static THD_FUNCTION(my_thread, arg) {
 			if (wheel_inactivity_time < config.back_pedal_brake.wait_before_release){
 				wheel_inactivity_time += 1.0 / (float)config.update_rate_hz;
 				if (wheel_inactivity_time >= config.back_pedal_brake.wait_before_release){
-					update_pedal_speed_and_position(TRUE);
+					update_pedal_speed_and_position(0);
 				}
 			}
 		} else {
@@ -1005,7 +1007,7 @@ static void update_pedal_torque(void)
 *  When pedal is driven backward, calculate relative 
 *  position instead of speed for back pedal braking (coaster brake).
 */
-static void update_pedal_speed_and_position(bool reset)
+static void update_pedal_speed_and_position(float set_brake_position)
 {
 #ifdef APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1
 	// Quadrature Encoder Matrix
@@ -1026,28 +1028,13 @@ static void update_pedal_speed_and_position(bool reset)
 	static int32_t backward_direction_counter = 0;
 	static float brake_inactivity_time = 0;
 
-	if (reset) {
-		old_timestamp = 0;
-		old_period = 0;
-		inactivity_time = 0;
-		period_filtered = 0;
-		forward_direction_counter = 0;
-		backward_direction_counter = 0;
-		pedal_speed  = 0;
-		pedal_speed_rel = 0; 
-		pedal_brake_position = 0;
-		pedal_brake_position_rel = 0;
-		brake_inactivity_time = 0;
-		return;
-	}
-
 	// read quadrature encoder state
 	HALL1_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN1);
 	HALL2_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2);
 
 	// determine direction from old and new state
 	new_state = HALL2_level * 2 + HALL1_level;
-	direction = (float) QEM[old_state * 4 + new_state];
+	direction = QEM[old_state * 4 + new_state];
 	old_state = new_state;
 
 	if (config.pedal_sensor.invert_direction) {
@@ -1073,6 +1060,15 @@ static void update_pedal_speed_and_position(bool reset)
 			backward_direction_counter++;
 		}
 		forward_direction_counter = 0;
+	}
+
+	if (set_brake_position >= 0) {
+		direction = -1;
+		forward_direction_counter = 0;
+		backward_direction_counter = ceil(set_brake_position / config.back_pedal_brake.end_pos * max_backward_counter);
+		if (backward_direction_counter > max_backward_counter){
+			backward_direction_counter = max_backward_counter;
+		}
 	}
 	
 	const float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
@@ -1452,11 +1448,11 @@ static void update_clutch_state(void)
 				new_clutch_state(CLUTCH_STATE_CLOSING);
 			}
 			else if (elapsed_time > config.clutch.wait_before_open && !brake_tentative && auto_mode){
-				update_pedal_speed_and_position(TRUE); // reset brake position to avoid immediate re-sync
+				update_pedal_speed_and_position(0); // reset brake position to avoid immediate re-sync
 				new_clutch_state(CLUTCH_STATE_OPEN);                
             }
 			else if (elapsed_time > config.clutch.sync_timeout && auto_mode) {
-				update_pedal_speed_and_position(TRUE); // reset brake position to avoid immediate re-sync
+				update_pedal_speed_and_position(0); // reset brake position to avoid immediate re-sync
 				new_clutch_state(CLUTCH_STATE_OPEN);
 			}
 			break;
@@ -1468,6 +1464,7 @@ static void update_clutch_state(void)
 				new_clutch_state(CLUTCH_STATE_CLOSED_ASSIST);
 			}
 			else if (elapsed_time > config.clutch.wait_before_check && diff_small_enough && braking ) {
+				update_pedal_speed_and_position((pedal_brake_position - config.back_pedal_brake.start_pos) * config.back_pedal_brake.reset_pos_percent + config.back_pedal_brake.start_pos);
 				new_clutch_state(CLUTCH_STATE_CLOSED_BRAKE);
 			}
 			else if (elapsed_time > config.clutch.wait_before_check && diff_small_enough && !pedaling && !braking) {
