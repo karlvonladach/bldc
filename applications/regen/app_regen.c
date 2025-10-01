@@ -1358,6 +1358,7 @@ static void update_clutch_state(void)
 	}
 
 	bool stopped           = (wheel_speed < config.wheel_sensor.rpm_min && motor_speed < config.wheel_sensor.rpm_min);
+	bool going_forward     = (motor_speed > -0.5);
 	bool too_slow          = (wheel_speed < config.clutch.min_rpm_close);
 	bool not_too_slow      = (wheel_speed > config.clutch.min_rpm_open);
 	bool not_too_fast      = (wheel_speed < config.clutch.max_rpm_close);
@@ -1491,16 +1492,16 @@ static void update_clutch_state(void)
 			if (too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_OPENING);
 			} 
-			else if (diff_too_large) { // got out of closed
+			else if (going_forward && diff_too_large) { // got out of closed
 				new_clutch_state(CLUTCH_STATE_CLOSED_ERROR);
 			}
-			else if (pedaling) {
+			else if (going_forward && pedaling) {
 				new_clutch_state(CLUTCH_STATE_CLOSED_ASSIST);
 			}
-			else if (braking) {
+			else if (going_forward && braking) {
 				new_clutch_state(CLUTCH_STATE_CLOSED_BRAKE);
 			}
-			else if (elapsed_time > config.clutch.wait_before_open && not_too_slow && auto_mode) {
+			else if (going_forward && elapsed_time > config.clutch.wait_before_open && not_too_slow && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_OPENING);
 			}
 			break;
