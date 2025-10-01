@@ -77,6 +77,8 @@ static void record_clutch_operation(void);
 static void open_clutch(void);
 static void sync_clutch(void);
 static void close_clutch(void);
+static void limit_current(void);
+static void remove_current_limit(void);
 static void new_clutch_state(clutch_state_type cs);
 
 static void set_motor_speed(float mwrpm);
@@ -248,6 +250,8 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD}, NULL},
 	{"clutch_sync_while_closing", "[0/1] Enable/disable sync while clutch is closing: 1=enable, 0=disable", CONFIG_TYPE_BOOL, &config.clutch.sync_while_closing, APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING_ADDR, 
 	 {.bool_default = APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING}, NULL},
+	{"clutch_current_limit_closing", "[0.0-1.0] Relative current limit when clutch is closing (0.0 to 1.0)", CONFIG_TYPE_FLOAT, &config.clutch.current_limit_closing, APP_CUSTOM_CONF_CLUTCH_CURRENT_LIMIT_CLOSING_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_CLUTCH_CURRENT_LIMIT_CLOSING}, NULL},
 
     // Other config
     {"update_rate", "[Hz] Sensor signal processing and clutch control rate in Hz", CONFIG_TYPE_UINT32, &config.update_rate_hz, APP_CUSTOM_CONF_UPDATE_RATE_HZ_ADDR, 
@@ -1698,8 +1702,32 @@ static void close_clutch(void)
 	}
 }
 
+static void limit_current(void)
+{
+	mc_configuration *mcconf = mempools_alloc_mcconf();
+	*mcconf = *mc_interface_get_configuration();
+	mcconf->l_current_max_scale = config.clutch.current_limit_closing;
+	mcconf->l_current_min_scale = config.clutch.current_limit_closing;
+	mc_interface_set_configuration(mcconf);
+	mempools_free_mcconf(mcconf);
+}
+
+static void remove_current_limit(void)
+{
+	mc_configuration *mcconf = mempools_alloc_mcconf();
+	*mcconf = *mc_interface_get_configuration();
+	mcconf->l_current_max_scale = 1.0;
+	mcconf->l_current_min_scale = 1.0;
+	mc_interface_set_configuration(mcconf);
+	mempools_free_mcconf(mcconf);
+}
+
 static void new_clutch_state(clutch_state_type cs)
 {
+	if (clutch_state == CLUTCH_STATE_CLOSING || clutch_state == CLUTCH_STATE_CLOSING_TMP) {
+		remove_current_limit();
+	}
+
 	if (cs == CLUTCH_STATE_OPENING) {
 		open_clutch();
 	} else 
@@ -1707,6 +1735,7 @@ static void new_clutch_state(clutch_state_type cs)
 		sync_clutch();
 	} else
 	if (cs == CLUTCH_STATE_CLOSING) {
+		limit_current();
 		close_clutch();
 	} else 
 	if (cs == CLUTCH_STATE_OPENING_TMP) {
@@ -1714,6 +1743,7 @@ static void new_clutch_state(clutch_state_type cs)
 		clutch_state = CLUTCH_STATE_OPENING_TMP;
 	} else
 	if (cs == CLUTCH_STATE_CLOSING_TMP) {
+		limit_current();
 		close_clutch();
 		clutch_state = CLUTCH_STATE_CLOSING_TMP;
 	} else {

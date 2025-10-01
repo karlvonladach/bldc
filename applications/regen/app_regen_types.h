@@ -142,6 +142,7 @@ typedef struct {
     uint32_t error_limit;
     float error_period;
     bool sync_while_closing;
+    float current_limit_closing;
 } clutch_config_type;
 
 typedef struct {
