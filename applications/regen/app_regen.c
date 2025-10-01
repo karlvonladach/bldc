@@ -1589,7 +1589,7 @@ static void update_motor_control()
 		set_motor_speed(command_line_speed);
 		sprintf(log_text, "RPM set to %4.0f", (double)(command_line_speed));
 	} 
-	else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_SYNCED) {
+	else if (clutch_state == CLUTCH_STATE_SYNCING || clutch_state == CLUTCH_STATE_SYNCED || clutch_state == CLUTCH_STATE_OPENING_TMP) {
 		float target_speed = MAX((wheel_speed - config.clutch.sync_rpm_diff), 0);
 		set_motor_speed(target_speed);
 		sprintf(log_text, "RPM set to %4.0f", (double)(target_speed));
