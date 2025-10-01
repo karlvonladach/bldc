@@ -130,6 +130,7 @@ typedef struct {
     float sync_time;
     float desync_time;
     float sync_timeout;
+    float closed_first_check_time;
     float sync_rpm_diff;
     float first_check_rpm_diff;
     float closed_check_rpm_diff;

@@ -225,6 +225,8 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME}, NULL},
 	{"clutch_sync_brake_timeout", "[sec] Clutch sync timeout in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_timeout, APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT}, NULL},
+	{"clutch_closed_first_check_time", "[sec] sync_check_rpm_diff is checked for this long in closed state", CONFIG_TYPE_FLOAT, &config.clutch.closed_first_check_time, APP_CUSTOM_CONF_CLUTCH_CLOSED_FIRST_CHECK_TIME_ADDR, 
+	 {.float_default = APP_CUSTOM_CONF_CLUTCH_CLOSED_FIRST_CHECK_TIME}, NULL},
     {"clutch_sync_diff", "[rpm] Clutch sync target WRPM difference", CONFIG_TYPE_FLOAT, &config.clutch.sync_rpm_diff, APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF}, NULL},
     {"clutch_closed_check_diff", "[rpm] Clutch closed check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.closed_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF_ADDR, 
@@ -1509,6 +1511,9 @@ static void update_clutch_state(void)
 			if (too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_OPENING);
 			} 
+			else if (elapsed_time < config.clutch.closed_first_check_time && !diff_small_enough) {
+				new_clutch_state(CLUTCH_STATE_CLOSED_ERROR);
+			}
 			else if (diff_too_large) { // got out of closed
 				new_clutch_state(CLUTCH_STATE_CLOSED_ERROR);
 			}
@@ -1519,7 +1524,10 @@ static void update_clutch_state(void)
 		case CLUTCH_STATE_CLOSED_ASSIST:
 			if (too_fast && auto_mode) {
 				new_clutch_state(CLUTCH_STATE_OPENING);
-			} 
+			}
+			else if (elapsed_time < config.clutch.closed_first_check_time && !diff_small_enough) {
+				new_clutch_state(CLUTCH_STATE_CLOSED_ERROR);
+			}
 			else if (diff_too_large) { // got out of closed
 				new_clutch_state(CLUTCH_STATE_CLOSED_ERROR);
 			}
