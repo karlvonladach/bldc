@@ -26,6 +26,7 @@
 
 // Some useful includes
 #include "mc_interface.h"
+#include "mempools.h"
 #include "utils_math.h"
 #include "encoder/encoder.h"
 #include "terminal.h"
