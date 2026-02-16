@@ -110,7 +110,7 @@
 #define CAN_ENABLE 					0
 #endif
 
-#define APP_RTDATA_COUNT            6
+#define APP_RTDATA_COUNT            9
 
 /*
  * Servo output driver

@@ -543,9 +543,9 @@ static void sendRtData(CanardInstance *ins) {
 	imu_get_gyro(gyro);
 	app_custom_get_rtdata(app_data);
 
-	data.roll = rpy[0];
-	data.pitch = rpy[1];
-	data.yaw = rpy[2];
+	data.roll = app_data[6];
+	data.pitch = app_data[7];
+	data.yaw = app_data[8];
 	data.acc_x = app_data[0]; //acc[0];
 	data.acc_y = app_data[1]; //acc[1];
 	data.acc_z = app_data[2]; //acc[2];

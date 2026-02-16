@@ -1093,13 +1093,13 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 		buffer_append_uint16(send_buffer, mask, &ind);
 
 		if (mask & ((uint32_t)1 << 0)) {
-			buffer_append_float32_auto(send_buffer, rpy[0], &ind);
+			buffer_append_float32_auto(send_buffer, app_data[6], &ind);
 		}
 		if (mask & ((uint32_t)1 << 1)) {
-			buffer_append_float32_auto(send_buffer, rpy[1], &ind);
+			buffer_append_float32_auto(send_buffer, app_data[7], &ind);
 		}
 		if (mask & ((uint32_t)1 << 2)) {
-			buffer_append_float32_auto(send_buffer, rpy[2], &ind);
+			buffer_append_float32_auto(send_buffer, app_data[8], &ind);
 		}
 
 		if (mask & ((uint32_t)1 << 3)) {

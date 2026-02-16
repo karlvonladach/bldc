@@ -44,6 +44,9 @@
 // App settings
 #define FILTER_SAMPLES					5
 
+// Macros
+#define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
+
 // Threads
 static THD_FUNCTION(my_thread, arg);
 static THD_WORKING_AREA(my_thread_wa, 2048);
@@ -135,6 +138,7 @@ static volatile uint32_t clutch_operation_buffer_index = 0;
 static volatile uint32_t clutch_operation_count = 0;
 static volatile uint32_t HALL3_int_cntr_xp = 0;
 static volatile uint32_t HALL3_int_cntr_rt = 0;
+static volatile float last_close_time = 0;
 
 // Config table - add new parameters here
 static const config_param_t config_table[] = {
@@ -425,8 +429,9 @@ void app_custom_get_rtdata(float* data) {
 	data[3] = pedal_brake_position;
 	data[4] = pedal_torque;
 	data[5] = (float)clutch_state;
-	//data[5] = HALL3_int_cntr_rt;
-	//HALL3_int_cntr_rt = 0;
+	data[6] = (float)clutch_close_error_counter;
+	data[7] = APP_NOW_SEC - last_close_time;
+	data[8] = (float)clutch_open_error_counter;
 }
 
 static THD_FUNCTION(my_thread, arg) {
@@ -1252,7 +1257,7 @@ static void update_wheel_speed(void)
 		if (config.wheel_sensor.skipped_magnet_threshold > 0.0f && period > config.wheel_sensor.skipped_magnet_threshold * old_period && 
 			wheel_speed > config.wheel_sensor.avg_above_rpm && pedal_brake_position_rel == 0.0) {
 			period /= 2.0;
-		}
+		}		
 
 		if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
 			avg_period = 0.5 * (period + old_period);
@@ -1736,6 +1741,7 @@ static void new_clutch_state(clutch_state_type cs)
 {
 	if (clutch_state == CLUTCH_STATE_CLOSING || clutch_state == CLUTCH_STATE_CLOSING_TMP) {
 		remove_current_limit();
+		last_close_time = APP_NOW_SEC;
 	}
 
 	if (cs == CLUTCH_STATE_OPENING) {
@@ -1760,7 +1766,7 @@ static void new_clutch_state(clutch_state_type cs)
 		char *clutch_state_str;
 		switch (cs) {
 			case CLUTCH_STATE_OPEN: clutch_state_str = "OPEN"; break;
-			case CLUTCH_STATE_OPEN_ERROR: clutch_state_str = "OPEN (ERROR)"; break;
+			case CLUTCH_STATE_OPEN_ERROR: clutch_state_str = "OPEN (ERROR)"; clutch_open_error_counter++; break;
 			case CLUTCH_STATE_OPENING: clutch_state_str = "OPENING"; break;
 			case CLUTCH_STATE_OPENING_TMP: clutch_state_str = "OPENING TEMPORARILY"; break;
 			case CLUTCH_STATE_WAITING: clutch_state_str = "WAITING"; break;
@@ -1771,7 +1777,7 @@ static void new_clutch_state(clutch_state_type cs)
 			case CLUTCH_STATE_CLOSED_FLOAT: clutch_state_str = "CLOSED (FLOAT)"; break;
 			case CLUTCH_STATE_CLOSED_BRAKE: clutch_state_str = "CLOSED (BRAKE)"; break;
 			case CLUTCH_STATE_CLOSED_ASSIST: clutch_state_str = "CLOSED (ASSIST)"; break;
-			case CLUTCH_STATE_CLOSED_ERROR: clutch_state_str = "CLOSED (ERROR)"; break;
+			case CLUTCH_STATE_CLOSED_ERROR: clutch_state_str = "CLOSED (ERROR)"; clutch_close_error_counter++; break;
 			case CLUTCH_STATE_ERROR: clutch_state_str = "ERROR"; break;
 			default: clutch_state_str = "UNKNOWN"; break;
 		}
