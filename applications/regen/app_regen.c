@@ -1254,9 +1254,14 @@ static void update_wheel_speed(void)
 		}
 
 		// try to detect missed magnet
-		if (config.wheel_sensor.skipped_magnet_threshold > 0.0f && period > config.wheel_sensor.skipped_magnet_threshold * old_period && 
+		if (config.wheel_sensor.skipped_magnet_threshold > 0.0f && period > old_period * config.wheel_sensor.skipped_magnet_threshold && 
 			wheel_speed > config.wheel_sensor.avg_above_rpm && pedal_brake_position_rel == 0.0) {
 			period /= 2.0;
+		}
+
+		// try to detect glitches
+		if (period < old_period / 2.0 && wheel_speed > config.wheel_sensor.avg_above_rpm) {
+			return;
 		}		
 
 		if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
