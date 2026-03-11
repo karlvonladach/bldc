@@ -1265,6 +1265,7 @@ static void update_wheel_speed(void)
 	static float inactivity_time = 0;
 	static uint8_t HALL3_level_old =  1;
 	static float old_timestamp = 0;
+	static float rising_edge_timestamp = 0;
 	float new_timestamp = 0;
 	float period, avg_period;
 	float current_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
@@ -1293,8 +1294,16 @@ static void update_wheel_speed(void)
 		plot_points(PLOT_HALL3, current_timestamp, HALL3_level * 20);
 
 		// new measurement is based on current timestamp if a falling edge was detected
-		if (HALL3_level == 1 && HALL3_level_old == 0){
-			new_timestamp = current_timestamp;
+		if (HALL3_level == 1 && HALL3_level_old == 0) {
+			rising_edge_timestamp = current_timestamp;
+		}
+
+		if (HALL3_level == 0 && HALL3_level_old == 1) {
+			if (rising_edge_timestamp == 0) {
+				new_timestamp = current_timestamp;
+			} else {
+				new_timestamp = (rising_edge_timestamp + current_timestamp) / 2.0;
+			}
 		}
 
 	}
