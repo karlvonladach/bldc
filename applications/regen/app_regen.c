@@ -981,6 +981,8 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("  setpin [pin] [value] - Set a pin value");
 	commands_printf("    Pins: tx, rx, adc2");
 	commands_printf("    Values: 0, 1");
+	commands_printf("  calibrate - Calibrate wheel sensor to compensate magnet misalignments");
+	commands_printf("  reset-calib - Reset wheel sensor calibration values");
 }
 
 static void terminal_get_config(int argc, const char **argv) {
@@ -1305,7 +1307,6 @@ static void update_wheel_speed(void)
 				new_timestamp = (rising_edge_timestamp + current_timestamp) / 2.0;
 			}
 		}
-
 	}
 
 	HALL3_level_old = HALL3_level;
