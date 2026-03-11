@@ -1357,7 +1357,7 @@ static void update_wheel_speed(void)
 		}
 
 		// skip if the measured period is too short, probably a glitch
-		if(period < min_wheel_period) {
+		if(avg_period < min_wheel_period) {
 			return;
 		}
 
@@ -1381,7 +1381,7 @@ static void update_wheel_speed(void)
 			old_periods[i] = old_periods[i-1];
 		}
 		old_periods[0] = period;
-		old_period = avg_period;
+		old_period = period;
 		old_timestamp = new_timestamp;
 		inactivity_time = 0.0;
 	} else {
