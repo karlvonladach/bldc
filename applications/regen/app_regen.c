@@ -63,6 +63,7 @@ static void load_config_from_eeprom(void);
 
 static void terminal_set_speed(int argc, const char **argv);
 static void terminal_calibrate(int argc, const char **argv);
+static void terminal_reset_calib(int argc, const char **argv);
 static void terminal_config(int argc, const char **argv);
 static void terminal_clutch(int argc, const char **argv);
 static void terminal_clutch_state(int argc, const char **argv);
@@ -328,6 +329,12 @@ void app_custom_start(void) {
 			terminal_calibrate);
 
 	terminal_register_command_callback(
+			"reset-calib",
+			"Reset wheel sensor calibration values",
+			"",
+			terminal_reset_calib);
+
+	terminal_register_command_callback(
 			"config",
 			"Configure custom app parameters",
 			"[parameter] [value]",
@@ -407,6 +414,10 @@ bool app_custom_is_running(void) {
 
 void app_custom_configure(app_configuration *conf) {
 	eeprom_var v;
+
+    for (uint8_t i=0; i < WHEEL_SENSOR_CALIBRATION_VALUES_COUNT; i++) {
+		wheel_sensor_calibration_values[i] = 0;
+	}
 
 	load_config_defaults();
 
@@ -715,6 +726,18 @@ static void terminal_calibrate(int argc, const char **argv) {
 	calibration_active = true;
 	calibration_step = 0;
 	commands_printf("Calibration started...");
+}
+
+static void terminal_reset_calib(int argc, const char **argv) {
+	(void)argc;
+	(void)argv;
+	for (uint8_t i=0; i < WHEEL_SENSOR_CALIBRATION_VALUES_COUNT; i++) {
+		wheel_sensor_calibration_values[i] = 0;
+	}
+	calibration_active = false;
+	compensation_active = false;
+	wheel_sensor_magnet_cntr = 0;
+	commands_printf("Wheel sensor calibration values reset.");
 }
 
 // Callback function for the terminal command with arguments.
