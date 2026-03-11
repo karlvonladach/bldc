@@ -60,6 +60,8 @@
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG         0.3f // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_WHEEL_INVERT_DIR            0    // 1/0 = invert/no invert
 #define APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR    1.8f // sec/sec - skipped period / normal period 
+#define APP_CUSTOM_CONF_WHEEL_CALIBRATION_RPM      120.0f // WRPM - wheel calibration RPM
+#define WHEEL_SENSOR_CALIBRATION_VALUES_COUNT      36u   // Number of values to store for wheel sensor calibration, should be equal to the number of magnets
 
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE       TORQUE_SENSOR_TYPE_ADC
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PORT1      HW_ADC_EXT_GPIO
@@ -158,5 +160,6 @@
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RESET_POS_PERCENT_ADDR  54
 #define APP_CUSTOM_CONF_CLUTCH_CURRENT_LIMIT_CLOSING_ADDR    55
 #define APP_CUSTOM_CONF_CLUTCH_CLOSED_FIRST_CHECK_TIME_ADDR  56
+#define APP_CUSTOM_CONF_WHEEL_CALIBRATION_RPM_ADDR           57
 
 #endif /* APP_REGEN_CONF_H_ */

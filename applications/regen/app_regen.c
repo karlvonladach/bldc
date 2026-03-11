@@ -42,7 +42,9 @@
 #include <stdarg.h>
 
 // App settings
-#define FILTER_SAMPLES					5
+#define FILTER_SAMPLES				            5u
+#define CALIBRATION_ROUNDS			           10u
+#define DIFF_THRESHOLD_TO_APPLY_COMPENSATION  0.1f
 
 // Macros
 #define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
@@ -60,6 +62,7 @@ static void load_config_defaults(void);
 static void load_config_from_eeprom(void);
 
 static void terminal_set_speed(int argc, const char **argv);
+static void terminal_calibrate(int argc, const char **argv);
 static void terminal_config(int argc, const char **argv);
 static void terminal_clutch(int argc, const char **argv);
 static void terminal_clutch_state(int argc, const char **argv);
@@ -76,6 +79,9 @@ static void update_wheel_speed(void);
 static void update_motor_speed(void);
 static void update_clutch_state(void);
 static void update_motor_control(void);
+
+static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
+static float compensate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
 
 static void record_clutch_operation(void);
 static void open_clutch(void);
@@ -126,19 +132,26 @@ static volatile uint8_t HALL3_level = 0;
 //// Other variables
 static volatile uint32_t log_groups_enabled = 0;
 static volatile uint32_t plots_enabled = 0;
-static volatile int plot_numbers[PLOT_COUNT] = {0};
-static volatile int plot_number = 0;
-static volatile float ms_without_power = 0.0;
-static volatile float wheel_sensor_timestamp = 0;
-static volatile float clutch_timestamp = 0;
-static volatile uint8_t clutch_open_error_counter = 0;
-static volatile uint8_t clutch_close_error_counter = 0;
-static volatile float clutch_operation_timestamps[CLUTCH_OPERATION_BUFFER_SIZE];
+static volatile int      plot_numbers[PLOT_COUNT] = {0};
+static volatile int      plot_number = 0;
+static volatile float    ms_without_power = 0.0;
+static volatile float    wheel_sensor_timestamp = 0;
+static volatile float    clutch_timestamp = 0;
+static volatile uint8_t  clutch_open_error_counter = 0;
+static volatile uint8_t  clutch_close_error_counter = 0;
+static volatile float    clutch_operation_timestamps[CLUTCH_OPERATION_BUFFER_SIZE];
 static volatile uint32_t clutch_operation_buffer_index = 0;
 static volatile uint32_t clutch_operation_count = 0;
 static volatile uint32_t HALL3_int_cntr_xp = 0;
 static volatile uint32_t HALL3_int_cntr_rt = 0;
-static volatile float last_close_time = 0;
+static volatile float    last_close_time = 0;
+static volatile bool     calibration_active = false;
+static volatile uint32_t calibration_step = 0;
+static volatile float    wheel_sensor_calibration_values[WHEEL_SENSOR_CALIBRATION_VALUES_COUNT] = {0};
+static volatile float    last_motor_speeds[WHEEL_SENSOR_CALIBRATION_VALUES_COUNT] = {0};
+static volatile float    last_wheel_speeds[WHEEL_SENSOR_CALIBRATION_VALUES_COUNT] = {0};
+static volatile uint8_t  wheel_sensor_magnet_cntr = 0;
+static volatile bool     compensation_active = false;
 
 // Config table - add new parameters here
 static const config_param_t config_table[] = {
@@ -191,8 +204,10 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG}, NULL},
     {"wheel_invert", "[0/1] Invert wheel sensor direction: 1=invert, 0=no invert", CONFIG_TYPE_BOOL, &config.wheel_sensor.invert_direction, APP_CUSTOM_CONF_WHEEL_INVERT_DIR_ADDR, 
      {.bool_default = APP_CUSTOM_CONF_WHEEL_INVERT_DIR}, NULL},
-    {"wheel_skip_threshold", "[0.0-1.0] Wheel sensor skipped magnet threshold ratio: skipped period / normal period", CONFIG_TYPE_FLOAT, &config.wheel_sensor.skipped_magnet_threshold, APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR_ADDR, 
+    {"wheel_skip_threshold", "[1.0-3.0] Wheel sensor skipped magnet threshold ratio: skipped period / normal period", CONFIG_TYPE_FLOAT, &config.wheel_sensor.skipped_magnet_threshold, APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR}, NULL},
+	{"wheel_calibration_rpm", "[rpm] Wheel calibration RPM", CONFIG_TYPE_FLOAT, &config.wheel_sensor.calibration_rpm, APP_CUSTOM_CONF_WHEEL_CALIBRATION_RPM_ADDR,
+     {.float_default = APP_CUSTOM_CONF_WHEEL_CALIBRATION_RPM}, NULL},
     
 	// Torque sensor config
 	{"torque_sensor_type", "Torque sensor type", CONFIG_TYPE_ENUM, &config.torque_sensor.sensor_type, APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE_ADDR, 
@@ -305,6 +320,12 @@ void app_custom_start(void) {
 			"Set the speed to RPM",
 			"[RPM]",
 			terminal_set_speed);
+
+	terminal_register_command_callback(
+			"calibrate",
+			"Calibrate the wheel sensors",
+			"",
+			terminal_calibrate);
 
 	terminal_register_command_callback(
 			"config",
@@ -489,16 +510,16 @@ static THD_FUNCTION(my_thread, arg) {
 		plot_points(PLOT_PEDAL_RPM, timestamp, pedal_speed);
         plot_points(PLOT_BRAKE_POS, timestamp, pedal_brake_position);
 
+		//get motor speed
+		update_motor_speed();
+
+		plot_points(PLOT_MOTOR_RPM, timestamp, motor_speed);
+
 		//measure wheel speed
 		update_wheel_speed();
 
 		plot_points(PLOT_WHEEL_RPM, timestamp, wheel_speed);
 		plot_points(PLOT_WHEEL_PRED_RPM, timestamp, wheel_speed_pred);
-
-		//get motor speed
-		update_motor_speed();
-
-		plot_points(PLOT_MOTOR_RPM, timestamp, motor_speed);
 
 		//take care of clutch state transitions
 		update_clutch_state();
@@ -684,6 +705,16 @@ static void terminal_set_speed(int argc, const char **argv) {
 	} else {
 		commands_printf("This command requires one argument.\n");
 	}
+}
+
+// Callback function for the terminal command with arguments.
+static void terminal_calibrate(int argc, const char **argv) {
+	(void)argc;
+	(void)argv;
+	command_line_speed = config.wheel_sensor.calibration_rpm;
+	calibration_active = true;
+	calibration_step = 0;
+	commands_printf("Calibration started...");
 }
 
 // Callback function for the terminal command with arguments.
@@ -1249,7 +1280,8 @@ static void update_wheel_speed(void)
 		// if there was new measurement, then calculate speed from elapsed time
 		period = (new_timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
 
-		if (period < min_wheel_period) { //can't be that short, abort
+		// skip if the measured period is too short, probably a glitch
+		if (period < min_wheel_period) {
 			return;
 		}
 
@@ -1264,23 +1296,38 @@ static void update_wheel_speed(void)
 			return;
 		}		
 
+		// If calibration is active, use the new measurement to calibrate the sensor
+		if (calibration_active) {
+			calibrate_wheel_sensor(60.0 / period, motor_speed);
+		} else 
+		// if calibration is not active but we have calibration values, apply them to the new measurement
+		if (wheel_sensor_calibration_values[0] != 0) {
+			period = 60.0 / compensate_wheel_sensor(60.0 / period, motor_speed);
+		}
+
+		// average last 2 periods due to differences between the upward and downward magnet orientation
 		if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
 			avg_period = 0.5 * (period + old_period);
 		} else {
 			avg_period = period;
 		}
 
-		if(avg_period < min_wheel_period) { //can't be that short, abort
+		// skip if the measured period is too short, probably a glitch
+		if(period < min_wheel_period) {
 			return;
 		}
 
+		// calculate speed from rotation time
 		wheel_speed = 60.0 / avg_period;
+
+		// apply simple low pass filtering.
 		UTILS_LP_FAST(wheel_speed_filtered, wheel_speed, config.wheel_sensor.filter);
 		wheel_speed = wheel_speed_filtered;
 		if (wheel_speed < 0) {
 			wheel_speed = 0.0;
 		}
 
+		// predict wheel speed for the next sample - experimental
 		wheel_speed_pred = (60.0 / old_period) + ((60.0 / avg_period) - (60.0 / old_period)) * 1.5;
 		if (wheel_speed_pred < 0) {
 			wheel_speed_pred = 0.0;
@@ -1661,6 +1708,94 @@ static void update_motor_control()
 	if (cnt++ % (config.update_rate_hz / 10) == 0){
 		print_log(LOG_GROUP_MOTOR,"[%4.2f] %s", (double)timestamp, log_text);
 	}
+}
+
+static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed) {
+	// wait until motor is spinning up to start calibration
+	if (calibration_active && calibration_step == 0 && abs(last_wheel_speed - config.wheel_sensor.calibration_rpm) < 1.0) {
+		for (uint8_t i = 0; i < config.wheel_sensor.magnets; i++) {
+			wheel_sensor_calibration_values[i] = 0;
+		}
+		wheel_sensor_calibration_values[0] += last_motor_speed / last_wheel_speed / CALIBRATION_ROUNDS;
+		calibration_step = 1;
+	}
+	else
+	// collect calibration values for each magnet (multiple rounds if configured) and average them
+	if (calibration_active && calibration_step > 0 && calibration_step < CALIBRATION_ROUNDS * config.wheel_sensor.magnets) {
+		wheel_sensor_calibration_values[calibration_step % config.wheel_sensor.magnets] += last_motor_speed / last_wheel_speed / CALIBRATION_ROUNDS;
+		calibration_step++;
+	}
+
+	if (calibration_active && calibration_step >= CALIBRATION_ROUNDS * config.wheel_sensor.magnets) {
+		calibration_active = false;
+		command_line_speed = -1;
+		printf("Wheel sensor calibration completed\n");
+		for (uint8_t i = 0; i < config.wheel_sensor.magnets; i++) {
+			print_log(LOG_GROUP_SENSOR,"Calibration value for magnet %d: %4.2f\n", i, (double)wheel_sensor_calibration_values[i]);
+		}
+	}
+}
+
+static float compensate_wheel_sensor(float last_wheel_speed, float last_motor_speed) {
+	float diff;
+	float min_diff = 10;
+	uint8_t new_magnet_cntr = 0;
+
+	// store the last speeds for each magnet to be able to detect the pattern
+	for (uint8_t i = 0; i < config.wheel_sensor.magnets - 1; i++) {
+		last_wheel_speeds[i] = last_wheel_speeds[i+1];
+		last_motor_speeds[i] = last_motor_speeds[i+1];
+	}
+	last_wheel_speeds[config.wheel_sensor.magnets - 1] = last_wheel_speed; // store the uncompensated speed
+	last_motor_speeds[config.wheel_sensor.magnets - 1] = last_motor_speed; // store the motorspeed for reference
+
+	// if the wheel is not spinning fast enough, we won't apply any calibration
+	if (last_wheel_speed < config.wheel_sensor.rpm_min) {
+		compensation_active = false;
+		wheel_sensor_magnet_cntr = 0;
+		return last_wheel_speed;
+	}
+
+	// if calibration is active or we don't have any calibration values yet, we won't apply any calibration
+	if (calibration_active || wheel_sensor_calibration_values[0] == 0) {
+		compensation_active = false;
+		wheel_sensor_magnet_cntr = 0;
+		return last_wheel_speed;
+	}
+
+	// if motor runs together with the wheel, we can try to detect which magnet is currently triggering the sensor
+	if (clutch_state == CLUTCH_STATE_SYNCED || clutch_state == CLUTCH_STATE_CLOSED_ASSIST || clutch_state == CLUTCH_STATE_CLOSED_BRAKE || clutch_state == CLUTCH_STATE_CLOSED_FLOAT) {
+		// do this only once per turn of the wheel to avoid excessive calculations
+		if (wheel_sensor_magnet_cntr == 0) {
+			for (uint8_t i = 0; i < config.wheel_sensor.magnets; i++) {
+				diff = 0;
+				for (uint8_t j = 0; j < config.wheel_sensor.magnets; j++) {
+					diff += (float)fabs((double)(last_motor_speeds[(i + j) % config.wheel_sensor.magnets] / last_wheel_speeds[(i + j) % config.wheel_sensor.magnets] - wheel_sensor_calibration_values[j]));
+				}
+				//print_log(LOG_GROUP_SENSOR,"%d -> %f\n", i, (double)diff);
+				if (diff < (DIFF_THRESHOLD_TO_APPLY_COMPENSATION * config.wheel_sensor.magnets) && diff < min_diff) {
+					min_diff = diff;
+					new_magnet_cntr = (config.wheel_sensor.magnets - 1 - i) % config.wheel_sensor.magnets;
+					compensation_active = true;
+				}
+			}
+			if (new_magnet_cntr != wheel_sensor_magnet_cntr) {
+				uint8_t shift = (new_magnet_cntr - wheel_sensor_magnet_cntr + config.wheel_sensor.magnets) % config.wheel_sensor.magnets;
+				print_log(LOG_GROUP_SENSOR,"magnetshift: %d\n", shift > (config.wheel_sensor.magnets / 2) ? shift - config.wheel_sensor.magnets : shift);
+				wheel_sensor_magnet_cntr = new_magnet_cntr;
+			}
+		}
+	}
+
+	// apply calibration value for the currently active magnet
+	if (compensation_active) {
+		float compensated_wheel_speed;
+		compensated_wheel_speed = last_wheel_speed * wheel_sensor_calibration_values[wheel_sensor_magnet_cntr];
+		wheel_sensor_magnet_cntr = (wheel_sensor_magnet_cntr + 1) % config.wheel_sensor.magnets;
+		return compensated_wheel_speed;
+	}
+
+	return last_wheel_speed;
 }
 
 static void record_clutch_operation(void)
