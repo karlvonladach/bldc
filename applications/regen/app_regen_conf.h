@@ -54,6 +54,7 @@
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS       36u   // including "virtual magnets"
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER         0.8  // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM        35.0f // WRPM - average last two samples above this value
+#define APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM   0.0f // WRPM - if > 0, use progressive averaging, adding one more sample to the average for every multiple of this RPM
 #define APP_CUSTOM_CONF_WHEEL_RPM_MIN               5.0f // WRPM - set 0 WRPM below this value
 #define APP_CUSTOM_CONF_WHEEL_RPM_MAX            1000.0f // WRPM - raise error above this value
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS         0.3f // sec/fullscale (min to max)
@@ -161,5 +162,6 @@
 #define APP_CUSTOM_CONF_CLUTCH_CURRENT_LIMIT_CLOSING_ADDR    55
 #define APP_CUSTOM_CONF_CLUTCH_CLOSED_FIRST_CHECK_TIME_ADDR  56
 #define APP_CUSTOM_CONF_WHEEL_CALIBRATION_RPM_ADDR           57
+#define APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM_ADDR       58
 
 #endif /* APP_REGEN_CONF_H_ */

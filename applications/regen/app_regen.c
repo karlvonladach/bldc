@@ -45,6 +45,7 @@
 #define FILTER_SAMPLES				            5u
 #define CALIBRATION_ROUNDS			           10u
 #define DIFF_THRESHOLD_TO_APPLY_COMPENSATION  0.1f
+#define MAX_PERIODS_TO_AVG						8u
 
 // Macros
 #define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
@@ -195,6 +196,8 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER}, NULL},
     {"wheel_avg_above_rpm", "[rpm] WRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.wheel_sensor.avg_above_rpm, APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM}, NULL},
+	{"wheel_progressive_avg_rpm", "[rpm] if > 0, use progressive averaging, adding one more sample to the average for every multiple of this RPM", CONFIG_TYPE_FLOAT, &config.wheel_sensor.progressive_avg_rpm, APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM}, NULL},
     {"wheel_rpm_min", "[rpm] WRPM minimum threshold - set 0 WRPM below this value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.rpm_min, APP_CUSTOM_CONF_WHEEL_RPM_MIN_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_RPM_MIN}, NULL},
     {"wheel_rpm_max", "[rpm] WRPM maximum threshold - raise error above this value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.rpm_max, APP_CUSTOM_CONF_WHEEL_RPM_MAX_ADDR, 
@@ -1257,6 +1260,7 @@ static void update_pedal_speed_and_position(float set_brake_position)
 static void update_wheel_speed(void)
 {
 	static float old_period = 0;
+	static float old_periods[MAX_PERIODS_TO_AVG-1] = {0.0f};
 	static float wheel_speed_filtered = 0;
 	static float inactivity_time = 0;
 	static uint8_t HALL3_level_old =  1;
@@ -1330,7 +1334,24 @@ static void update_wheel_speed(void)
 
 		// average last 2 periods due to differences between the upward and downward magnet orientation
 		if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
-			avg_period = 0.5 * (period + old_period);
+			if (config.wheel_sensor.progressive_avg_rpm < 0.1) {
+				avg_period = 0.5 * (period + old_period);
+			} else {
+				uint8_t samples_to_avg;
+				float samples_f = wheel_speed / config.wheel_sensor.progressive_avg_rpm;
+				int samples_i = (int)samples_f + 1;
+				if (samples_i < 1) {
+					samples_i = 1;
+				} else if (samples_i > (int)MAX_PERIODS_TO_AVG) {
+					samples_i = (int)MAX_PERIODS_TO_AVG;
+				}
+				samples_to_avg = (uint8_t)samples_i;
+				avg_period = 0.0;
+				for (uint8_t i = 0; i < samples_to_avg; i++) {
+					avg_period += (i == 0) ? period : old_periods[i-1];
+				}
+				avg_period /= samples_to_avg;
+			}
 		} else {
 			avg_period = period;
 		}
@@ -1356,6 +1377,10 @@ static void update_wheel_speed(void)
 			wheel_speed_pred = 0.0;
 		}
 
+		for (uint8_t i = MAX_PERIODS_TO_AVG - 2; i > 0; i--) {
+			old_periods[i] = old_periods[i-1];
+		}
+		old_periods[0] = period;
 		old_period = avg_period;
 		old_timestamp = new_timestamp;
 		inactivity_time = 0.0;
@@ -1391,6 +1416,9 @@ static void update_wheel_speed(void)
 		if(inactivity_time > max_wheel_period) {
 			wheel_speed = 0.0;
 			wheel_speed_pred = 0.0;
+			for (uint8_t i = 0; i < MAX_PERIODS_TO_AVG - 1; i++) {
+				old_periods[i] = 0;
+			}
 		}
 	}
 
