@@ -51,7 +51,7 @@
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1       HW_HALL_ENC_GPIO3
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1        HW_HALL_ENC_PIN3
 #define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM     100.0f // WRPM at which to switch from poll to interrupt mode
-#define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS       24u   // including "virtual magnets"
+#define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS       36u   // including "virtual magnets"
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER         0.8  // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM        35.0f // WRPM - average last two samples above this value
 #define APP_CUSTOM_CONF_WHEEL_RPM_MIN               5.0f // WRPM - set 0 WRPM below this value
@@ -68,12 +68,12 @@
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PIN1       HW_ADC_EXT_PIN
 
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS           45.0f  // degree mechanical
-#define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS             90.0f  // degree mechanical
+#define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS             80.0f  // degree mechanical
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM         15.0f  // WRPM
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE  0.02f // seconds
-#define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS      15.0f  // degree mechanical
+#define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS      30.0f  // degree mechanical
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME    0.2f  // sec/fullscale (min to max)
-#define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RESET_POS_PERCENT    0.5f  // percent of (end_pos-start_pos)
+#define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RESET_POS_PERCENT    0.8f  // percent of (end_pos-start_pos)
 
 #define APP_CUSTOM_CONF_CLUTCH_MODE                  CLUTCH_MODE_FULL_MANUAL
 #define APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1            HW_UART_RX_PORT
