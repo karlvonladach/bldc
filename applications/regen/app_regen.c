@@ -1268,6 +1268,7 @@ static void update_wheel_speed(void)
 	static uint8_t HALL3_level_old =  1;
 	static float old_timestamp = 0;
 	static float rising_edge_timestamp = 0;
+	static bool  waiting_for_falling_edge = false;
 	float new_timestamp = 0;
 	float period, avg_period;
 	float current_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
@@ -1286,6 +1287,7 @@ static void update_wheel_speed(void)
 		if (wheel_sensor_timestamp != 0) {
 			new_timestamp = wheel_sensor_timestamp;
 		}
+		waiting_for_falling_edge = false;
 
 	} else 
 	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL ||
@@ -1298,6 +1300,7 @@ static void update_wheel_speed(void)
 		// new measurement is based on current timestamp if a falling edge was detected
 		if (HALL3_level == 1 && HALL3_level_old == 0) {
 			rising_edge_timestamp = current_timestamp;
+			waiting_for_falling_edge = true;
 		}
 
 		if (HALL3_level == 0 && HALL3_level_old == 1) {
@@ -1306,6 +1309,7 @@ static void update_wheel_speed(void)
 			} else {
 				new_timestamp = (rising_edge_timestamp + current_timestamp) / 2.0;
 			}
+			waiting_for_falling_edge = false;
 		}
 	}
 
@@ -1409,12 +1413,14 @@ static void update_wheel_speed(void)
 			avg_period = period;
 		}
 
-		if ((60.0 / avg_period) < wheel_speed) {
-			wheel_speed = 60.0 / avg_period;
-		}
+		if (!waiting_for_falling_edge) {
+			if ((60.0 / avg_period) < wheel_speed) {
+				wheel_speed = 60.0 / avg_period;
+			}
 
-		if ((60.0 / avg_period) < wheel_speed_pred) {
-			wheel_speed_pred = 60.0 / avg_period;
+			if ((60.0 / avg_period) < wheel_speed_pred) {
+				wheel_speed_pred = 60.0 / avg_period;
+			}
 		}
 
 		// increase inactivity time whenever we are between two measurements
