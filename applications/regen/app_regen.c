@@ -1272,6 +1272,7 @@ static void update_wheel_speed(void)
 	float new_timestamp = 0;
 	float period, avg_period;
 	float current_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	uint8_t num_events = 0;
 
 	// read the wheel sensor state
 	HALL3_level = palReadPad(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1);
@@ -1281,21 +1282,26 @@ static void update_wheel_speed(void)
 		  config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT && 
 		  wheel_speed >= config.wheel_sensor.poll_to_int_rpm
 		)) {
-		plot_points(PLOT_HALL3, current_timestamp, HALL3_int_cntr_xp * 10);
 
 		// new measurement is based on the interrupt timestamp
 		if (wheel_sensor_timestamp != 0) {
+			chSysLock();
 			new_timestamp = wheel_sensor_timestamp;
+			num_events = HALL3_int_cntr_xp;
+			wheel_sensor_timestamp = 0;
+			HALL3_int_cntr_xp = 0;
+			chSysUnlock();
 		}
 		waiting_for_falling_edge = false;
 
+		plot_points(PLOT_HALL3, current_timestamp, num_events * 10);
 	} else 
 	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL ||
 		(
 		  config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT && 
 		  wheel_speed < config.wheel_sensor.poll_to_int_rpm
 		)) {
-		plot_points(PLOT_HALL3, current_timestamp, HALL3_level * 20);
+		plot_points(PLOT_HALL3, current_timestamp, HALL3_level * 15);
 
 		// new measurement is based on current timestamp if a falling edge was detected
 		if (HALL3_level == 1 && HALL3_level_old == 0) {
@@ -1311,15 +1317,17 @@ static void update_wheel_speed(void)
 			}
 			waiting_for_falling_edge = false;
 		}
+
+		wheel_sensor_timestamp = 0;
+		HALL3_int_cntr_xp = 0;
+		num_events = 1;
 	}
 
 	HALL3_level_old = HALL3_level;
-	wheel_sensor_timestamp = 0;
-	HALL3_int_cntr_xp = 0;
 
-	if (new_timestamp != 0){
+	if (new_timestamp != 0) {
 		// if there was new measurement, then calculate speed from elapsed time
-		period = (new_timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
+		period = (new_timestamp - old_timestamp) * (float)config.wheel_sensor.magnets / (float)num_events;
 
 		// skip if the measured period is too short, probably a glitch
 		if (period < min_wheel_period) {
