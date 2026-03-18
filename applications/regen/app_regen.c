@@ -1267,19 +1267,14 @@ static void update_wheel_speed(void)
 	static float inactivity_time = 0;
 	static uint8_t HALL3_level_old =  1;
 	static float old_timestamp = 0;
+	static bool interrupt_mode  = false;
 	float new_timestamp = 0;
 	float period, avg_period;
 	float current_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 	uint8_t num_events = 0;
 
-	// read the wheel sensor state
-	HALL3_level = palReadPad(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1);
-
 	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT ||
-	    (
-		  config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT && 
-		  wheel_speed >= config.wheel_sensor.poll_to_int_rpm
-		)) {
+	    (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT && interrupt_mode == true)) {
 
 		// new measurement is based on the interrupt timestamp
 		if (wheel_sensor_timestamp != 0) {
@@ -1291,14 +1286,23 @@ static void update_wheel_speed(void)
 			chSysUnlock();
 		}
 
-		plot_points(PLOT_HALL3, current_timestamp, num_events * 10);
+		if (new_timestamp != 0) {
+			plot_points(PLOT_HALL3, new_timestamp, num_events * 10);
+		}
+
+		// read the wheel sensor state
+		HALL3_level = palReadPad(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1);
+
+		plot_points(PLOT_HALL3, current_timestamp, HALL3_level * (-10) - 5);
+
 	} else 
 	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL ||
-		(
-		  config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT && 
-		  wheel_speed < config.wheel_sensor.poll_to_int_rpm
-		)) {
-		plot_points(PLOT_HALL3, current_timestamp, HALL3_level * 15);
+		(config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT && interrupt_mode == false)) {
+
+		// read the wheel sensor state
+		HALL3_level = palReadPad(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1);
+
+		plot_points(PLOT_HALL3, current_timestamp, HALL3_level * 10 + 5);
 
 		// new measurement is based on current timestamp if a falling edge was detected
 		if (HALL3_level == 1 && HALL3_level_old == 0){
@@ -1444,6 +1448,15 @@ static void update_wheel_speed(void)
 		apply_ramping(&wheel_speed_rel_ramp, &last_time, wheel_speed_rel, config.wheel_sensor.ramp_time_pos / 1.0, config.wheel_sensor.ramp_time_neg / 1.0);
 		wheel_speed = wheel_speed_ramp;
 		wheel_speed_rel = wheel_speed_rel_ramp;
+	}
+
+	// Switch between polling and interrupt mode based on the current wheel speed
+	if (new_timestamp != 0 && config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT) {
+		if (wheel_speed >= config.wheel_sensor.poll_to_int_rpm) {
+			interrupt_mode = true;
+		} else {
+			interrupt_mode = false;
+		}
 	}
 }
 
