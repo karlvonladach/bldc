@@ -1281,8 +1281,11 @@ static void update_wheel_speed(void)
 		// new measurement is based on the interrupt timestamp
 		if (wheel_sensor_timestamp != 0) {
 			chSysLock();
+			// disregard falling edge interrupts
+			if (palReadPad(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1) == 1) {
 			new_timestamp = wheel_sensor_timestamp;
 			num_events = HALL3_int_cntr_xp;
+			}
 			wheel_sensor_timestamp = 0;
 			HALL3_int_cntr_xp = 0;
 			chSysUnlock();
@@ -1295,7 +1298,7 @@ static void update_wheel_speed(void)
 		// read the wheel sensor state
 		HALL3_level = palReadPad(APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1, APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1);
 
-		plot_points(PLOT_HALL3, current_timestamp, HALL3_level * (-10) - 5);
+		plot_points(PLOT_HALL3, current_timestamp, HALL3_level * (10) - 15);
 
 	} else 
 	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL ||
