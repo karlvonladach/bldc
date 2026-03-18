@@ -51,7 +51,7 @@
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1       HW_HALL_ENC_GPIO3
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1        HW_HALL_ENC_PIN3
 #define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM     100.0f // WRPM at which to switch from poll to interrupt mode
-#define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS       36u   // including "virtual magnets"
+#define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS       12u   // including "virtual magnets"
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER         0.8  // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM        35.0f // WRPM - average last two samples above this value
 #define APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM   0.0f // WRPM - if > 0, use progressive averaging, adding one more sample to the average for every multiple of this RPM
