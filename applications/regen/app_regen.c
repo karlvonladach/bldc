@@ -41,6 +41,11 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#define M_PI_2 1.57079632679489661923
+#endif
+
 // App settings
 #define FILTER_SAMPLES				            5u
 #define CALIBRATION_ROUNDS			           10u
@@ -218,7 +223,7 @@ static const config_param_t config_table[] = {
 	 {.enum_default = APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE}, "none,adc"},
 	{"torque_cutoff_rpm", "[rpm] WRPM threshold for torque cutoff - set torque to 0 above this value", CONFIG_TYPE_FLOAT, &config.torque_sensor.cutoff_rpm, APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_ADDR,	
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM}, NULL},
-	{"torque_decrease_interval", "[rpm] WRPM interval before cutoff where torque linearly decreases", CONFIG_TYPE_FLOAT, &config.torque_sensor.decrease_interval, APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR,	
+	{"torque_decrease_interval", "[rpm] WRPM interval before cutoff where torque (non-linearly) decreases", CONFIG_TYPE_FLOAT, &config.torque_sensor.decrease_interval, APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR,	
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL}, NULL},
 
     // Back pedal brake config
@@ -1078,8 +1083,14 @@ static void update_pedal_torque(void)
 		// Apply cutoff above regulatory limit with linear decrease before cutoff.
 		float correction_value = 0.0f;
 		if (config.torque_sensor.decrease_interval > 0.0f) {
-			float cutoff_start_rpm = config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval;
-			correction_value = utils_map(wheel_speed, cutoff_start_rpm, config.torque_sensor.cutoff_rpm, 1.0, 0.0);
+			if (wheel_speed >= config.torque_sensor.cutoff_rpm) {
+				correction_value = 0.0f;
+			} else if (wheel_speed <= config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval) {
+				correction_value = 1.0f;
+			} else {
+				float cutoff_start_rpm = config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval;
+				correction_value = (cosf(utils_map(wheel_speed, cutoff_start_rpm, config.torque_sensor.cutoff_rpm, 0.0, M_PI)) + 1.0f) / 2.0f;
+			}
 		} else {
 			correction_value = wheel_speed < config.torque_sensor.cutoff_rpm ? 1.0f : 0.0f;
 		}
