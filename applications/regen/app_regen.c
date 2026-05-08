@@ -216,10 +216,10 @@ static const config_param_t config_table[] = {
 	// Torque sensor config
 	{"torque_sensor_type", "Torque sensor type", CONFIG_TYPE_ENUM, &config.torque_sensor.sensor_type, APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE_ADDR, 
 	 {.enum_default = APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE}, "none,adc"},
-	{"torque_cutoff_rpm_min", "[rpm] WRPM minimum threshold for torque cutoff - start decreasing torque above this value", CONFIG_TYPE_FLOAT, &config.torque_sensor.cutoff_rpm_min, APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_MIN_ADDR,	
-	 {.float_default = APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_MIN}, NULL},
-	{"torque_cutoff_rpm_max", "[rpm] WRPM maximum threshold for torque cutoff - set torque to 0 above this value", CONFIG_TYPE_FLOAT, &config.torque_sensor.cutoff_rpm_max, APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_MAX_ADDR,	
-	 {.float_default = APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_MAX}, NULL},
+	{"torque_cutoff_rpm", "[rpm] WRPM threshold for torque cutoff - set torque to 0 above this value", CONFIG_TYPE_FLOAT, &config.torque_sensor.cutoff_rpm, APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_ADDR,	
+	 {.float_default = APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM}, NULL},
+	{"torque_decrease_interval", "[rpm] WRPM interval before cutoff where torque linearly decreases", CONFIG_TYPE_FLOAT, &config.torque_sensor.decrease_interval, APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR,	
+	 {.float_default = APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL}, NULL},
 
     // Back pedal brake config
     {"brake_start_pos", "[deg] Back pedal brake start position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR, 
@@ -1075,8 +1075,14 @@ static void update_pedal_torque(void)
 		apply_ramping(&torque_rel_ramp, &last_time, torque_rel, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
 		torque_rel = torque_rel_ramp;
 
-		// Apply cutoff above regulatory limit
-		float correction_value = utils_map(wheel_speed, config.torque_sensor.cutoff_rpm_min, config.torque_sensor.cutoff_rpm_max, 1.0, 0.0);
+		// Apply cutoff above regulatory limit with linear decrease before cutoff.
+		float correction_value = 0.0f;
+		if (config.torque_sensor.decrease_interval > 0.0f) {
+			float cutoff_start_rpm = config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval;
+			correction_value = utils_map(wheel_speed, cutoff_start_rpm, config.torque_sensor.cutoff_rpm, 1.0, 0.0);
+		} else {
+			correction_value = wheel_speed < config.torque_sensor.cutoff_rpm ? 1.0f : 0.0f;
+		}
 		utils_truncate_number(&correction_value, 0.0, 1.0);
 		torque_rel *= correction_value;
 
