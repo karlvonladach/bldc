@@ -111,6 +111,8 @@ typedef struct {
 typedef struct {
     torque_sensor_type sensor_type;
 	bool use_filter;
+    float cutoff_rpm_min;
+    float cutoff_rpm_max;
 } torque_sensor_config_type;
 
 typedef struct {

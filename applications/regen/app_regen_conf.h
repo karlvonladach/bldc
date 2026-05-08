@@ -50,23 +50,25 @@
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE        SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1       HW_HALL_ENC_GPIO3
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1        HW_HALL_ENC_PIN3
-#define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM     100.0f // WRPM at which to switch from poll to interrupt mode
-#define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS       12u   // including "virtual magnets"
-#define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER         0.8  // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
-#define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM        35.0f // WRPM - average last two samples above this value
-#define APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM   0.0f // WRPM - if > 0, use progressive averaging, adding one more sample to the average for every multiple of this RPM
-#define APP_CUSTOM_CONF_WHEEL_RPM_MIN               5.0f // WRPM - set 0 WRPM below this value
-#define APP_CUSTOM_CONF_WHEEL_RPM_MAX            1000.0f // WRPM - raise error above this value
-#define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS         0.3f // sec/fullscale (min to max)
-#define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG         0.3f // sec/fullscale (min to max)
-#define APP_CUSTOM_CONF_WHEEL_INVERT_DIR            0    // 1/0 = invert/no invert
-#define APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR    1.8f // sec/sec - skipped period / normal period 
+#define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM     100.0f  // WRPM at which to switch from poll to interrupt mode
+#define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS       12u    // including "virtual magnets"
+#define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER         0.8   // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
+#define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM        35.0f  // WRPM - average last two samples above this value
+#define APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM   0.0f  // WRPM - if > 0, use progressive averaging, adding one more sample to the average for every multiple of this RPM
+#define APP_CUSTOM_CONF_WHEEL_RPM_MIN               5.0f  // WRPM - set 0 WRPM below this value
+#define APP_CUSTOM_CONF_WHEEL_RPM_MAX            1000.0f  // WRPM - raise error above this value
+#define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS         0.3f  // sec/fullscale (min to max)
+#define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG         0.3f  // sec/fullscale (min to max)
+#define APP_CUSTOM_CONF_WHEEL_INVERT_DIR            0     // 1/0 = invert/no invert
+#define APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR    1.8f  // sec/sec - skipped period / normal period 
 #define APP_CUSTOM_CONF_WHEEL_CALIBRATION_RPM      120.0f // WRPM - wheel calibration RPM
-#define WHEEL_SENSOR_CALIBRATION_VALUES_COUNT      36u   // Number of values to store for wheel sensor calibration, should be equal to the number of magnets
+#define WHEEL_SENSOR_CALIBRATION_VALUES_COUNT      36u    // Number of values to store for wheel sensor calibration, should be equal to the number of magnets
 
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE       TORQUE_SENSOR_TYPE_ADC
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PORT1      HW_ADC_EXT_GPIO
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PIN1       HW_ADC_EXT_PIN
+#define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_MIN      195.0f // WRPM - start decreasing torque above this value
+#define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_MAX      215.0f // WRPM - set torque to 0 above this value
 
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS           45.0f  // degree mechanical
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS             80.0f  // degree mechanical
@@ -163,5 +165,7 @@
 #define APP_CUSTOM_CONF_CLUTCH_CLOSED_FIRST_CHECK_TIME_ADDR  56
 #define APP_CUSTOM_CONF_WHEEL_CALIBRATION_RPM_ADDR           57
 #define APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM_ADDR       58
+#define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_MIN_ADDR           59
+#define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_MAX_ADDR           60
 
 #endif /* APP_REGEN_CONF_H_ */
