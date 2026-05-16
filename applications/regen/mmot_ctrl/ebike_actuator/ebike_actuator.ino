@@ -207,6 +207,13 @@ void loop() {
   switch(MyState)
   {
     case ST_CLOSING:
+      if(last_state == 0 && new_state == 0)  //Check for open command
+      {
+        speed = 0.0;
+        motor.enable();
+        MyState = ST_OPENING;
+        break;
+      }
 
       if(speed < RUN_SPEED)   //Accelerating
       {
@@ -236,6 +243,13 @@ void loop() {
     break;
 
     case ST_OPENING:
+      if(last_state == 1 && new_state == 1)  //Check for close command
+      {
+        speed = 0.0;
+        motor.enable();
+        MyState = ST_CLOSING;
+        break;
+      }
 
       if(speed > (-RUN_SPEED))  //Accelerating
       {
