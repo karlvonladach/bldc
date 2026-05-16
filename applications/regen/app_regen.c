@@ -1082,17 +1082,24 @@ static void update_pedal_torque(void)
 
 		// Apply cutoff above regulatory limit with linear decrease before cutoff.
 		float correction_value = 0.0f;
+		float speed;
+		if (clutch_state == CLUTCH_STATE_CLOSED_BRAKE || clutch_state == CLUTCH_STATE_CLOSED_ASSIST 
+			|| clutch_state == CLUTCH_STATE_CLOSED_FLOAT || clutch_state == CLUTCH_STATE_CLOSED_ERROR) {
+			speed = motor_speed;
+		} else {
+			speed = wheel_speed;
+		}
 		if (config.torque_sensor.decrease_interval > 0.0f) {
-			if (wheel_speed >= config.torque_sensor.cutoff_rpm) {
+			if (speed >= config.torque_sensor.cutoff_rpm) {
 				correction_value = 0.0f;
-			} else if (wheel_speed <= config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval) {
+			} else if (speed <= config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval) {
 				correction_value = 1.0f;
 			} else {
 				float cutoff_start_rpm = config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval;
-				correction_value = (cosf(utils_map(wheel_speed, cutoff_start_rpm, config.torque_sensor.cutoff_rpm, 0.0, M_PI)) + 1.0f) / 2.0f;
+				correction_value = (cosf(utils_map(speed, cutoff_start_rpm, config.torque_sensor.cutoff_rpm, 0.0, M_PI)) + 1.0f) / 2.0f;
 			}
 		} else {
-			correction_value = wheel_speed < config.torque_sensor.cutoff_rpm ? 1.0f : 0.0f;
+			correction_value = speed < config.torque_sensor.cutoff_rpm ? 1.0f : 0.0f;
 		}
 		utils_truncate_number(&correction_value, 0.0, 1.0);
 		torque_rel *= correction_value;
