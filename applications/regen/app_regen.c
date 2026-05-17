@@ -1350,6 +1350,9 @@ static void update_wheel_speed(void)
 		wheel_sensor_timestamp = 0;
 		HALL3_int_cntr_xp = 0;
 		num_events = 1;
+	} else 
+	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_NONE) {
+		wheel_speed = motor_speed;
 	}
 
 	HALL3_level_old = HALL3_level;

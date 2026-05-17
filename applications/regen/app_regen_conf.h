@@ -47,7 +47,7 @@
 #define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG        0.1f  // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_PEDAL_INVERT_DIR           0     // 1/0 = invert/no invert
 
-#define APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE        SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT
+#define APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE        SPEED_SENSOR_TYPE_NONE
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1       HW_HALL_ENC_GPIO3
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1        HW_HALL_ENC_PIN3
 #define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM     100.0f  // WRPM at which to switch from poll to interrupt mode
@@ -78,7 +78,7 @@
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME    0.2f  // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RESET_POS_PERCENT    0.8f  // percent of (end_pos-start_pos)
 
-#define APP_CUSTOM_CONF_CLUTCH_MODE                  CLUTCH_MODE_FULL_MANUAL
+#define APP_CUSTOM_CONF_CLUTCH_MODE                  CLUTCH_MODE_CLOSED
 #define APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1            HW_UART_RX_PORT
 #define APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1             HW_UART_RX_PIN
 #define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN        0.5f  // seconds
