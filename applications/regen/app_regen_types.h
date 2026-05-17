@@ -40,6 +40,7 @@ typedef enum {
     PLOT_CLUTCH_STATE,
     PLOT_WHEEL_PRED_RPM,
     PLOT_TORQUE,
+    PLOT_TORQUE2,
     PLOT_COUNT // This should always be the last element
 } plot_index_t;
 

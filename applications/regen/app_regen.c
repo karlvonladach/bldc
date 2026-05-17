@@ -123,6 +123,7 @@ static volatile bool stop_now = true;
 static volatile bool is_running = false;
 static volatile float pedal_torque = 0;
 static volatile float pedal_torque_rel = 0;
+static volatile float pedal_torque2 = 0;
 static volatile float pedal_speed  = 0;    //CRPM
 static volatile float pedal_speed_rel = 0; 
 static volatile float pedal_brake_position = 0;
@@ -319,9 +320,14 @@ void app_custom_start(void) {
 	}
 #endif
 
+#ifdef APP_CUSTOM_CONF_TORQUE_SENSOR_PORT2
+    if (APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC) {
+	    palSetPadMode(APP_CUSTOM_CONF_TORQUE_SENSOR_PORT2, APP_CUSTOM_CONF_TORQUE_SENSOR_PIN2, PAL_MODE_INPUT_ANALOG);
+	}
+#endif
+
 	palSetPadMode(HW_UART_TX_PORT, HW_UART_TX_PIN, PAL_MODE_OUTPUT_PUSHPULL);
 	palSetPadMode(HW_UART_RX_PORT, HW_UART_RX_PIN, PAL_MODE_OUTPUT_PUSHPULL);
-	palSetPadMode(HW_ADC_EXT2_GPIO, HW_ADC_EXT2_PIN, PAL_MODE_OUTPUT_PUSHPULL);
 
 	stop_now = false;
 	chThdCreateStatic(my_thread_wa, sizeof(my_thread_wa),
@@ -526,6 +532,10 @@ static THD_FUNCTION(my_thread, arg) {
 		update_pedal_torque();
 
 		plot_points(PLOT_TORQUE, timestamp, pedal_torque*100);
+
+		pedal_torque2 = ADC_VOLTS(ADC_IND_EXT2);
+
+		plot_points(PLOT_TORQUE2, timestamp, pedal_torque2*10);
 
 		//measure pedal forward speed or backward position
 		update_pedal_speed_and_position(-1);
@@ -887,8 +897,8 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 			plots_enabled |= (1 << PLOT_WHEEL_RPM);
 			plots_enabled |= (1 << PLOT_MOTOR_RPM);
 			plots_enabled |= (1 << PLOT_CLUTCH_STATE);
-			plots_enabled |= (1 << PLOT_HALL3);
-			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, clutch, hall3) enabled");
+			plots_enabled |= (1 << PLOT_TORQUE2);
+			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, clutch, torque2) enabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0xFFFFFFFF;
 			commands_printf("All plots enabled");
@@ -942,8 +952,8 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 			plots_enabled &= ~(1 << PLOT_WHEEL_RPM);
 			plots_enabled &= ~(1 << PLOT_MOTOR_RPM);
 			plots_enabled &= ~(1 << PLOT_CLUTCH_STATE);
-			plots_enabled &= ~(1 << PLOT_HALL3);
-			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, clutch, hall3) disabled");
+			plots_enabled &= ~(1 << PLOT_TORQUE2);
+			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, clutch, torque2) disabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0;
 			commands_printf("All plots disabled");
@@ -990,7 +1000,7 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, main, all");
 	commands_printf("  getconfig - Get the current configuration settings");
 	commands_printf("  setpin [pin] [value] - Set a pin value");
-	commands_printf("    Pins: tx, rx, adc2");
+	commands_printf("    Pins: tx, rx");
 	commands_printf("    Values: 0, 1");
 	commands_printf("  calibrate - Calibrate wheel sensor to compensate magnet misalignments");
 	commands_printf("  reset-calib - Reset wheel sensor calibration values");
@@ -1028,19 +1038,12 @@ static void terminal_set_pin(int argc, const char **argv) {
 			} else {
 				palWritePad(HW_UART_RX_PORT, HW_UART_RX_PIN, 0);
 			}
-		} else
-		if (strcmp(argv[1],"adc2") == 0){
-			if (en) {
-				palWritePad(HW_ADC_EXT2_GPIO, HW_ADC_EXT2_PIN, 1);
-			} else {
-				palWritePad(HW_ADC_EXT2_GPIO, HW_ADC_EXT2_PIN, 0);
-			}
 		} else {
 			commands_printf("Unknown pin.\r\nValid pins:\r\n  tx\r\n  rx\r\n  adc2\r\n");
 		}
 	} else {
 		commands_printf("This command requires two arguments. Usage:\r\n  set_pin [pin] [0/1]");
-		commands_printf("Valid pins:\r\n  tx\r\n  rx\r\n  adc2\r\n");
+		commands_printf("Valid pins:\r\n  tx\r\n  rx\r\n");
 	}
 }
 
@@ -2116,6 +2119,10 @@ static void init_plots(void) {
 	if (plots_enabled & (1 << PLOT_TORQUE)) {
 		plot_numbers[PLOT_TORQUE] = plot_number++;
 		commands_plot_add_graph("Pedal Torque");
+	}
+	if (plots_enabled & (1 << PLOT_TORQUE2)) {
+		plot_numbers[PLOT_TORQUE2] = plot_number++;
+		commands_plot_add_graph("Pedal Torque 2");
 	}
 }
 
