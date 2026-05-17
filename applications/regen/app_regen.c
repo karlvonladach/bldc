@@ -124,6 +124,7 @@ static volatile bool is_running = false;
 static volatile float pedal_torque = 0;
 static volatile float pedal_torque_rel = 0;
 static volatile float pedal_torque2 = 0;
+static volatile float pedal_torque2_filtered = 0;
 static volatile float pedal_speed  = 0;    //CRPM
 static volatile float pedal_speed_rel = 0; 
 static volatile float pedal_brake_position = 0;
@@ -226,6 +227,8 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM}, NULL},
 	{"torque_decrease_interval", "[rpm] WRPM interval before cutoff where torque (non-linearly) decreases", CONFIG_TYPE_FLOAT, &config.torque_sensor.decrease_interval, APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR,	
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL}, NULL},
+	{"torque_filter", "[0.0-1.0] Torque sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.torque_sensor.filter, APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER}, NULL},
 
     // Back pedal brake config
     {"brake_start_pos", "[deg] Back pedal brake start position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR, 
@@ -531,11 +534,9 @@ static THD_FUNCTION(my_thread, arg) {
 		//measure torque
 		update_pedal_torque();
 
-		plot_points(PLOT_TORQUE, timestamp, pedal_torque*100);
-
-		pedal_torque2 = ADC_VOLTS(ADC_IND_EXT2);
-
 		plot_points(PLOT_TORQUE2, timestamp, pedal_torque2*10);
+		//plot_points(PLOT_TORQUE, timestamp, pedal_torque*100);
+		plot_points(PLOT_TORQUE, timestamp, pedal_torque2_filtered*10);
 
 		//measure pedal forward speed or backward position
 		update_pedal_speed_and_position(-1);
@@ -896,9 +897,9 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 			plots_enabled |= (1 << PLOT_BRAKE_POS);
 			plots_enabled |= (1 << PLOT_WHEEL_RPM);
 			plots_enabled |= (1 << PLOT_MOTOR_RPM);
-			plots_enabled |= (1 << PLOT_CLUTCH_STATE);
+			plots_enabled |= (1 << PLOT_TORQUE);
 			plots_enabled |= (1 << PLOT_TORQUE2);
-			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, clutch, torque2) enabled");
+			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2) enabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0xFFFFFFFF;
 			commands_printf("All plots enabled");
@@ -951,9 +952,9 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 			plots_enabled &= ~(1 << PLOT_BRAKE_POS);
 			plots_enabled &= ~(1 << PLOT_WHEEL_RPM);
 			plots_enabled &= ~(1 << PLOT_MOTOR_RPM);
-			plots_enabled &= ~(1 << PLOT_CLUTCH_STATE);
+			plots_enabled &= ~(1 << PLOT_TORQUE);
 			plots_enabled &= ~(1 << PLOT_TORQUE2);
-			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, clutch, torque2) disabled");
+			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2) disabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0;
 			commands_printf("All plots disabled");
@@ -1109,6 +1110,29 @@ static void update_pedal_torque(void)
 
 		pedal_torque = torque_rel;
 		pedal_torque_rel = torque_rel;
+
+		//////// EXPERIMENTAL: use second ADC for torque measurement //////////
+
+		pedal_torque2 = ADC_VOLTS(ADC_IND_EXT2);
+
+		//float pedal_torque2_rel = utils_map(pedal_torque2, config_adc.voltage_start, config_adc.voltage_end, 0.0, 1.0);
+
+		// Optionally apply a filter
+		static float torque2_filter = 0.0;
+		UTILS_LP_MOVING_AVG_APPROX(torque2_filter, pedal_torque2, FILTER_SAMPLES);
+		if (config_adc.use_filter) {
+			pedal_torque2 = torque2_filter;
+		}
+
+		// Apply ramping
+		static systime_t last_time2 = 0;
+		static float torque2_ramp = 0.0;
+		apply_ramping(&torque2_ramp, &last_time2, pedal_torque2, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
+		pedal_torque2 = torque2_ramp;
+
+		// apply simple low pass filtering.
+		// 1.0 means no filtering, 0.0 means infinitely strong filtering
+		UTILS_LP_FAST(pedal_torque2_filtered, pedal_torque2, config.torque_sensor.filter);
     }
 }
 

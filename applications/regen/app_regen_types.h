@@ -115,6 +115,7 @@ typedef struct {
 	bool use_filter;
     float cutoff_rpm;
     float decrease_interval;
+    float filter;
 } torque_sensor_config_type;
 
 typedef struct {

@@ -71,6 +71,7 @@
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PIN2       HW_ADC_EXT2_PIN
 #define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM          215.0f // WRPM - set torque to 0 above this value
 #define APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL    20.0f // WRPM - start decreasing torque before cutoff RPM by this interval
+#define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER         0.8f // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS           45.0f  // degree mechanical
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS             80.0f  // degree mechanical
@@ -169,5 +170,6 @@
 #define APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM_ADDR       58
 #define APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR        59
 #define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_ADDR               60
+#define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR            61
 
 #endif /* APP_REGEN_CONF_H_ */
