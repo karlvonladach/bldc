@@ -485,13 +485,13 @@ void app_custom_pin_isr(void){
 
 void app_custom_get_rtdata(float* data) {
 	data[0] = pedal_speed;
-	data[1] = pedal_torque2_filtered;
+	data[1] = pedal_torque2_filtered * 100;
 	data[2] = motor_speed;
 	data[3] = pedal_brake_position;
-	data[4] = pedal_torque2;
+	data[4] = pedal_torque2 * 100;
 	data[5] = (float)clutch_state;
-	data[6] = (float)pedal_torque;
-	data[7] = (float)motor_current_rel2;
+	data[6] = (float)pedal_torque * 100;
+	data[7] = (float)motor_current_rel2 * 100;
 	data[8] = (float)clutch_open_error_counter;
 }
 
@@ -1907,7 +1907,7 @@ static void update_motor_control()
 				}
     			motor_current_rel2 = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque2_filtered > 0) ? (APP_CUSTOM_CONF_CTRL_TORQUE_GAIN * torque_boosted) : 0;
 				utils_truncate_number((float*)&motor_current_rel2, 0.0, 1.0);
-				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel2);
+				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel2*100);
 				// END OF EXPERIMENTAL
 
 				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start) ? pedal_torque_rel : 0;
@@ -1924,7 +1924,7 @@ static void update_motor_control()
 				}
 				motor_current_rel2 = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque2_filtered > 0) ? (APP_CUSTOM_CONF_CTRL_TORQUE_GAIN * (torque_boosted + APP_CUSTOM_CONF_CTRL_CADENCE_GAIN * pedal_speed_rel * torque_boosted)/2) : 0;
 				utils_truncate_number((float*)&motor_current_rel2, 0.0, 1.0);
-				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel2);
+				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel2*100);
 				// END OF EXPERIMENTAL
 
 				motor_current_rel = pedal_speed_rel * pedal_torque_rel;
