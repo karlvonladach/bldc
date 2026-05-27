@@ -41,6 +41,7 @@ typedef enum {
     PLOT_WHEEL_PRED_RPM,
     PLOT_TORQUE,
     PLOT_TORQUE2,
+    PLOT_MOTOR_CURRENT,
     PLOT_COUNT // This should always be the last element
 } plot_index_t;
 
@@ -155,6 +156,9 @@ typedef struct {
 
 typedef struct {
 	custom_control_type ctrl_type;
+    float ctrl_torque_gain;
+    float ctrl_torque_exponent;
+    float ctrl_cadence_gain;
     speed_sensor_config_type pedal_sensor;
     speed_sensor_config_type wheel_sensor;
     torque_sensor_config_type torque_sensor;

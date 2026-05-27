@@ -133,6 +133,8 @@ static volatile float wheel_speed  = 0;    //WRPM
 static volatile float wheel_speed_rel = 0;
 static volatile float wheel_speed_pred = 0;
 static volatile float motor_speed  = 0;    //MWRPM
+static volatile float motor_current_rel = 0;
+static volatile float motor_current_rel2 = 0;
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
 static volatile uint8_t HALL1_level = 0;
 static volatile uint8_t HALL2_level = 0;
@@ -165,8 +167,14 @@ static volatile bool     compensation_active = false;
 // Config table - add new parameters here
 static const config_param_t config_table[] = {
     // Control type
-    {"ctrl-type", "Motor control strategy", CONFIG_TYPE_ENUM, &config.ctrl_type, APP_CUSTOM_CONF_CTRL_TYPE_ADDR, 
-     {.enum_default = APP_CUSTOM_CONF_CTRL_TYPE}, "none,pid,speed,torque,torque_speed"},
+    {"ctrl_type", "Motor control strategy", CONFIG_TYPE_ENUM, &config.ctrl_type, APP_CUSTOM_CONF_CTRL_TYPE_ADDR, 
+     {.enum_default = APP_CUSTOM_CONF_CTRL_TYPE}, "none,pid,cadence,torque,cadence_torque"},
+	{"ctrl_torque_gain", "[float] Torque control gain: motor_current_rel = torque_gain * (torque_rel ^ torque_exponent)", CONFIG_TYPE_FLOAT, &config.ctrl_torque_gain, APP_CUSTOM_CONF_CTRL_TORQUE_GAIN_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_GAIN}, NULL},
+    {"ctrl_torque_exponent", "[float] Torque control exponent: motor_current_rel = torque_gain * (torque_rel ^ torque_exponent)", CONFIG_TYPE_FLOAT, &config.ctrl_torque_exponent, APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT}, NULL},
+    {"ctrl_cadence_gain", "[float] Cadence control gain: motor_current_rel = [torque_gain * (torque_rel ^ torque_exponent) + cadence_gain * pedal_rpm_rel * torque_gain * (torque_rel ^ torque_exponent)] / 2", CONFIG_TYPE_FLOAT, &config.ctrl_cadence_gain, APP_CUSTOM_CONF_CTRL_CADENCE_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_CADENCE_GAIN}, NULL},
     
     // Pedal sensor config
     {"pedal_sensor_type", "Pedal sensor encoding type", CONFIG_TYPE_ENUM, &config.pedal_sensor.sensor_type, APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE_ADDR, 
@@ -483,7 +491,7 @@ void app_custom_get_rtdata(float* data) {
 	data[4] = pedal_torque2;
 	data[5] = (float)clutch_state;
 	data[6] = (float)pedal_torque;
-	data[7] = APP_NOW_SEC - last_close_time;
+	data[7] = (float)motor_current_rel2;
 	data[8] = (float)clutch_open_error_counter;
 }
 
@@ -892,6 +900,9 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 		} else if (strcmp(argv[1], "torque") == 0) {
 			plots_enabled |= (1 << PLOT_TORQUE);
 			commands_printf("Torque plot enabled");
+		} else if (strcmp(argv[1], "motor_current") == 0) {
+			plots_enabled |= (1 << PLOT_MOTOR_CURRENT);
+			commands_printf("Motor current plot enabled");
 		} else if (strcmp(argv[1], "main") == 0) {
 			plots_enabled |= (1 << PLOT_PEDAL_RPM);
 			plots_enabled |= (1 << PLOT_BRAKE_POS);
@@ -899,12 +910,13 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 			plots_enabled |= (1 << PLOT_MOTOR_RPM);
 			plots_enabled |= (1 << PLOT_TORQUE);
 			plots_enabled |= (1 << PLOT_TORQUE2);
-			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2) enabled");
+			plots_enabled |= (1 << PLOT_MOTOR_CURRENT);
+			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2, motor_current) enabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0xFFFFFFFF;
 			commands_printf("All plots enabled");
         } else {
-            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  main\r\n  all\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  motor_current\r\n  main\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -947,6 +959,9 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 		} else if (strcmp(argv[1], "torque") == 0) {
 			plots_enabled &= ~(1 << PLOT_TORQUE);
 			commands_printf("Torque plot disabled");
+		} else if (strcmp(argv[1], "motor_current") == 0) {
+			plots_enabled &= ~(1 << PLOT_MOTOR_CURRENT);
+			commands_printf("Motor current plot disabled");
 		} else if (strcmp(argv[1], "main") == 0) {
 			plots_enabled &= ~(1 << PLOT_PEDAL_RPM);
 			plots_enabled &= ~(1 << PLOT_BRAKE_POS);
@@ -954,12 +969,13 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 			plots_enabled &= ~(1 << PLOT_MOTOR_RPM);
 			plots_enabled &= ~(1 << PLOT_TORQUE);
 			plots_enabled &= ~(1 << PLOT_TORQUE2);
-			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2) disabled");
+			plots_enabled &= ~(1 << PLOT_MOTOR_CURRENT);
+			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2, motor_current) disabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0;
 			commands_printf("All plots disabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  main\r\n  all\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  motor_current\r\n  main\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -996,9 +1012,9 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging. Logs are grouped by functionality. Groups can be enabled/disabled separately.");
 	commands_printf("    Log groups: sensor, motor, clutch, error");
 	commands_printf("  enable_plot [plot_name] - Enable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, main, all");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, motor_current, main, all");
 	commands_printf("  disable_plot [plot_name] - Disable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, main, all");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, motor_current, main, all");
 	commands_printf("  getconfig - Get the current configuration settings");
 	commands_printf("  setpin [pin] [value] - Set a pin value");
 	commands_printf("    Pins: tx, rx");
@@ -1834,6 +1850,7 @@ static void update_motor_control()
 {
 	char log_text[64];
 	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	float torque_boosted;
 	static uint32_t cnt = 0;
 
 	if (command_line_speed >= 0){
@@ -1874,13 +1891,39 @@ static void update_motor_control()
 				mc_interface_set_current_rel(pedal_speed_rel);
 				sprintf(log_text, "current set to %d%%", (int)(pedal_speed_rel*100));
 				break;
-			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE: 
-				mc_interface_set_current_rel((pedal_speed >= config.pedal_sensor.rpm_start) ? pedal_torque_rel : 0);
-				sprintf(log_text, "current set to %d%%", (int)(pedal_torque_rel*100));
+			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE:
+				// EXPERIMENTAL:
+				if (APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT == 1.0f) {
+					torque_boosted = pedal_torque2_filtered;
+				} else {
+					torque_boosted = pedal_torque2_filtered > 0 ? expf(APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT * logf(pedal_torque2_filtered)) : 0;
+					// TODO: speed up with look-up table
+				}
+    			motor_current_rel2 = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque2_filtered > 0) ? (APP_CUSTOM_CONF_CTRL_TORQUE_GAIN * torque_boosted) : 0;
+				utils_truncate_number((float*)&motor_current_rel2, 0.0, 1.0);
+				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel2);
+				// END OF EXPERIMENTAL
+
+				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start) ? pedal_torque_rel : 0;
+				mc_interface_set_current_rel(motor_current_rel);
+				sprintf(log_text, "current set to %d%%", (int)(motor_current_rel*100));
 				break;
 			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE:
-				mc_interface_set_current_rel(pedal_speed_rel * pedal_torque_rel);
-				sprintf(log_text, "current set to %d%%", (int)(pedal_speed_rel * pedal_torque_rel * 100));
+				// EXPERIMENTAL:
+				if (APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT == 1.0f) {
+					torque_boosted = pedal_torque2_filtered;
+				} else {
+					torque_boosted = pedal_torque2_filtered > 0 ? expf(APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT * logf(pedal_torque2_filtered)) : 0;
+					// TODO: speed up with look-up table
+				}
+				motor_current_rel2 = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque2_filtered > 0) ? (APP_CUSTOM_CONF_CTRL_TORQUE_GAIN * (torque_boosted + APP_CUSTOM_CONF_CTRL_CADENCE_GAIN * pedal_speed_rel * torque_boosted)/2) : 0;
+				utils_truncate_number((float*)&motor_current_rel2, 0.0, 1.0);
+				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel2);
+				// END OF EXPERIMENTAL
+
+				motor_current_rel = pedal_speed_rel * pedal_torque_rel;
+				mc_interface_set_current_rel(motor_current_rel);
+				sprintf(log_text, "current set to %d%%", (int)(motor_current_rel*100));
 				break;
 			default: 
 				break;
@@ -2191,6 +2234,10 @@ static void init_plots(void) {
 	if (plots_enabled & (1 << PLOT_TORQUE2)) {
 		plot_numbers[PLOT_TORQUE2] = plot_number++;
 		commands_plot_add_graph("Pedal Torque 2");
+	}
+	if (plots_enabled & (1 << PLOT_MOTOR_CURRENT)) {
+		plot_numbers[PLOT_MOTOR_CURRENT] = plot_number++;
+		commands_plot_add_graph("Motor Current");
 	}
 }
 

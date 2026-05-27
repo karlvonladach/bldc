@@ -30,6 +30,9 @@
 //#define APPCONF_APP_TO_USE				APP_CUSTOM
 
 #define APP_CUSTOM_CONF_CTRL_TYPE                CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE
+#define APP_CUSTOM_CONF_CTRL_TORQUE_GAIN         1.0f    // motor_current_rel = torque_gain * (pedal_torque_rel ^ torque_exponent)
+#define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT     1.0f    // motor_current_rel = torque_gain * (pedal_torque_rel ^ torque_exponent)
+#define APP_CUSTOM_CONF_CTRL_CADENCE_GAIN        1.0f    // motor_current_rel = [torque_gain * (pedal_torque_rel ^ torque_exponent) + cadence_gain * pedal_speed_rel * torque_gain * (pedal_torque_rel ^ torque_exponent)] / 2
 
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE        SPEED_SENSOR_TYPE_QUADRATURE_POLL
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1       HW_HALL_ENC_GPIO1
@@ -172,5 +175,8 @@
 #define APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR        59
 #define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_ADDR               60
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR            61
+#define APP_CUSTOM_CONF_CTRL_CADENCE_GAIN_ADDR               62
+#define APP_CUSTOM_CONF_CTRL_TORQUE_GAIN_ADDR                63
+#define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT_ADDR            64
 
 #endif /* APP_REGEN_CONF_H_ */
