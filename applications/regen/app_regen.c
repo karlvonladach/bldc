@@ -900,6 +900,9 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 		} else if (strcmp(argv[1], "torque") == 0) {
 			plots_enabled |= (1 << PLOT_TORQUE);
 			commands_printf("Torque plot enabled");
+		} else if (strcmp(argv[1], "torque2") == 0) {
+			plots_enabled |= (1 << PLOT_TORQUE2);
+			commands_printf("Torque2 plot enabled");
 		} else if (strcmp(argv[1], "motor_current") == 0) {
 			plots_enabled |= (1 << PLOT_MOTOR_CURRENT);
 			commands_printf("Motor current plot enabled");
@@ -916,7 +919,7 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 			plots_enabled = 0xFFFFFFFF;
 			commands_printf("All plots enabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  motor_current\r\n  main\r\n  all\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  torque2\r\n  motor_current\r\n  main\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -959,6 +962,9 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 		} else if (strcmp(argv[1], "torque") == 0) {
 			plots_enabled &= ~(1 << PLOT_TORQUE);
 			commands_printf("Torque plot disabled");
+		} else if (strcmp(argv[1], "torque2") == 0) {
+			plots_enabled &= ~(1 << PLOT_TORQUE2);
+			commands_printf("Torque2 plot disabled");
 		} else if (strcmp(argv[1], "motor_current") == 0) {
 			plots_enabled &= ~(1 << PLOT_MOTOR_CURRENT);
 			commands_printf("Motor current plot disabled");
@@ -975,7 +981,7 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 			plots_enabled = 0;
 			commands_printf("All plots disabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  motor_current\r\n  main\r\n  all\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  torque2\r\n  motor_current\r\n  main\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -1012,9 +1018,9 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging. Logs are grouped by functionality. Groups can be enabled/disabled separately.");
 	commands_printf("    Log groups: sensor, motor, clutch, error");
 	commands_printf("  enable_plot [plot_name] - Enable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, motor_current, main, all");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, torque2, motor_current, main, all");
 	commands_printf("  disable_plot [plot_name] - Disable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, motor_current, main, all");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, torque2, motor_current, main, all");
 	commands_printf("  getconfig - Get the current configuration settings");
 	commands_printf("  setpin [pin] [value] - Set a pin value");
 	commands_printf("    Pins: tx, rx");
