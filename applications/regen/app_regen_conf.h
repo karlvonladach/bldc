@@ -37,6 +37,7 @@
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2       HW_HALL_ENC_GPIO2
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2        HW_HALL_ENC_PIN2
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS      24u    // including "virtual magnets"
+#define PEDAL_SENSOR_MAX_MAGNETS                  36u    // maximum number of magnets supported by the code, used for array sizing
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER        0.8   // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM       10.0f  // CRPM - average last two samples above this value
 #define APP_CUSTOM_CONF_PEDAL_RPM_MIN             10.0f  // CRPM - set 0 CRPM below this value
@@ -71,7 +72,7 @@
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PIN2       HW_ADC_EXT2_PIN
 #define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM          215.0f // WRPM - set torque to 0 above this value
 #define APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL    20.0f // WRPM - start decreasing torque before cutoff RPM by this interval
-#define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER         0.8f // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
+#define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER         0.1f // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS           45.0f  // degree mechanical
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS             80.0f  // degree mechanical

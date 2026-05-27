@@ -194,7 +194,7 @@ static const config_param_t config_table[] = {
     
     // Wheel sensor config
     {"wheel_sensor_type", "Wheel sensor encoding type", CONFIG_TYPE_ENUM, &config.wheel_sensor.sensor_type, APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE_ADDR, 
-     {.enum_default = APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE}, "single_poll,single_int,quad_poll,quad_int,single_poll_single_int"},
+     {.enum_default = APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE}, "single_poll,single_int,quad_poll,quad_int,single_poll_single_int,none"},
     {"wheel_poll_to_int_rpm", "[rpm] WRPM threshold at which to switch from polling to interrupt mode", CONFIG_TYPE_FLOAT, &config.wheel_sensor.poll_to_int_rpm, APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM}, NULL},
     {"wheel_magnets", "[count] Number of wheel sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.wheel_sensor.magnets, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR, 
@@ -477,12 +477,12 @@ void app_custom_pin_isr(void){
 
 void app_custom_get_rtdata(float* data) {
 	data[0] = pedal_speed;
-	data[1] = wheel_speed;
+	data[1] = pedal_torque2_filtered;
 	data[2] = motor_speed;
 	data[3] = pedal_brake_position;
-	data[4] = pedal_torque;
+	data[4] = pedal_torque2;
 	data[5] = (float)clutch_state;
-	data[6] = (float)clutch_close_error_counter;
+	data[6] = (float)pedal_torque;
 	data[7] = APP_NOW_SEC - last_close_time;
 	data[8] = (float)clutch_open_error_counter;
 }
@@ -534,9 +534,9 @@ static THD_FUNCTION(my_thread, arg) {
 		//measure torque
 		update_pedal_torque();
 
-		plot_points(PLOT_TORQUE2, timestamp, pedal_torque2*10);
 		//plot_points(PLOT_TORQUE, timestamp, pedal_torque*100);
-		plot_points(PLOT_TORQUE, timestamp, pedal_torque2_filtered*10);
+		plot_points(PLOT_TORQUE, timestamp, pedal_torque2_filtered*100);
+		plot_points(PLOT_TORQUE2, timestamp, pedal_torque2*100);
 
 		//measure pedal forward speed or backward position
 		update_pedal_speed_and_position(-1);
@@ -1113,27 +1113,70 @@ static void update_pedal_torque(void)
 
 		//////// EXPERIMENTAL: use second ADC for torque measurement //////////
 
-		pedal_torque2 = ADC_VOLTS(ADC_IND_EXT2);
+		float torque2 = ADC_VOLTS(ADC_IND_EXT2);
 
-		//float pedal_torque2_rel = utils_map(pedal_torque2, config_adc.voltage_start, config_adc.voltage_end, 0.0, 1.0);
+		// Map the read voltage to 0-1 range based on config values
+		torque2 = utils_map(torque2, config_adc.voltage2_start, config_adc.voltage2_end, 0.0, 1.0);
 
-		// Optionally apply a filter
-		static float torque2_filter = 0.0;
-		UTILS_LP_MOVING_AVG_APPROX(torque2_filter, pedal_torque2, FILTER_SAMPLES);
+		// Optionally apply a low pass filter to reduce noise. 
+		// 1.0 means no filtering, 0.0 means infinitely strong filtering.
+		static float torque2_filtered = 0.0;
+		UTILS_LP_FAST(torque2_filtered, torque2, config.torque_sensor.filter);
 		if (config_adc.use_filter) {
-			pedal_torque2 = torque2_filter;
+			torque2 = torque2_filtered;
 		}
 
 		// Apply ramping
 		static systime_t last_time2 = 0;
 		static float torque2_ramp = 0.0;
-		apply_ramping(&torque2_ramp, &last_time2, pedal_torque2, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
-		pedal_torque2 = torque2_ramp;
+		apply_ramping(&torque2_ramp, &last_time2, torque2, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
+		torque2 = torque2_ramp;
 
-		// apply simple low pass filtering.
-		// 1.0 means no filtering, 0.0 means infinitely strong filtering
-		UTILS_LP_FAST(pedal_torque2_filtered, pedal_torque2, config.torque_sensor.filter);
-    }
+		pedal_torque2 = torque2;
+
+		// Filtering cyclic variations - caused by pedal physics - by averaging one cycle, which equals to half turn
+		const int8_t QEM[] = {  0, -1,  1,  2,
+	                    		1,  0,  2, -1,
+						   	   -1,  2,  0,  1,
+						    	2,  1, -1,  0};
+		const uint8_t phases_per_half_turn = config.pedal_sensor.magnets * 2; // 4 phases/magnet
+		int8_t direction;
+		uint8_t new_state;
+		static uint8_t old_state = 0;
+		static float torque_samples[PEDAL_SENSOR_MAX_MAGNETS / 2u] = {0};
+		static uint8_t torque_sample_index = 0;
+		float avg;
+		HALL1_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN1);
+		HALL2_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2);
+		new_state = HALL2_level * 2 + HALL1_level;
+		direction = QEM[old_state * 4 + new_state];
+		old_state = new_state;
+		if (config.pedal_sensor.invert_direction) {
+			direction *= -1;
+		}
+		if (direction == 1) {
+			torque_samples[torque_sample_index] = torque2;
+			torque_sample_index++;
+			if (torque_sample_index >= phases_per_half_turn) {
+				torque_sample_index = 0;
+			}
+			avg = 0;
+			for (uint8_t i = 0; i < phases_per_half_turn; i++) {
+				avg += torque_samples[i];
+			}
+			avg /= phases_per_half_turn;
+			utils_truncate_number(&avg, 0.0, 1.0);
+			pedal_torque2_filtered = avg;
+		} else if (direction == -1) {
+			// reset samples when changing direction to avoid applying average of one direction to the other direction
+			for (uint8_t i = 0; i < phases_per_half_turn; i++) {
+				torque_samples[i] = torque2;
+			}
+			pedal_torque2_filtered = 0;
+		} else {
+			// no movement, keep previous filtered value
+		}
+	}
 }
 
 /* Check pedal speed using quadrature encoder.
@@ -1380,6 +1423,7 @@ static void update_wheel_speed(void)
 	} else 
 	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_NONE) {
 		wheel_speed = motor_speed;
+		return;
 	}
 
 	HALL3_level_old = HALL3_level;
