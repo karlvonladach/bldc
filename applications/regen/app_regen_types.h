@@ -90,7 +90,8 @@ typedef enum {
 
 typedef enum {
     TORQUE_SENSOR_TYPE_NONE = 0,
-    TORQUE_SENSOR_TYPE_ADC
+    TORQUE_SENSOR_TYPE_ADC_THROTTLE,
+    TORQUE_SENSOR_TYPE_ADC_PEDAL
 } torque_sensor_type;
 
 typedef struct {

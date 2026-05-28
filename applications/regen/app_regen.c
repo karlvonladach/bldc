@@ -134,7 +134,6 @@ static volatile float wheel_speed_rel = 0;
 static volatile float wheel_speed_pred = 0;
 static volatile float motor_speed  = 0;    //MWRPM
 static volatile float motor_current_rel = 0;
-static volatile float motor_current_rel2 = 0;
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
 static volatile uint8_t HALL1_level = 0;
 static volatile uint8_t HALL2_level = 0;
@@ -230,7 +229,7 @@ static const config_param_t config_table[] = {
     
 	// Torque sensor config
 	{"tqstype", "Torque sensor type", CONFIG_TYPE_ENUM, &config.torque_sensor.sensor_type, APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE_ADDR, 
-	 {.enum_default = APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE}, "none,adc"},
+	 {.enum_default = APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE}, "none,throttle,pedal"},
 	{"tqcutrpm", "[rpm] WRPM threshold for torque cutoff - set torque to 0 above this value", CONFIG_TYPE_FLOAT, &config.torque_sensor.cutoff_rpm, APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_ADDR,	
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM}, NULL},
 	{"tqcutint", "[rpm] WRPM interval before cutoff where torque (non-linearly) decreases", CONFIG_TYPE_FLOAT, &config.torque_sensor.decrease_interval, APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR,	
@@ -326,13 +325,13 @@ void app_custom_start(void) {
 #endif
 
 #ifdef APP_CUSTOM_CONF_TORQUE_SENSOR_PORT1
-    if (APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC) {
+    if (APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC_THROTTLE || APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC_PEDAL) {
 	    palSetPadMode(APP_CUSTOM_CONF_TORQUE_SENSOR_PORT1, APP_CUSTOM_CONF_TORQUE_SENSOR_PIN1, PAL_MODE_INPUT_ANALOG);
 	}
 #endif
 
 #ifdef APP_CUSTOM_CONF_TORQUE_SENSOR_PORT2
-    if (APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC) {
+    if (APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC_THROTTLE || APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC_PEDAL) {
 	    palSetPadMode(APP_CUSTOM_CONF_TORQUE_SENSOR_PORT2, APP_CUSTOM_CONF_TORQUE_SENSOR_PIN2, PAL_MODE_INPUT_ANALOG);
 	}
 #endif
@@ -456,7 +455,7 @@ void app_custom_configure(app_configuration *conf) {
 		plots_enabled = v.as_u32;
 	}
 
-	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC) {
+	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_THROTTLE || config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_PEDAL) {
 		config_adc = conf->app_adc_conf;
 	}
 
@@ -491,7 +490,7 @@ void app_custom_get_rtdata(float* data) {
 	data[4] = pedal_torque2 * 100;
 	data[5] = (float)clutch_state;
 	data[6] = (float)pedal_torque * 100;
-	data[7] = (float)motor_current_rel2 * 100;
+	data[7] = (float)motor_current_rel * 100;
 	data[8] = (float)clutch_open_error_counter;
 }
 
@@ -570,23 +569,6 @@ static THD_FUNCTION(my_thread, arg) {
 
 		//control motor speed/current according to the current state variables
 		update_motor_control();
-
-		// EXPERIMENTAL:
-		float torque_boosted;
-		if (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque2_filtered > 0) {
-			if (APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT == 1.0f) {
-				torque_boosted = pedal_torque2_filtered;
-			} else {
-				torque_boosted = pedal_torque2_filtered > 0 ? expf(APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT * logf(pedal_torque2_filtered)) : 0;
-				// TODO: speed up with look-up table
-			}
-			motor_current_rel2 = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque2_filtered > 0) ? (APP_CUSTOM_CONF_CTRL_TORQUE_GAIN * (torque_boosted + APP_CUSTOM_CONF_CTRL_CADENCE_GAIN * pedal_speed_rel * torque_boosted)/2) : 0;
-			utils_truncate_number((float*)&motor_current_rel2, 0.0, 1.0);
-		} else {
-			motor_current_rel2 = 0;
-		}
-		plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel2*100);
-		// END OF EXPERIMENTAL
 
 		//if wheel speed is small then release brake after N seconds
 		// note: motor speed is measured here because of the instability of wrpm in interrupt mode
@@ -1089,7 +1071,7 @@ static void terminal_set_pin(int argc, const char **argv) {
 
 static void update_pedal_torque(void)
 {
-    if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC) {
+    if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_THROTTLE) {
 		// Read the external ADC pin voltage
 		float torque = ADC_VOLTS(ADC_IND_EXT);
 
@@ -1123,34 +1105,11 @@ static void update_pedal_torque(void)
 		apply_ramping(&torque_rel_ramp, &last_time, torque_rel, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
 		torque_rel = torque_rel_ramp;
 
-		// Apply cutoff above regulatory limit with linear decrease before cutoff.
-		float correction_value = 0.0f;
-		float speed;
-		if (clutch_state == CLUTCH_STATE_CLOSED_BRAKE || clutch_state == CLUTCH_STATE_CLOSED_ASSIST 
-			|| clutch_state == CLUTCH_STATE_CLOSED_FLOAT || clutch_state == CLUTCH_STATE_CLOSED_ERROR) {
-			speed = motor_speed;
-		} else {
-			speed = wheel_speed;
-		}
-		if (config.torque_sensor.decrease_interval > 0.0f) {
-			if (speed >= config.torque_sensor.cutoff_rpm) {
-				correction_value = 0.0f;
-			} else if (speed <= config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval) {
-				correction_value = 1.0f;
-			} else {
-				float cutoff_start_rpm = config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval;
-				correction_value = (cosf(utils_map(speed, cutoff_start_rpm, config.torque_sensor.cutoff_rpm, 0.0, M_PI)) + 1.0f) / 2.0f;
-			}
-		} else {
-			correction_value = speed < config.torque_sensor.cutoff_rpm ? 1.0f : 0.0f;
-		}
-		utils_truncate_number(&correction_value, 0.0, 1.0);
-		torque_rel *= correction_value;
-
 		pedal_torque = torque_rel;
 		pedal_torque_rel = torque_rel;
 
-		//////// EXPERIMENTAL: use second ADC for torque measurement //////////
+	} else
+	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_PEDAL) {
 
 		float torque2 = ADC_VOLTS(ADC_IND_EXT2);
 
@@ -1215,7 +1174,35 @@ static void update_pedal_torque(void)
 		} else {
 			// no movement, keep previous filtered value
 		}
+
+		pedal_torque = pedal_torque2_filtered;
+		pedal_torque_rel = pedal_torque2_filtered;
 	}
+
+	// Apply cutoff above regulatory limit with linear decrease before cutoff.
+	float correction_value = 0.0f;
+	float speed;
+	if (clutch_state == CLUTCH_STATE_CLOSED_BRAKE || clutch_state == CLUTCH_STATE_CLOSED_ASSIST 
+		|| clutch_state == CLUTCH_STATE_CLOSED_FLOAT || clutch_state == CLUTCH_STATE_CLOSED_ERROR) {
+		speed = motor_speed;
+	} else {
+		speed = wheel_speed;
+	}
+	if (config.torque_sensor.decrease_interval > 0.0f) {
+		if (speed >= config.torque_sensor.cutoff_rpm) {
+			correction_value = 0.0f;
+		} else if (speed <= config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval) {
+			correction_value = 1.0f;
+		} else {
+			float cutoff_start_rpm = config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval;
+			correction_value = (cosf(utils_map(speed, cutoff_start_rpm, config.torque_sensor.cutoff_rpm, 0.0, M_PI)) + 1.0f) / 2.0f;
+		}
+	} else {
+		correction_value = speed < config.torque_sensor.cutoff_rpm ? 1.0f : 0.0f;
+	}
+	utils_truncate_number(&correction_value, 0.0, 1.0);
+	pedal_torque *= correction_value;
+	pedal_torque_rel *= correction_value;
 }
 
 /* Check pedal speed using quadrature encoder.
@@ -1873,7 +1860,7 @@ static void update_motor_control()
 {
 	char log_text[64];
 	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
-	//float torque_boosted;
+	float torque_boosted;
 	static uint32_t cnt = 0;
 
 	if (command_line_speed >= 0){
@@ -1915,38 +1902,28 @@ static void update_motor_control()
 				sprintf(log_text, "current set to %d%%", (int)(pedal_speed_rel*100));
 				break;
 			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE:
-				// EXPERIMENTAL:
-				// if (APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT == 1.0f) {
-				// 	torque_boosted = pedal_torque2_filtered;
-				// } else {
-				// 	torque_boosted = pedal_torque2_filtered > 0 ? expf(APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT * logf(pedal_torque2_filtered)) : 0;
-				// 	// TODO: speed up with look-up table
-				// }
-    			// motor_current_rel2 = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque2_filtered > 0) ? (APP_CUSTOM_CONF_CTRL_TORQUE_GAIN * torque_boosted) : 0;
-				// utils_truncate_number((float*)&motor_current_rel2, 0.0, 1.0);
-				// plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel2*100);
-				// END OF EXPERIMENTAL
-
-				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start) ? pedal_torque_rel : 0;
+				if (APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT == 1.0f) {
+					torque_boosted = pedal_torque_rel;
+				} else {
+					torque_boosted = pedal_torque_rel > 0 ? expf(APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT * logf(pedal_torque_rel)) : 0;
+					// TODO: speed up with look-up table
+				}
+    			motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_rel > 0) ? (APP_CUSTOM_CONF_CTRL_TORQUE_GAIN * torque_boosted) : 0;
+				utils_truncate_number((float*)&motor_current_rel, 0.0, 1.0);
+				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel*100);
 				mc_interface_set_current_rel(motor_current_rel);
-				sprintf(log_text, "current set to %d%%", (int)(motor_current_rel*100));
 				break;
 			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE:
-				// EXPERIMENTAL:
-				// if (APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT == 1.0f) {
-				// 	torque_boosted = pedal_torque2_filtered;
-				// } else {
-				// 	torque_boosted = pedal_torque2_filtered > 0 ? expf(APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT * logf(pedal_torque2_filtered)) : 0;
-				// 	// TODO: speed up with look-up table
-				// }
-				// motor_current_rel2 = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque2_filtered > 0) ? (APP_CUSTOM_CONF_CTRL_TORQUE_GAIN * (torque_boosted + APP_CUSTOM_CONF_CTRL_CADENCE_GAIN * pedal_speed_rel * torque_boosted)/2) : 0;
-				// utils_truncate_number((float*)&motor_current_rel2, 0.0, 1.0);
-				// plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel2*100);
-				// END OF EXPERIMENTAL
-
-				motor_current_rel = pedal_speed_rel * pedal_torque_rel;
+				if (APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT == 1.0f) {
+					torque_boosted = pedal_torque_rel;
+				} else {
+					torque_boosted = pedal_torque_rel > 0 ? expf(APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT * logf(pedal_torque_rel)) : 0;
+					// TODO: speed up with look-up table
+				}
+				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_rel > 0) ? (APP_CUSTOM_CONF_CTRL_TORQUE_GAIN * (torque_boosted + APP_CUSTOM_CONF_CTRL_CADENCE_GAIN * pedal_speed_rel * torque_boosted)/2) : 0;
+				utils_truncate_number((float*)&motor_current_rel, 0.0, 1.0);
+				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel*100);
 				mc_interface_set_current_rel(motor_current_rel);
-				sprintf(log_text, "current set to %d%%", (int)(motor_current_rel*100));
 				break;
 			default: 
 				break;
