@@ -1902,25 +1902,25 @@ static void update_motor_control()
 				sprintf(log_text, "current set to %d%%", (int)(pedal_speed_rel*100));
 				break;
 			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE:
-				if (APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT == 1.0f) {
+				if (config.ctrl_torque_exponent == 1.0f) {
 					torque_boosted = pedal_torque_rel;
 				} else {
-					torque_boosted = pedal_torque_rel > 0 ? expf(APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT * logf(pedal_torque_rel)) : 0;
+					torque_boosted = pedal_torque_rel > 0 ? expf(config.ctrl_torque_exponent * logf(pedal_torque_rel)) : 0;
 					// TODO: speed up with look-up table
 				}
-    			motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_rel > 0) ? (APP_CUSTOM_CONF_CTRL_TORQUE_GAIN * torque_boosted) : 0;
+    			motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_rel > 0) ? (config.ctrl_torque_gain * torque_boosted) : 0;
 				utils_truncate_number((float*)&motor_current_rel, 0.0, 1.0);
 				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel*100);
 				mc_interface_set_current_rel(motor_current_rel);
 				break;
 			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE:
-				if (APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT == 1.0f) {
+				if (config.ctrl_torque_exponent == 1.0f) {
 					torque_boosted = pedal_torque_rel;
 				} else {
-					torque_boosted = pedal_torque_rel > 0 ? expf(APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT * logf(pedal_torque_rel)) : 0;
+					torque_boosted = pedal_torque_rel > 0 ? expf(config.ctrl_torque_exponent * logf(pedal_torque_rel)) : 0;
 					// TODO: speed up with look-up table
 				}
-				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_rel > 0) ? (APP_CUSTOM_CONF_CTRL_TORQUE_GAIN * (torque_boosted + APP_CUSTOM_CONF_CTRL_CADENCE_GAIN * pedal_speed_rel * torque_boosted)/2) : 0;
+				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_rel > 0) ? (config.ctrl_torque_gain * (torque_boosted + config.ctrl_cadence_gain * pedal_speed_rel * torque_boosted)/2) : 0;
 				utils_truncate_number((float*)&motor_current_rel, 0.0, 1.0);
 				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel*100);
 				mc_interface_set_current_rel(motor_current_rel);
