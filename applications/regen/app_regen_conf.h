@@ -29,9 +29,9 @@
 //uncomment to use custom app by default, regardless of settings:
 //#define APPCONF_APP_TO_USE				APP_CUSTOM
 
-#define APP_CUSTOM_CONF_CTRL_TYPE                CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE
-#define APP_CUSTOM_CONF_CTRL_TORQUE_GAIN         1.0f    // motor_current_rel = torque_gain * (pedal_torque_rel ^ torque_exponent)
-#define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT     1.0f    // motor_current_rel = torque_gain * (pedal_torque_rel ^ torque_exponent)
+#define APP_CUSTOM_CONF_CTRL_TYPE                CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE
+#define APP_CUSTOM_CONF_CTRL_TORQUE_GAIN         2.0f    // motor_current_rel = torque_gain * (pedal_torque_rel ^ torque_exponent)
+#define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT     0.9f    // motor_current_rel = torque_gain * (pedal_torque_rel ^ torque_exponent)
 #define APP_CUSTOM_CONF_CTRL_CADENCE_GAIN        1.0f    // motor_current_rel = [torque_gain * (pedal_torque_rel ^ torque_exponent) + cadence_gain * pedal_speed_rel * torque_gain * (pedal_torque_rel ^ torque_exponent)] / 2
 
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE        SPEED_SENSOR_TYPE_QUADRATURE_POLL
@@ -44,8 +44,8 @@
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER        0.8   // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM       10.0f  // CRPM - average last two samples above this value
 #define APP_CUSTOM_CONF_PEDAL_RPM_MIN             10.0f  // CRPM - set 0 CRPM below this value
-#define APP_CUSTOM_CONF_PEDAL_RPM_START           10.0f  // CRMP - start of boost
-#define APP_CUSTOM_CONF_PEDAL_RPM_END            150.0f  // CRPM - end of boost
+#define APP_CUSTOM_CONF_PEDAL_RPM_START           15.0f  // CRMP - start of boost
+#define APP_CUSTOM_CONF_PEDAL_RPM_END            120.0f  // CRPM - end of boost
 #define APP_CUSTOM_CONF_PEDAL_RPM_MAX            200.0f  // CRPM - raise error above this value
 #define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS        0.1f  // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG        0.1f  // sec/fullscale (min to max)
@@ -68,12 +68,12 @@
 #define APP_CUSTOM_CONF_WHEEL_CALIBRATION_RPM      120.0f // WRPM - wheel calibration RPM
 #define WHEEL_SENSOR_CALIBRATION_VALUES_COUNT      36u    // Number of values to store for wheel sensor calibration, should be equal to the number of magnets
 
-#define APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE       TORQUE_SENSOR_TYPE_ADC_THROTTLE
+#define APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE       TORQUE_SENSOR_TYPE_ADC_PEDAL
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PORT1      HW_ADC_EXT_GPIO
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PIN1       HW_ADC_EXT_PIN
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PORT2      HW_ADC_EXT2_GPIO
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PIN2       HW_ADC_EXT2_PIN
-#define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM          215.0f // WRPM - set torque to 0 above this value
+#define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM          600.0f // WRPM - set torque to 0 above this value
 #define APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL    20.0f // WRPM - start decreasing torque before cutoff RPM by this interval
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER         0.1f // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 
