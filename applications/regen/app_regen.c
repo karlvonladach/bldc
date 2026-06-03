@@ -49,8 +49,16 @@
 // App settings
 #define FILTER_SAMPLES				            5u
 #define CALIBRATION_ROUNDS			           10u
-#define DIFF_THRESHOLD_TO_APPLY_COMPENSATION  0.1f
-#define MAX_PERIODS_TO_AVG						8u
+#define DIFF_THRESHOLD_TO_APPLY_COMPENSATION    0.1f
+#define MAX_PERIODS_TO_AVG					    8u
+
+#define ASSIST_ACCEL_FILTER_WINDOW              9u
+#define ASSIST_ACCEL_MAX                       50.0f
+#define ASSIST_MIN_WHEEL_SPEED                1e-3f
+#define ASSIST_BIKE_RIDER_MASS_KG             100.0f
+#define ASSIST_MOTOR_TORQUE_CONSTANT            0.014f
+#define ASSIST_MOTOR_GEAR_EFFICIENCY            0.8f
+#define ASSIST_MAX_HUMAN_TORQUE_NM             60.0f
 
 // Macros
 #define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
@@ -86,6 +94,7 @@ static void update_wheel_speed(void);
 static void update_motor_speed(void);
 static void update_clutch_state(void);
 static void update_motor_control(void);
+static void update_assist_level(void);
 
 static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
 static float compensate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
@@ -134,6 +143,10 @@ static volatile float wheel_speed_rel = 0;
 static volatile float wheel_speed_pred = 0;
 static volatile float motor_speed  = 0;    //MWRPM
 static volatile float motor_current_rel = 0;
+static volatile float assist_need = 0;
+static volatile float human_power_w = 0;
+static volatile float expected_accel_m_s2 = 0;
+static volatile float real_accel_m_s2 = 0;
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
 static volatile uint8_t HALL1_level = 0;
 static volatile uint8_t HALL2_level = 0;
@@ -491,7 +504,10 @@ void app_custom_get_rtdata(float* data) {
 	data[5] = (float)clutch_state;
 	data[6] = (float)pedal_torque * 100;
 	data[7] = (float)motor_current_rel * 100;
-	data[8] = (float)clutch_open_error_counter;
+	data[8] = (float)assist_need;
+	data[9] = expected_accel_m_s2;
+	data[10] = real_accel_m_s2;
+	data[11] = human_power_w;
 }
 
 static THD_FUNCTION(my_thread, arg) {
@@ -569,6 +585,11 @@ static THD_FUNCTION(my_thread, arg) {
 
 		//control motor speed/current according to the current state variables
 		update_motor_control();
+
+		//determine if there is a need for more or for less assistance (auto mode)
+		update_assist_level();
+
+		plot_points(PLOT_ASSIST_LEVEL, timestamp, assist_need);
 
 		//if wheel speed is small then release brake after N seconds
 		// note: motor speed is measured here because of the instability of wrpm in interrupt mode
@@ -905,6 +926,9 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 		} else if (strcmp(argv[1], "motor_current") == 0) {
 			plots_enabled |= (1 << PLOT_MOTOR_CURRENT);
 			commands_printf("Motor current plot enabled");
+		} else if (strcmp(argv[1], "assist_level") == 0) {
+			plots_enabled |= (1 << PLOT_ASSIST_LEVEL);
+			commands_printf("Assist level plot enabled");
 		} else if (strcmp(argv[1], "main") == 0) {
 			plots_enabled |= (1 << PLOT_PEDAL_RPM);
 			plots_enabled |= (1 << PLOT_BRAKE_POS);
@@ -913,12 +937,13 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 			plots_enabled |= (1 << PLOT_TORQUE);
 			plots_enabled |= (1 << PLOT_TORQUE2);
 			plots_enabled |= (1 << PLOT_MOTOR_CURRENT);
-			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2, motor_current) enabled");
+			plots_enabled |= (1 << PLOT_ASSIST_LEVEL);
+			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2, motor_current, assist_level) enabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0xFFFFFFFF;
 			commands_printf("All plots enabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  torque2\r\n  motor_current\r\n  main\r\n  all\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  torque2\r\n  motor_current\r\n  assist_level\r\n  main\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -967,6 +992,9 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 		} else if (strcmp(argv[1], "motor_current") == 0) {
 			plots_enabled &= ~(1 << PLOT_MOTOR_CURRENT);
 			commands_printf("Motor current plot disabled");
+		} else if (strcmp(argv[1], "assist_level") == 0) {
+			plots_enabled &= ~(1 << PLOT_ASSIST_LEVEL);
+			commands_printf("Assist level plot disabled");
 		} else if (strcmp(argv[1], "main") == 0) {
 			plots_enabled &= ~(1 << PLOT_PEDAL_RPM);
 			plots_enabled &= ~(1 << PLOT_BRAKE_POS);
@@ -975,12 +1003,13 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 			plots_enabled &= ~(1 << PLOT_TORQUE);
 			plots_enabled &= ~(1 << PLOT_TORQUE2);
 			plots_enabled &= ~(1 << PLOT_MOTOR_CURRENT);
-			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2, motor_current) disabled");
+			plots_enabled &= ~(1 << PLOT_ASSIST_LEVEL);
+			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2, motor_current, assist_level) disabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0;
 			commands_printf("All plots disabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  torque2\r\n  motor_current\r\n  main\r\n  all\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  torque2\r\n  motor_current\r\n  assist_level\r\n  main\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -1017,9 +1046,9 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging. Logs are grouped by functionality. Groups can be enabled/disabled separately.");
 	commands_printf("    Log groups: sensor, motor, clutch, error");
 	commands_printf("  enable_plot [plot_name] - Enable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, torque2, motor_current, main, all");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, torque2, motor_current, assist_level, main, all");
 	commands_printf("  disable_plot [plot_name] - Disable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, torque2, motor_current, main, all");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, torque2, motor_current, assist_level, main, all");
 	commands_printf("  getconfig - Get the current configuration settings");
 	commands_printf("  setpin [pin] [value] - Set a pin value");
 	commands_printf("    Pins: tx, rx");
@@ -1938,6 +1967,74 @@ static void update_motor_control()
 	}
 }
 
+static void update_assist_level(void) {
+	/*static float motor_accel_samples[ASSIST_ACCEL_FILTER_WINDOW] = {0.0f};
+	static uint8_t accel_sample_count = 0;
+	static uint8_t accel_sample_index = 0;
+	static float motor_accel_sum = 0.0f;*/
+	static float prev_motor_speed = 0.0f;
+	static float prev_timestamp = 0.0f;
+
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+	const float wheel_radius_m = conf->si_wheel_diameter * 0.5f;
+	const float pedal_omega = pedal_speed * (2.0f * M_PI / 60.0f);
+	const float motor_omega = motor_speed * (2.0f * M_PI / 60.0f);
+	const float wheel_velocity_m_s = motor_omega * wheel_radius_m;
+	const float human_torque_nm = pedal_torque_rel * ASSIST_MAX_HUMAN_TORQUE_NM;
+	human_power_w = human_torque_nm * pedal_omega;
+
+	float motor_current_a = mc_interface_get_tot_current_directional_filtered();
+	if (motor_current_a < 0.0f) {
+		motor_current_a = 0.0f;
+	}
+	const float motor_torque_nm = motor_current_a * ASSIST_MOTOR_TORQUE_CONSTANT * conf->si_gear_ratio * ASSIST_MOTOR_GEAR_EFFICIENCY;
+	const float motor_power_w = motor_torque_nm * motor_omega;
+
+	expected_accel_m_s2 = 0.0f;
+	if (fabsf(wheel_velocity_m_s) > ASSIST_MIN_WHEEL_SPEED) {
+		expected_accel_m_s2 = (human_power_w + motor_power_w) / (ASSIST_BIKE_RIDER_MASS_KG * wheel_velocity_m_s);
+	}
+	utils_truncate_number((float*)&expected_accel_m_s2, 0.0f, ASSIST_ACCEL_MAX);
+
+	const float now = APP_NOW_SEC;
+	float motor_accel_rpm_s = 0.0f;
+	if (prev_timestamp > 0.0f) {
+		const float dt = now - prev_timestamp;
+		if (dt > 1e-4f) {
+			motor_accel_rpm_s = (motor_speed - prev_motor_speed) / dt;
+		}
+	}
+	if (motor_accel_rpm_s < 0.0f) {
+		motor_accel_rpm_s = 0.0f;
+	}
+
+	/*if (accel_sample_count < ASSIST_ACCEL_FILTER_WINDOW) {
+		motor_accel_samples[accel_sample_index] = motor_accel_rpm_s;
+		motor_accel_sum += motor_accel_rpm_s;
+		accel_sample_count++;
+	} else {
+		motor_accel_sum -= motor_accel_samples[accel_sample_index];
+		motor_accel_samples[accel_sample_index] = motor_accel_rpm_s;
+		motor_accel_sum += motor_accel_rpm_s;
+	}
+	accel_sample_index = (accel_sample_index + 1) % ASSIST_ACCEL_FILTER_WINDOW;
+	if (accel_sample_count > 0) {
+		motor_accel_filtered_rpm_s = motor_accel_sum / (float)accel_sample_count;
+	}
+	*/
+
+	static float motor_accel_filtered_rpm_s = 0.0f;
+	UTILS_LP_FAST(motor_accel_filtered_rpm_s, motor_accel_rpm_s, 0.1f);
+
+	utils_truncate_number(&motor_accel_filtered_rpm_s, 0.0f, ASSIST_ACCEL_MAX);
+
+	real_accel_m_s2 = motor_accel_filtered_rpm_s * (2.0f * M_PI / 60.0f) * wheel_radius_m;
+	assist_need = expected_accel_m_s2 - real_accel_m_s2;
+
+	prev_motor_speed = motor_speed;
+	prev_timestamp = now;
+}
+
 static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed) {
 	// wait until motor is spinning up to start calibration
 	if (calibration_active && calibration_step == 0 && abs(last_wheel_speed - config.wheel_sensor.calibration_rpm) < 1.0) {
@@ -2238,6 +2335,10 @@ static void init_plots(void) {
 	if (plots_enabled & (1 << PLOT_MOTOR_CURRENT)) {
 		plot_numbers[PLOT_MOTOR_CURRENT] = plot_number++;
 		commands_plot_add_graph("Motor Current");
+	}
+	if (plots_enabled & (1 << PLOT_ASSIST_LEVEL)) {
+		plot_numbers[PLOT_ASSIST_LEVEL] = plot_number++;
+		commands_plot_add_graph("Assist Level");
 	}
 }
 
