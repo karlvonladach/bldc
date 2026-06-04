@@ -1978,7 +1978,10 @@ static void update_assist_level(void) {
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 	const float wheel_radius_m = conf->si_wheel_diameter * 0.5f;
 	const float pedal_omega = pedal_speed * (2.0f * M_PI / 60.0f);
-	const float motor_omega = motor_speed * (2.0f * M_PI / 60.0f);
+	static float filtered_motor_speed = 0;
+	UTILS_LP_FAST(filtered_motor_speed, motor_speed, 0.1f);
+
+	const float motor_omega = filtered_motor_speed * (2.0f * M_PI / 60.0f);
 	const float wheel_velocity_m_s = motor_omega * wheel_radius_m;
 	const float human_torque_nm = pedal_torque_rel * ASSIST_MAX_HUMAN_TORQUE_NM;
 	human_power_w = human_torque_nm * pedal_omega;
@@ -2001,7 +2004,7 @@ static void update_assist_level(void) {
 	if (prev_timestamp > 0.0f) {
 		const float dt = now - prev_timestamp;
 		if (dt > 1e-4f) {
-			motor_accel_rpm_s = (motor_speed - prev_motor_speed) / dt;
+			motor_accel_rpm_s = (filtered_motor_speed - prev_motor_speed) / dt;
 		}
 	}
 	if (motor_accel_rpm_s < 0.0f) {
@@ -2031,7 +2034,7 @@ static void update_assist_level(void) {
 	real_accel_m_s2 = motor_accel_filtered_rpm_s * (2.0f * M_PI / 60.0f) * wheel_radius_m;
 	assist_need = expected_accel_m_s2 - real_accel_m_s2;
 
-	prev_motor_speed = motor_speed;
+	prev_motor_speed = filtered_motor_speed;
 	prev_timestamp = now;
 }
 
