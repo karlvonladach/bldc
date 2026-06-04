@@ -460,9 +460,11 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 				buffer_append_float16(send_buffer, NTC_TEMP_MOS2_M2(), 1e1, &ind);
 				buffer_append_float16(send_buffer, NTC_TEMP_MOS3_M2(), 1e1, &ind);
 			} else {
-				buffer_append_float16(send_buffer, NTC_TEMP_MOS1(), 1e1, &ind);
-				buffer_append_float16(send_buffer, NTC_TEMP_MOS2(), 1e1, &ind);
-				buffer_append_float16(send_buffer, NTC_TEMP_MOS3(), 1e1, &ind);
+				float app_data[APP_RTDATA_COUNT];
+				app_custom_get_rtdata(app_data);
+				buffer_append_float16(send_buffer, app_data[9]/*NTC_TEMP_MOS1()*/, 1e1, &ind);
+				buffer_append_float16(send_buffer, app_data[10]/*NTC_TEMP_MOS2()*/, 1e1, &ind);
+				buffer_append_float16(send_buffer, app_data[11]/*NTC_TEMP_MOS3()*/, 1e1, &ind);
 			}
 		}
 		if (mask & ((uint32_t)1 << 19)) {
