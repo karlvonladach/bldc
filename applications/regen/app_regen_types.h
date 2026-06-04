@@ -119,6 +119,7 @@ typedef struct {
     float cutoff_rpm;
     float decrease_interval;
     float filter;
+    float nm_max;
 } torque_sensor_config_type;
 
 typedef struct {
@@ -161,6 +162,8 @@ typedef struct {
     float ctrl_torque_gain;
     float ctrl_torque_exponent;
     float ctrl_cadence_gain;
+    float motor_torque_constant;
+    float gear_efficiency;
     speed_sensor_config_type pedal_sensor;
     speed_sensor_config_type wheel_sensor;
     torque_sensor_config_type torque_sensor;

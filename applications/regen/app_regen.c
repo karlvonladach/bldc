@@ -52,13 +52,9 @@
 #define DIFF_THRESHOLD_TO_APPLY_COMPENSATION    0.1f
 #define MAX_PERIODS_TO_AVG					    8u
 
-#define ASSIST_ACCEL_FILTER_WINDOW              9u
+/*#define ASSIST_ACCEL_FILTER_WINDOW              9u*/
 #define ASSIST_ACCEL_MAX                       50.0f
-#define ASSIST_MIN_WHEEL_SPEED                1e-3f
 #define ASSIST_BIKE_RIDER_MASS_KG             100.0f
-#define ASSIST_MOTOR_TORQUE_CONSTANT            0.014f
-#define ASSIST_MOTOR_GEAR_EFFICIENCY            0.8f
-#define ASSIST_MAX_HUMAN_TORQUE_NM             60.0f
 
 // Macros
 #define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
@@ -187,6 +183,10 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT}, NULL},
     {"ascgain", "[float] Cadence control gain: motor_current_rel = [torque_gain * (torque_rel ^ torque_exponent) + cadence_gain * pedal_rpm_rel * torque_gain * (torque_rel ^ torque_exponent)] / 2", CONFIG_TYPE_FLOAT, &config.ctrl_cadence_gain, APP_CUSTOM_CONF_CTRL_CADENCE_GAIN_ADDR,
      {.float_default = APP_CUSTOM_CONF_CTRL_CADENCE_GAIN}, NULL},
+	{"asmotorconst", "[float] Motor torque constant in Nm/A, used for calculating motor power", CONFIG_TYPE_FLOAT, &config.motor_torque_constant, APP_CUSTOM_MOTOR_TORQUE_CONSTANT_ADDR,
+	 {.float_default = APP_CUSTOM_MOTOR_TORQUE_CONSTANT}, NULL},
+	{"asgeareff", "[float] Gear efficiency between motor and wheel", CONFIG_TYPE_FLOAT, &config.gear_efficiency, APP_CUSTOM_MOTOR_GEAR_EFFICIENCY_ADDR,
+	 {.float_default = APP_CUSTOM_MOTOR_GEAR_EFFICIENCY}, NULL},
     
     // Pedal sensor config
     {"pedstype", "Pedal sensor encoding type", CONFIG_TYPE_ENUM, &config.pedal_sensor.sensor_type, APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE_ADDR, 
@@ -249,6 +249,8 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL}, NULL},
 	{"tqfilt", "[0.0-1.0] Torque sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.torque_sensor.filter, APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER}, NULL},
+	{"tqmaxnm", "[Nm] Maximum torque in Nm corresponding to max sensor value", CONFIG_TYPE_FLOAT, &config.torque_sensor.nm_max, APP_CUSTOM_CONF_TORQUE_NM_MAX_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_TORQUE_NM_MAX}, NULL},
 
     // Back pedal brake config
     {"brstpos", "[deg] Back pedal brake start position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR, 
@@ -1983,18 +1985,18 @@ static void update_assist_level(void) {
 
 	const float motor_omega = filtered_motor_speed * (2.0f * M_PI / 60.0f);
 	const float wheel_velocity_m_s = motor_omega * wheel_radius_m;
-	const float human_torque_nm = pedal_torque_rel * ASSIST_MAX_HUMAN_TORQUE_NM;
+	const float human_torque_nm = pedal_torque_rel * config.torque_sensor.nm_max;
 	human_power_w = human_torque_nm * pedal_omega;
 
 	float motor_current_a = mc_interface_get_tot_current_directional_filtered();
 	if (motor_current_a < 0.0f) {
 		motor_current_a = 0.0f;
 	}
-	const float motor_torque_nm = motor_current_a * ASSIST_MOTOR_TORQUE_CONSTANT * conf->si_gear_ratio * ASSIST_MOTOR_GEAR_EFFICIENCY;
+	const float motor_torque_nm = motor_current_a * config.motor_torque_constant * conf->si_gear_ratio * config.gear_efficiency;
 	const float motor_power_w = motor_torque_nm * motor_omega;
 
 	expected_accel_m_s2 = 0.0f;
-	if (fabsf(wheel_velocity_m_s) > ASSIST_MIN_WHEEL_SPEED) {
+	if (fabsf(wheel_velocity_m_s) > config.wheel_sensor.rpm_min * (2.0f * M_PI / 60.0f) * wheel_radius_m) {
 		expected_accel_m_s2 = (human_power_w + motor_power_w) / (ASSIST_BIKE_RIDER_MASS_KG * wheel_velocity_m_s);
 	}
 	utils_truncate_number((float*)&expected_accel_m_s2, 0.0f, ASSIST_ACCEL_MAX);

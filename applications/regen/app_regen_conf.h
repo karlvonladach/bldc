@@ -33,6 +33,8 @@
 #define APP_CUSTOM_CONF_CTRL_TORQUE_GAIN         2.0f    // motor_current_rel = torque_gain * (pedal_torque_rel ^ torque_exponent)
 #define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT     0.9f    // motor_current_rel = torque_gain * (pedal_torque_rel ^ torque_exponent)
 #define APP_CUSTOM_CONF_CTRL_CADENCE_GAIN        1.0f    // motor_current_rel = [torque_gain * (pedal_torque_rel ^ torque_exponent) + cadence_gain * pedal_speed_rel * torque_gain * (pedal_torque_rel ^ torque_exponent)] / 2
+#define APP_CUSTOM_MOTOR_TORQUE_CONSTANT         0.014f  // Nm/A - motor torque constant, used for calculating assist level in human watts
+#define APP_CUSTOM_MOTOR_GEAR_EFFICIENCY         0.8f    // gear efficiency, used for calculating assist level in human watts
 
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE        SPEED_SENSOR_TYPE_QUADRATURE_POLL
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1       HW_HALL_ENC_GPIO1
@@ -76,6 +78,7 @@
 #define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM          600.0f // WRPM - set torque to 0 above this value
 #define APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL    20.0f // WRPM - start decreasing torque before cutoff RPM by this interval
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER         0.1f // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
+#define APP_CUSTOM_CONF_TORQUE_NM_MAX              100.0f // Maximum torque in Nm corresponding to max sensor value
 
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS           45.0f  // degree mechanical
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS             80.0f  // degree mechanical
@@ -178,5 +181,8 @@
 #define APP_CUSTOM_CONF_CTRL_CADENCE_GAIN_ADDR               62
 #define APP_CUSTOM_CONF_CTRL_TORQUE_GAIN_ADDR                63
 #define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT_ADDR            64
+#define APP_CUSTOM_CONF_TORQUE_NM_MAX_ADDR                   65
+#define APP_CUSTOM_MOTOR_TORQUE_CONSTANT_ADDR               66
+#define APP_CUSTOM_MOTOR_GEAR_EFFICIENCY_ADDR               67
 
 #endif /* APP_REGEN_CONF_H_ */
