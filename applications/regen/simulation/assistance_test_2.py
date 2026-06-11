@@ -2,7 +2,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-df = pd.read_excel('livetest260601.xlsx', sheet_name='2026-06-01_11-54-25', nrows=1528)
+#df = pd.read_excel('livetest260601.xlsx', sheet_name='2026-06-01_11-54-25', nrows=1528)
+df = pd.read_excel('livetest260603.xlsx', sheet_name='data', nrows=7589)
 
 # Convert all columns to numeric, coerce errors to NaN
 df = df.apply(pd.to_numeric, errors='coerce')
@@ -19,6 +20,7 @@ motor_rpm     = Col_D = df.iloc[:, 3].values
 motor_current = Col_E = df.iloc[:, 4].values
 speed         = Col_F = df.iloc[:, 5].values
 altitude      = Col_G = df.iloc[:, 6].values
+expacc_realacc= Col_H = df.iloc[:, 7].values
 
 time2 = (time - time[0]) / 1000.0
 
@@ -30,6 +32,7 @@ valid = (
 	& np.isfinite(motor_current)
     & np.isfinite(speed)
     & np.isfinite(altitude)
+    & np.isfinite(expacc_realacc)
 )
 time2 = time2[valid]
 pedal_rpm = pedal_rpm[valid]
@@ -38,6 +41,7 @@ motor_rpm = motor_rpm[valid]
 motor_current = motor_current[valid]
 speed = speed[valid]
 altitude = altitude[valid]
+expacc_realacc = expacc_realacc[valid]
 
 # Human and motor power.
 pedal_omega = pedal_rpm * (2.0 * np.pi / 60.0)
@@ -109,6 +113,8 @@ ax_accel.plot(time2, motor_accel_m_s2, label='Motor Accel Raw (m/s²)', color='t
 ax_accel.plot(time2, motor_accel_filtered_m_s2, label='Motor Accel Filtered (m/s²)', color='tab:cyan', linewidth=2.0)
 # ax_accel.plot(time2, accel_m_s2, label='Bike Accel GNSS (m/s²)', color='tab:pink', linewidth=2.0)
 ax_accel.plot(time2, expected_accel_m_s2, label='Expected Accel (m/s²)', color='tab:olive', linewidth=2.0)
+ax_accel.plot(time2, expected_accel_m_s2 - motor_accel_m_s2, label='ExpAcc-RealAcc calculated', color='#555555', linewidth=2.0)
+ax_accel.plot(time2, expacc_realacc, label='ExpAcc-RealAcc measured', color='#222222', linewidth=2.0)
 ax_accel.set_ylabel('Acceleration (m/s²)')
 
 lines_signals, labels_signals = ax_signals.get_legend_handles_labels()
