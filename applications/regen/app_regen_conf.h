@@ -29,12 +29,25 @@
 //uncomment to use custom app by default, regardless of settings:
 //#define APPCONF_APP_TO_USE				APP_CUSTOM
 
-#define APP_CUSTOM_CONF_CTRL_TYPE                CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE
-#define APP_CUSTOM_CONF_CTRL_TORQUE_GAIN         2.0f    // motor_current_rel = torque_gain * (pedal_torque_rel ^ torque_exponent)
-#define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT     0.9f    // motor_current_rel = torque_gain * (pedal_torque_rel ^ torque_exponent)
-#define APP_CUSTOM_CONF_CTRL_CADENCE_GAIN        1.0f    // motor_current_rel = [torque_gain * (pedal_torque_rel ^ torque_exponent) + cadence_gain * pedal_speed_rel * torque_gain * (pedal_torque_rel ^ torque_exponent)] / 2
-#define APP_CUSTOM_MOTOR_TORQUE_CONSTANT         0.014f  // Nm/A - motor torque constant, used for calculating assist level in human watts
-#define APP_CUSTOM_MOTOR_GEAR_EFFICIENCY         0.8f    // gear efficiency, used for calculating assist level in human watts
+#define APP_CUSTOM_CONF_CTRL_TYPE                CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO
+#define APP_CUSTOM_CONF_CTRL_TORQUE_BASE_GAIN      1.0f  // base torque gain
+#define APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_REL_GAIN 1.5f  // coefficient of additional torque gain based on calculated (extra resistance / normal resistance)
+#define APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_ABS_GAIN 0.0f  // coefficient of additional torque gain based on calculated extra resistance
+#define APP_CUSTOM_CONF_CTRL_TORQUE_ACC_GAIN       2.5f  // coefficient of additional torque gain based on current acceleration
+#define APP_CUSTOM_CONF_CTRL_CADENCE_GAIN          1.0f  // coefficient of additional torque gain based on pedal cadence
+#define APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN       4.0f  // maximum total torque gain to prevent excessive torque
+#define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT       0.9f  // nonlinearity coeff for torque control, where 1.0 is linear, < 1.0 gives more torque at low pedal inputs, and > 1.0 gives more torque at high pedal inputs
+#define APP_CUSTOM_CONF_MOTOR_TORQUE_CONSTANT      0.014f// Nm/A - motor torque constant, used for calculating assist level in human watts
+#define APP_CUSTOM_CONF_MOTOR_GEAR_EFFICIENCY      0.90f // range 0.0 to 1.0 - gear efficiency between motor and wheel
+#define APP_CUSTOM_CONF_PEDAL_GEAR_EFFICIENCY      0.95f // range 0.0 to 1.0 - gear efficiency between pedal and wheel
+#define APP_CUSTOM_CONF_EFFECTIVE_MASS           105.0f  // kg - effective mass of the rider and bike
+#define APP_CUSTOM_CONF_RESISTANCE_COEFF_0         7.5f  // zero order resistance coefficient, used for calculating normal resistance (air resistance, rolling resistance, etc.)
+#define APP_CUSTOM_CONF_RESISTANCE_COEFF_1         0.2f  // first order resistance coefficient, used for calculating normal resistance (air resistance, rolling resistance, etc.)
+#define APP_CUSTOM_CONF_RESISTANCE_COEFF_2         0.23f // second order resistance coefficient, used for calculating normal resistance (air resistance, rolling resistance, etc.)
+
+#define APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE     50u   // Hz - velocity sampling rate
+#define APP_CUSTOM_CONF_VELOCITY_FILTER            1.0f  // Range 0.0 to 1.0, where 1.0 gives the unfiltered velocity value
+#define APP_CUSTOM_CONF_ACCELERATION_FILTER        0.3f  // Range 0.0 to 1.0, where 1.0 gives the unfiltered acceleration value
 
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE        SPEED_SENSOR_TYPE_QUADRATURE_POLL
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1       HW_HALL_ENC_GPIO1
@@ -52,6 +65,7 @@
 #define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS        0.1f  // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG        0.1f  // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_PEDAL_INVERT_DIR           0     // 1/0 = invert/no invert
+#define APP_CUSTOM_CONF_PEDAL_GEAR_EFFICIENCY      0.95f // gear efficiency, used for calculating assist level in human watts
 
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE        SPEED_SENSOR_TYPE_NONE
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1       HW_HALL_ENC_GPIO3
@@ -179,10 +193,22 @@
 #define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_ADDR               60
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR            61
 #define APP_CUSTOM_CONF_CTRL_CADENCE_GAIN_ADDR               62
-#define APP_CUSTOM_CONF_CTRL_TORQUE_GAIN_ADDR                63
+#define APP_CUSTOM_CONF_CTRL_TORQUE_BASE_GAIN_ADDR           63
 #define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT_ADDR            64
 #define APP_CUSTOM_CONF_TORQUE_NM_MAX_ADDR                   65
-#define APP_CUSTOM_MOTOR_TORQUE_CONSTANT_ADDR               66
-#define APP_CUSTOM_MOTOR_GEAR_EFFICIENCY_ADDR               67
+#define APP_CUSTOM_CONF_MOTOR_TORQUE_CONSTANT_ADDR           66
+#define APP_CUSTOM_CONF_MOTOR_GEAR_EFFICIENCY_ADDR           67
+#define APP_CUSTOM_CONF_PEDAL_GEAR_EFFICIENCY_ADDR           68
+#define APP_CUSTOM_CONF_EFFECTIVE_MASS_ADDR                  69
+#define APP_CUSTOM_CONF_RESISTANCE_COEFF_0_ADDR              70
+#define APP_CUSTOM_CONF_RESISTANCE_COEFF_1_ADDR              71
+#define APP_CUSTOM_CONF_RESISTANCE_COEFF_2_ADDR              72
+#define APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE_ADDR          73
+#define APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_REL_GAIN_ADDR      74
+#define APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_ABS_GAIN_ADDR      75
+#define APP_CUSTOM_CONF_CTRL_TORQUE_ACC_GAIN_ADDR            76
+#define APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN_ADDR            77
+#define APP_CUSTOM_CONF_VELOCITY_FILTER_ADDR                 78
+#define APP_CUSTOM_CONF_ACCELERATION_FILTER_ADDR             79
 
 #endif /* APP_REGEN_CONF_H_ */

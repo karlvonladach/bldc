@@ -52,10 +52,6 @@
 #define DIFF_THRESHOLD_TO_APPLY_COMPENSATION    0.1f
 #define MAX_PERIODS_TO_AVG					    8u
 
-/*#define ASSIST_ACCEL_FILTER_WINDOW              9u*/
-#define ASSIST_ACCEL_MAX                       50.0f
-#define ASSIST_BIKE_RIDER_MASS_KG             100.0f
-
 // Macros
 #define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
 
@@ -88,9 +84,9 @@ static void update_pedal_torque(void);
 static void update_pedal_speed_and_position(float set_brake_position);
 static void update_wheel_speed(void);
 static void update_motor_speed(void);
+static void update_bike_speed_and_acc(void);
 static void update_clutch_state(void);
 static void update_motor_control(void);
-static void update_assist_level(void);
 
 static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
 static float compensate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
@@ -130,19 +126,21 @@ static volatile float pedal_torque = 0;
 static volatile float pedal_torque_rel = 0;
 static volatile float pedal_torque2 = 0;
 static volatile float pedal_torque2_filtered = 0;
-static volatile float pedal_speed  = 0;    //CRPM
+static volatile float pedal_speed  = 0;     //CRPM
 static volatile float pedal_speed_rel = 0; 
 static volatile float pedal_brake_position = 0;
 static volatile float pedal_brake_position_rel = 0;
-static volatile float wheel_speed  = 0;    //WRPM
+static volatile float wheel_speed  = 0;     //WRPM
 static volatile float wheel_speed_rel = 0;
 static volatile float wheel_speed_pred = 0;
-static volatile float motor_speed  = 0;    //MWRPM
+static volatile float motor_speed  = 0;     //MWRPM
 static volatile float motor_current_rel = 0;
-static volatile float assist_need = 0;
-static volatile float human_power_w = 0;
-static volatile float expected_accel_m_s2 = 0;
-static volatile float real_accel_m_s2 = 0;
+static volatile float bike_speed = 0;       // m/s
+static volatile float bike_accel = 0;	    // m/s²
+static volatile float human_power_w = 0;    // Watts
+static volatile float extra_resistance = 0; // Newton
+static volatile float extra_resistance_rel = 0;
+static volatile float torque_gain = 0;
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
 static volatile uint8_t HALL1_level = 0;
 static volatile uint8_t HALL2_level = 0;
@@ -175,18 +173,41 @@ static volatile bool     compensation_active = false;
 // Config table - add new parameters here
 static const config_param_t config_table[] = {
     // Control type
-    {"astype", "Motor control strategy", CONFIG_TYPE_ENUM, &config.ctrl_type, APP_CUSTOM_CONF_CTRL_TYPE_ADDR, 
-     {.enum_default = APP_CUSTOM_CONF_CTRL_TYPE}, "none,pid,cadence,torque,cadence_torque"},
-	{"astgain", "[float] Torque control gain: motor_current_rel = torque_gain * (torque_rel ^ torque_exponent)", CONFIG_TYPE_FLOAT, &config.ctrl_torque_gain, APP_CUSTOM_CONF_CTRL_TORQUE_GAIN_ADDR,
-	 {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_GAIN}, NULL},
-    {"astexp", "[float] Torque control exponent: motor_current_rel = torque_gain * (torque_rel ^ torque_exponent)", CONFIG_TYPE_FLOAT, &config.ctrl_torque_exponent, APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT_ADDR,
+    {"astype", "Motor control strategy", CONFIG_TYPE_ENUM, &config.ctrl.ctrl_type, APP_CUSTOM_CONF_CTRL_TYPE_ADDR, 
+     {.enum_default = APP_CUSTOM_CONF_CTRL_TYPE}, "none,pid,cadence,torque,cadence_torque,auto"},
+    {"astbasegain", "[float] Base torque gain", CONFIG_TYPE_FLOAT, &config.ctrl.torque_base_gain, APP_CUSTOM_CONF_CTRL_TORQUE_BASE_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_BASE_GAIN}, NULL},
+    {"astexrelgain", "[float] Coefficient of additional torque gain based on (extra_resistance / normal_resistance)", CONFIG_TYPE_FLOAT, &config.ctrl.torque_extra_rel_gain, APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_REL_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_REL_GAIN}, NULL},
+    {"astexabsgain", "[float] Coefficient of additional torque gain based on extra resistance", CONFIG_TYPE_FLOAT, &config.ctrl.torque_extra_abs_gain, APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_ABS_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_ABS_GAIN}, NULL},
+    {"astaccgain", "[float] Coefficient of additional torque gain based on acceleration", CONFIG_TYPE_FLOAT, &config.ctrl.torque_acc_gain, APP_CUSTOM_CONF_CTRL_TORQUE_ACC_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_ACC_GAIN}, NULL},
+    {"astmaxgain", "[float] Maximum allowed torque gain", CONFIG_TYPE_FLOAT, &config.ctrl.torque_max_gain, APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN}, NULL},
+    {"astexp", "[float] Torque control exponent (1.0 is linear, < 1.0 gives more torque at low pedal inputs)", CONFIG_TYPE_FLOAT, &config.ctrl.torque_exponent, APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT_ADDR,
      {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT}, NULL},
-    {"ascgain", "[float] Cadence control gain: motor_current_rel = [torque_gain * (torque_rel ^ torque_exponent) + cadence_gain * pedal_rpm_rel * torque_gain * (torque_rel ^ torque_exponent)] / 2", CONFIG_TYPE_FLOAT, &config.ctrl_cadence_gain, APP_CUSTOM_CONF_CTRL_CADENCE_GAIN_ADDR,
+    {"ascgain", "[float] Cadence control gain", CONFIG_TYPE_FLOAT, &config.ctrl.cadence_gain, APP_CUSTOM_CONF_CTRL_CADENCE_GAIN_ADDR,
      {.float_default = APP_CUSTOM_CONF_CTRL_CADENCE_GAIN}, NULL},
-	{"asmotorconst", "[float] Motor torque constant in Nm/A, used for calculating motor power", CONFIG_TYPE_FLOAT, &config.motor_torque_constant, APP_CUSTOM_MOTOR_TORQUE_CONSTANT_ADDR,
-	 {.float_default = APP_CUSTOM_MOTOR_TORQUE_CONSTANT}, NULL},
-	{"asgeareff", "[float] Gear efficiency between motor and wheel", CONFIG_TYPE_FLOAT, &config.gear_efficiency, APP_CUSTOM_MOTOR_GEAR_EFFICIENCY_ADDR,
-	 {.float_default = APP_CUSTOM_MOTOR_GEAR_EFFICIENCY}, NULL},
+	{"asmotconst", "[float] Motor torque constant in Nm/A, used for calculating motor power", CONFIG_TYPE_FLOAT, &config.ctrl.motor_torque_constant, APP_CUSTOM_CONF_MOTOR_TORQUE_CONSTANT_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_MOTOR_TORQUE_CONSTANT}, NULL},
+	{"asmotgeff", "[float] Motor-to-wheel gear efficiency", CONFIG_TYPE_FLOAT, &config.ctrl.motor_gear_efficiency, APP_CUSTOM_CONF_MOTOR_GEAR_EFFICIENCY_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_MOTOR_GEAR_EFFICIENCY}, NULL},
+	{"aspedgeff", "[float] Pedal-to-wheel gear efficiency", CONFIG_TYPE_FLOAT, &config.ctrl.pedal_gear_efficiency, APP_CUSTOM_CONF_PEDAL_GEAR_EFFICIENCY_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_PEDAL_GEAR_EFFICIENCY}, NULL},
+	{"asmeff", "[kg] Effective rider+bike mass", CONFIG_TYPE_FLOAT, &config.ctrl.effective_mass, APP_CUSTOM_CONF_EFFECTIVE_MASS_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_EFFECTIVE_MASS}, NULL},
+	{"asresc0", "[N] 0th-order resistance coefficient", CONFIG_TYPE_FLOAT, &config.ctrl.resistance_coeff_0, APP_CUSTOM_CONF_RESISTANCE_COEFF_0_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_RESISTANCE_COEFF_0}, NULL},
+	{"asresc1", "[N*s/m] 1st-order resistance coefficient", CONFIG_TYPE_FLOAT, &config.ctrl.resistance_coeff_1, APP_CUSTOM_CONF_RESISTANCE_COEFF_1_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_RESISTANCE_COEFF_1}, NULL},
+	{"asresc2", "[N*s^2/m^2] 2nd-order resistance coefficient", CONFIG_TYPE_FLOAT, &config.ctrl.resistance_coeff_2, APP_CUSTOM_CONF_RESISTANCE_COEFF_2_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_RESISTANCE_COEFF_2}, NULL},
+
+    {"velsrate", "[Hz] Velocity sampling rate", CONFIG_TYPE_UINT32, &config.velocity_sampling_rate, APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE_ADDR,
+	 {.uint32_default = APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE}, NULL},
+	{"velfilt", "[0.0-1.0] Velocity filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.velocity_filter, APP_CUSTOM_CONF_VELOCITY_FILTER_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_VELOCITY_FILTER}, NULL},
     
     // Pedal sensor config
     {"pedstype", "Pedal sensor encoding type", CONFIG_TYPE_ENUM, &config.pedal_sensor.sensor_type, APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE_ADDR, 
@@ -506,9 +527,9 @@ void app_custom_get_rtdata(float* data) {
 	data[5] = (float)clutch_state;
 	data[6] = (float)pedal_torque * 100;
 	data[7] = (float)motor_current_rel * 100;
-	data[8] = (float)assist_need;
-	data[9] = expected_accel_m_s2;
-	data[10] = real_accel_m_s2;
+	data[8] = (float)torque_gain;
+	data[9] =  extra_resistance_rel;
+	data[10] = bike_accel;
 	data[11] = human_power_w;
 }
 
@@ -580,6 +601,9 @@ static THD_FUNCTION(my_thread, arg) {
 		plot_points(PLOT_WHEEL_RPM, timestamp, wheel_speed);
 		plot_points(PLOT_WHEEL_PRED_RPM, timestamp, wheel_speed_pred);
 
+		//calculate bike speed and acceleration
+		update_bike_speed_and_acc();
+
 		//take care of clutch state transitions
 		update_clutch_state();
 
@@ -588,10 +612,7 @@ static THD_FUNCTION(my_thread, arg) {
 		//control motor speed/current according to the current state variables
 		update_motor_control();
 
-		//determine if there is a need for more or for less assistance (auto mode)
-		update_assist_level();
-
-		plot_points(PLOT_ASSIST_LEVEL, timestamp, assist_need);
+		plot_points(PLOT_ASSIST_LEVEL, timestamp, torque_gain);
 
 		//if wheel speed is small then release brake after N seconds
 		// note: motor speed is measured here because of the instability of wrpm in interrupt mode
@@ -1638,6 +1659,38 @@ static void update_motor_speed(void)
 	motor_speed = mrpm / conf->si_gear_ratio;
 }
 
+static void update_bike_speed_and_acc(void)
+{
+	// calculate bike speed and acceleration from wheel speed
+	// bike speed is the same as wheel speed, but sampled with lower sampling rate, converted to m/s and with a simple low pass filter applied
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+	const float wheel_circumference = M_PI * conf->si_wheel_diameter;
+	static uint32_t cnt = 0;
+	static float old_bike_speed = 0;
+	static float old_timestamp = 0;
+	float timestamp = APP_NOW_SEC;
+    float new_bike_speed, new_bike_accel;
+
+	if (++cnt >= config.update_rate_hz / config.velocity_sampling_rate) {
+		cnt = 0;
+	} else {
+		return;
+	}
+	
+	new_bike_speed = wheel_speed * wheel_circumference / 60.0;
+
+	UTILS_LP_FAST(bike_speed, new_bike_speed, config.velocity_filter);
+
+	if (old_timestamp != 0) {
+		new_bike_accel = (bike_speed - old_bike_speed) / (timestamp - old_timestamp);
+
+		UTILS_LP_FAST(bike_accel, new_bike_accel, config.acceleration_filter);
+	}
+
+	old_bike_speed = bike_speed;
+	old_timestamp = timestamp;
+}
+
 static void update_clutch_state(void)
 {
 	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
@@ -1891,7 +1944,10 @@ static void update_motor_control()
 {
 	char log_text[64];
 	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
 	float torque_boosted;
+	float motor_force, human_force;
+	float normal_resistance;
 	static uint32_t cnt = 0;
 
 	if (command_line_speed >= 0){
@@ -1921,7 +1977,7 @@ static void update_motor_control()
 		sprintf(log_text, "break current set to %d%%", (int)floor(brake_current*100));
 	} 
 	else if (clutch_state == CLUTCH_STATE_CLOSED_ASSIST) {
-		switch (config.ctrl_type){
+		switch (config.ctrl.ctrl_type){
 			case CUSTOM_CTRL_TYPE_NONE:
 				break;
 			case CUSTOM_CTRL_TYPE_PID:
@@ -1933,25 +1989,55 @@ static void update_motor_control()
 				sprintf(log_text, "current set to %d%%", (int)(pedal_speed_rel*100));
 				break;
 			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE:
-				if (config.ctrl_torque_exponent == 1.0f) {
+				if (config.ctrl.torque_exponent == 1.0f) {
 					torque_boosted = pedal_torque_rel;
 				} else {
-					torque_boosted = pedal_torque_rel > 0 ? expf(config.ctrl_torque_exponent * logf(pedal_torque_rel)) : 0;
+					torque_boosted = pedal_torque_rel > 0 ? expf(config.ctrl.torque_exponent * logf(pedal_torque_rel)) : 0;
 					// TODO: speed up with look-up table
 				}
-    			motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_rel > 0) ? (config.ctrl_torque_gain * torque_boosted) : 0;
+	    		motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_rel > 0) ? (config.ctrl.torque_base_gain * torque_boosted) : 0;
 				utils_truncate_number((float*)&motor_current_rel, 0.0, 1.0);
 				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel*100);
 				mc_interface_set_current_rel(motor_current_rel);
 				break;
 			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE:
-				if (config.ctrl_torque_exponent == 1.0f) {
+				if (config.ctrl.torque_exponent == 1.0f) {
 					torque_boosted = pedal_torque_rel;
 				} else {
-					torque_boosted = pedal_torque_rel > 0 ? expf(config.ctrl_torque_exponent * logf(pedal_torque_rel)) : 0;
+					torque_boosted = pedal_torque_rel > 0 ? expf(config.ctrl.torque_exponent * logf(pedal_torque_rel)) : 0;
 					// TODO: speed up with look-up table
 				}
-				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_rel > 0) ? (config.ctrl_torque_gain * (torque_boosted + config.ctrl_cadence_gain * pedal_speed_rel * torque_boosted)/2) : 0;
+				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_rel > 0) ? (config.ctrl.torque_base_gain * (torque_boosted + config.ctrl.cadence_gain * pedal_speed_rel * torque_boosted)/2) : 0;
+				utils_truncate_number((float*)&motor_current_rel, 0.0, 1.0);
+				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel*100);
+				mc_interface_set_current_rel(motor_current_rel);
+				break;
+			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO:
+				motor_force = mc_interface_get_tot_current_directional_filtered() * config.ctrl.motor_torque_constant * 
+							conf->si_gear_ratio * config.ctrl.motor_gear_efficiency / 
+							(conf->si_wheel_diameter * 0.5f);
+				human_power_w = pedal_torque_rel * config.torque_sensor.nm_max * 
+								pedal_speed * (2.0f * M_PI / 60.0f) * 
+								config.ctrl.pedal_gear_efficiency;
+				human_force = human_power_w / bike_speed;
+				normal_resistance = config.ctrl.resistance_coeff_0 +
+									config.ctrl.resistance_coeff_1 * bike_speed +
+									config.ctrl.resistance_coeff_2 * bike_speed * bike_speed;
+				extra_resistance = motor_force + human_force - bike_accel * config.ctrl.effective_mass - normal_resistance;
+				extra_resistance_rel = extra_resistance / MAX(normal_resistance, 0.1f);
+				torque_gain = config.ctrl.torque_base_gain +
+							config.ctrl.torque_extra_rel_gain * extra_resistance_rel +
+							config.ctrl.torque_extra_abs_gain * extra_resistance +
+							config.ctrl.torque_acc_gain * bike_accel;
+				utils_truncate_number((float *)&torque_gain, 0.0, config.ctrl.torque_max_gain);
+
+				if (config.ctrl.torque_exponent == 1.0f) {
+					torque_boosted = pedal_torque_rel;
+				} else {
+					torque_boosted = pedal_torque_rel > 0 ? expf(config.ctrl.torque_exponent * logf(pedal_torque_rel)) : 0;
+					// TODO: speed up with look-up table
+				}
+				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_rel > 0) ? (torque_gain * (torque_boosted + config.ctrl.cadence_gain * pedal_speed_rel * torque_boosted)/2) : 0;
 				utils_truncate_number((float*)&motor_current_rel, 0.0, 1.0);
 				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel*100);
 				mc_interface_set_current_rel(motor_current_rel);
@@ -1967,77 +2053,6 @@ static void update_motor_control()
 	if (cnt++ % (config.update_rate_hz / 10) == 0){
 		print_log(LOG_GROUP_MOTOR,"[%4.2f] %s", (double)timestamp, log_text);
 	}
-}
-
-static void update_assist_level(void) {
-	/*static float motor_accel_samples[ASSIST_ACCEL_FILTER_WINDOW] = {0.0f};
-	static uint8_t accel_sample_count = 0;
-	static uint8_t accel_sample_index = 0;
-	static float motor_accel_sum = 0.0f;*/
-	static float prev_motor_speed = 0.0f;
-	static float prev_timestamp = 0.0f;
-
-	const volatile mc_configuration *conf = mc_interface_get_configuration();
-	const float wheel_radius_m = conf->si_wheel_diameter * 0.5f;
-	const float pedal_omega = pedal_speed * (2.0f * M_PI / 60.0f);
-	static float filtered_motor_speed = 0;
-	UTILS_LP_FAST(filtered_motor_speed, motor_speed, 0.1f);
-
-	const float motor_omega = filtered_motor_speed * (2.0f * M_PI / 60.0f);
-	const float wheel_velocity_m_s = motor_omega * wheel_radius_m;
-	const float human_torque_nm = pedal_torque_rel * config.torque_sensor.nm_max;
-	human_power_w = human_torque_nm * pedal_omega;
-
-	float motor_current_a = mc_interface_get_tot_current_directional_filtered();
-	if (motor_current_a < 0.0f) {
-		motor_current_a = 0.0f;
-	}
-	const float motor_torque_nm = motor_current_a * config.motor_torque_constant * conf->si_gear_ratio * config.gear_efficiency;
-	const float motor_power_w = motor_torque_nm * motor_omega;
-
-	expected_accel_m_s2 = 0.0f;
-	if (fabsf(wheel_velocity_m_s) > config.wheel_sensor.rpm_min * (2.0f * M_PI / 60.0f) * wheel_radius_m) {
-		expected_accel_m_s2 = (human_power_w + motor_power_w) / (ASSIST_BIKE_RIDER_MASS_KG * wheel_velocity_m_s);
-	}
-	utils_truncate_number((float*)&expected_accel_m_s2, 0.0f, ASSIST_ACCEL_MAX);
-
-	const float now = APP_NOW_SEC;
-	float motor_accel_rpm_s = 0.0f;
-	if (prev_timestamp > 0.0f) {
-		const float dt = now - prev_timestamp;
-		if (dt > 1e-4f) {
-			motor_accel_rpm_s = (filtered_motor_speed - prev_motor_speed) / dt;
-		}
-	}
-	if (motor_accel_rpm_s < 0.0f) {
-		motor_accel_rpm_s = 0.0f;
-	}
-
-	/*if (accel_sample_count < ASSIST_ACCEL_FILTER_WINDOW) {
-		motor_accel_samples[accel_sample_index] = motor_accel_rpm_s;
-		motor_accel_sum += motor_accel_rpm_s;
-		accel_sample_count++;
-	} else {
-		motor_accel_sum -= motor_accel_samples[accel_sample_index];
-		motor_accel_samples[accel_sample_index] = motor_accel_rpm_s;
-		motor_accel_sum += motor_accel_rpm_s;
-	}
-	accel_sample_index = (accel_sample_index + 1) % ASSIST_ACCEL_FILTER_WINDOW;
-	if (accel_sample_count > 0) {
-		motor_accel_filtered_rpm_s = motor_accel_sum / (float)accel_sample_count;
-	}
-	*/
-
-	static float motor_accel_filtered_rpm_s = 0.0f;
-	UTILS_LP_FAST(motor_accel_filtered_rpm_s, motor_accel_rpm_s, 0.1f);
-
-	utils_truncate_number(&motor_accel_filtered_rpm_s, 0.0f, ASSIST_ACCEL_MAX);
-
-	real_accel_m_s2 = motor_accel_filtered_rpm_s * (2.0f * M_PI / 60.0f) * wheel_radius_m;
-	assist_need = expected_accel_m_s2 - real_accel_m_s2;
-
-	prev_motor_speed = filtered_motor_speed;
-	prev_timestamp = now;
 }
 
 static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed) {
