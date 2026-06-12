@@ -3,7 +3,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 #df = pd.read_excel('livetest260601.xlsx', sheet_name='2026-06-01_11-54-25', nrows=1528)
-df = pd.read_excel('livetest260603.xlsx', sheet_name='data', nrows=7589)
+#df = pd.read_excel('2026-06-08_00-44-10.xlsx', sheet_name='data')
+#df = pd.read_excel('2026-06-07_19-07-44.xlsx', sheet_name='data')
+df = pd.read_excel('2026-06-07_11-54-58.xlsx', sheet_name='data')
+#df = pd.read_excel('2026-06-07_10-54-13.xlsx', sheet_name='data')
 
 # Convert all columns to numeric, coerce errors to NaN
 df = df.apply(pd.to_numeric, errors='coerce')
@@ -11,16 +14,25 @@ df = df.apply(pd.to_numeric, errors='coerce')
 # Drop rows with NaN values
 # df = df.dropna()
 
-# Store each column into separate arrays
-# Assuming no header in the data range, columns are 0-indexed
-time          = col_A = df.iloc[:, 0].values
-pedal_rpm     = col_B = df.iloc[:, 1].values
-pedal_torque  = col_C = df.iloc[:, 2].values
-motor_rpm     = Col_D = df.iloc[:, 3].values
-motor_current = Col_E = df.iloc[:, 4].values
-speed         = Col_F = df.iloc[:, 5].values
-altitude      = Col_G = df.iloc[:, 6].values
-expacc_realacc= Col_H = df.iloc[:, 7].values
+# Store each column into separate arrays using column names instead of fixed indices.
+def get_col_values(frame, *aliases):
+	for name in aliases:
+		if name in frame.columns:
+			return frame[name].values
+	raise KeyError(f"None of these columns were found: {aliases}")
+
+
+time          	 = Col_A  = get_col_values(df, 'time', 				'ms_today', 		'A')
+pedal_rpm     	 = Col_AP = get_col_values(df, 'pedal_rpm', 		'accX',		 		'AP')
+pedal_torque  	 = Col_AQ = get_col_values(df, 'pedal_torque', 		'accY', 			'AQ')
+pedal_torque_raw = Col_AT = get_col_values(df, 'pedal_torque_raw', 	'gyroY', 			'AT')
+motor_rpm     	 = Col_AR = get_col_values(df, 'motor_rpm', 		'accZ',		 		'AR')
+motor_current 	 = Col_H  = get_col_values(df, 'motor_current', 	'current_motor', 	'H')
+speed         	 = Col_AZ = get_col_values(df, 'speed', 			'gnss_gVel',		'AZ')
+altitude      	 = Col_AY = get_col_values(df, 'altitude', 			'gnss_alt', 		'AY')
+expacc        	 = Col_D  = get_col_values(df, 'expacc', 			'temp_mos_1',	 	'D')
+realacc	      	 = Col_E  = get_col_values(df, 'realacc', 			'temp_mos_2', 		'E')
+expacc_realacc	 = Col_AO = get_col_values(df, 'expacc_realacc', 	'yaw',			 	'AO')
 
 time2 = (time - time[0]) / 1000.0
 
@@ -28,19 +40,25 @@ valid = (
 	np.isfinite(time2)
 	& np.isfinite(pedal_rpm)
 	& np.isfinite(pedal_torque)
+	& np.isfinite(pedal_torque_raw)
 	& np.isfinite(motor_rpm)
 	& np.isfinite(motor_current)
     & np.isfinite(speed)
     & np.isfinite(altitude)
+	& np.isfinite(expacc)
+	& np.isfinite(realacc)
     & np.isfinite(expacc_realacc)
 )
 time2 = time2[valid]
 pedal_rpm = pedal_rpm[valid]
 pedal_torque = pedal_torque[valid]
+pedal_torque_raw = pedal_torque_raw[valid]
 motor_rpm = motor_rpm[valid]
 motor_current = motor_current[valid]
 speed = speed[valid]
 altitude = altitude[valid]
+expacc = expacc[valid]
+realacc = realacc[valid]
 expacc_realacc = expacc_realacc[valid]
 
 # Human and motor power.
@@ -84,9 +102,74 @@ motor_accel_filtered_rpm_s = np.clip(motor_accel_filtered_rpm_s, 0.0, 50)
 motor_accel_m_s2 = motor_accel_rpm_s * (2.0 * np.pi / 60.0) * wheel_radius_m
 motor_accel_filtered_m_s2 = motor_accel_filtered_rpm_s * (2.0 * np.pi / 60.0) * wheel_radius_m
 
+# Apply similar causal moving average filtering to real acceleration.
+realacc_trailing_sum = np.convolve(
+	realacc,
+	np.ones(accel_filter_window),
+	mode='full',
+)[:n_samples]
+realacc_trailing_count = np.minimum(np.arange(1, n_samples + 1), accel_filter_window)
+realacc_filtered = realacc_trailing_sum / realacc_trailing_count
+
+accel_filter_window = 101
+# Apply similar causal moving average filtering to expacc_realacc difference.
+expacc_realacc_trailing_sum = np.convolve(
+	expacc_realacc,
+	np.ones(accel_filter_window),
+	mode='full',
+)[:n_samples]
+expacc_realacc_trailing_count = np.minimum(np.arange(1, n_samples + 1), accel_filter_window)
+expacc_realacc_filtered = expacc_realacc_trailing_sum / expacc_realacc_trailing_count
+
+grad_m_s = np.gradient(altitude, time2)*500
+grad_m_s_trailing_sum = np.convolve(
+	grad_m_s,
+	np.ones(accel_filter_window),
+	mode='full',
+)[:n_samples]
+grad_m_s_trailing_count = np.minimum(np.arange(1, n_samples + 1), accel_filter_window)
+grad_m_s_filtered = grad_m_s_trailing_sum / grad_m_s_trailing_count
+
+
 # Bike acceleration based on gnss (m/s2).
 accel_m_s2 = np.gradient(speed, time2)
 accel_m_s2 = np.clip(accel_m_s2, 0.0, None)
+
+
+def get_zero_fraction(values, default=0.5):
+	finite_values = values[np.isfinite(values)]
+	if finite_values.size == 0:
+		return default
+	data_min = float(np.min(finite_values))
+	data_max = float(np.max(finite_values))
+	if data_min < 0.0 < data_max:
+		return -data_min / (data_max - data_min)
+	return default
+
+
+def set_ylim_with_shared_zero(axis, values, zero_fraction, pad_fraction=0.08):
+	finite_values = values[np.isfinite(values)]
+	if finite_values.size == 0:
+		return
+	data_min = float(np.min(finite_values))
+	data_max = float(np.max(finite_values))
+	if data_min == data_max:
+		span = max(abs(data_max), 1.0)
+	else:
+		span = data_max - data_min
+
+	span *= 1.0 + pad_fraction
+	if zero_fraction <= 0.0:
+		zero_fraction = 0.5
+	if zero_fraction >= 1.0:
+		zero_fraction = 0.5
+
+	span = max(
+		span,
+		data_max / max(1.0 - zero_fraction, 1e-9) if data_max > 0.0 else 0.0,
+		-data_min / max(zero_fraction, 1e-9) if data_min < 0.0 else 0.0,
+	)
+	axis.set_ylim(-zero_fraction * span, (1.0 - zero_fraction) * span)
 
 # Create plot
 fig, ax_signals = plt.subplots(figsize=(11, 7))
@@ -96,26 +179,41 @@ ax_accel.spines['right'].set_position(('axes', 1.12))
 ax_accel.set_frame_on(True)
 ax_accel.patch.set_visible(False)
 
-ax_signals.plot(time2, pedal_rpm, label='Pedal RPM', marker='o', markersize=2, linestyle='-', color='tab:blue')
-ax_signals.plot(time2, motor_rpm, label='Motor RPM', marker='.', markersize=2, linestyle='-', color='tab:orange')
-ax_signals.plot(time2, pedal_torque, label='Pedal Torque', linestyle='--', color='tab:green')
-ax_signals.plot(time2, motor_current, label='Motor Current', linestyle='--', color='tab:purple')
+##ax_signals.plot(time2, pedal_rpm, label='Pedal RPM', marker='o', markersize=2, linestyle='-', color='tab:blue')
+ax_signals.plot(time2, motor_rpm, label='Motor RPM', linestyle='-', color='tab:orange', alpha=0.2)
+##ax_signals.plot(time2, pedal_torque, label='Pedal Torque', linestyle='--', color='tab:green')
+##ax_signals.plot(time2, motor_current, label='Motor Current', linestyle='--', color='tab:purple')
 ax_signals.plot(time2, (altitude-140)*10, label='Altitude', linestyle='-', color='#000000', alpha=0.8)
+ax_signals.plot(time2, grad_m_s_filtered, label='Altitude Gradient', linestyle='-', color='tab:cyan', alpha=0.8)
 ax_signals.set_xlabel('time (s)')
 ax_signals.set_ylabel('RPM / Torque / Current')
 ax_signals.grid(True, alpha=0.3)
 
-ax_power.plot(time2, human_power_w, label='Human Power (W)', linewidth=2.0, color='tab:red')
-ax_power.plot(time2, motor_power_w, label='Motor Power (W)', linewidth=2.0, color='tab:brown')
+##ax_power.plot(time2, human_power_w, label='Human Power (W)', linewidth=2.0, color='tab:red')
+##ax_power.plot(time2, motor_power_w, label='Motor Power (W)', linewidth=2.0, color='tab:brown')
 ax_power.set_ylabel('Power (W)')
 
-ax_accel.plot(time2, motor_accel_m_s2, label='Motor Accel Raw (m/s²)', color='tab:gray', alpha=0.35)
-ax_accel.plot(time2, motor_accel_filtered_m_s2, label='Motor Accel Filtered (m/s²)', color='tab:cyan', linewidth=2.0)
-# ax_accel.plot(time2, accel_m_s2, label='Bike Accel GNSS (m/s²)', color='tab:pink', linewidth=2.0)
-ax_accel.plot(time2, expected_accel_m_s2, label='Expected Accel (m/s²)', color='tab:olive', linewidth=2.0)
-ax_accel.plot(time2, expected_accel_m_s2 - motor_accel_m_s2, label='ExpAcc-RealAcc calculated', color='#555555', linewidth=2.0)
-ax_accel.plot(time2, expacc_realacc, label='ExpAcc-RealAcc measured', color='#222222', linewidth=2.0)
+##ax_accel.plot(time2, expacc, label='ExpAcc measured', color='tab:pink', linewidth=2.0)
+##ax_accel.plot(time2, realacc_filtered, label='RealAcc measured', color='tab:cyan', linewidth=2.0)
+ax_accel.plot(time2, expacc_realacc_filtered, label='ExpAcc-RealAcc measured', color='#222222', linewidth=2.0)
 ax_accel.set_ylabel('Acceleration (m/s²)')
+
+shared_zero_fraction = get_zero_fraction(np.concatenate([expacc, realacc, expacc_realacc]))
+set_ylim_with_shared_zero(
+	ax_signals,
+	np.concatenate([pedal_rpm, motor_rpm, pedal_torque, motor_current, (altitude - 140.0) * 10.0]),
+	shared_zero_fraction,
+)
+set_ylim_with_shared_zero(
+	ax_power,
+	np.concatenate([human_power_w, motor_power_w]),
+	shared_zero_fraction,
+)
+set_ylim_with_shared_zero(
+	ax_accel,
+	np.concatenate([expacc, realacc, expacc_realacc]),
+	shared_zero_fraction,
+)
 
 lines_signals, labels_signals = ax_signals.get_legend_handles_labels()
 lines_power, labels_power = ax_power.get_legend_handles_labels()
