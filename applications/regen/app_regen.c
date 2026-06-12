@@ -603,6 +603,7 @@ static THD_FUNCTION(my_thread, arg) {
 
 		//calculate bike speed and acceleration
 		update_bike_speed_and_acc();
+		plot_points(PLOT_ACCEL, timestamp, bike_accel);
 
 		//take care of clutch state transitions
 		update_clutch_state();
@@ -952,6 +953,9 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 		} else if (strcmp(argv[1], "assist_level") == 0) {
 			plots_enabled |= (1 << PLOT_ASSIST_LEVEL);
 			commands_printf("Assist level plot enabled");
+		} else if (strcmp(argv[1], "accel") == 0) {
+			plots_enabled |= (1 << PLOT_ACCEL);
+			commands_printf("Acceleration plot enabled");
 		} else if (strcmp(argv[1], "main") == 0) {
 			plots_enabled |= (1 << PLOT_PEDAL_RPM);
 			plots_enabled |= (1 << PLOT_BRAKE_POS);
@@ -961,12 +965,13 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 			plots_enabled |= (1 << PLOT_TORQUE2);
 			plots_enabled |= (1 << PLOT_MOTOR_CURRENT);
 			plots_enabled |= (1 << PLOT_ASSIST_LEVEL);
-			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2, motor_current, assist_level) enabled");
+			plots_enabled |= (1 << PLOT_ACCEL);
+			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2, motor_current, assist_level, accel) enabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0xFFFFFFFF;
 			commands_printf("All plots enabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  torque2\r\n  motor_current\r\n  assist_level\r\n  main\r\n  all\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  torque2\r\n  motor_current\r\n  assist_level\r\n  accel\r\n  main\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -1018,6 +1023,9 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 		} else if (strcmp(argv[1], "assist_level") == 0) {
 			plots_enabled &= ~(1 << PLOT_ASSIST_LEVEL);
 			commands_printf("Assist level plot disabled");
+		} else if (strcmp(argv[1], "accel") == 0) {
+			plots_enabled &= ~(1 << PLOT_ACCEL);
+			commands_printf("Acceleration plot disabled");
 		} else if (strcmp(argv[1], "main") == 0) {
 			plots_enabled &= ~(1 << PLOT_PEDAL_RPM);
 			plots_enabled &= ~(1 << PLOT_BRAKE_POS);
@@ -1027,12 +1035,13 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 			plots_enabled &= ~(1 << PLOT_TORQUE2);
 			plots_enabled &= ~(1 << PLOT_MOTOR_CURRENT);
 			plots_enabled &= ~(1 << PLOT_ASSIST_LEVEL);
-			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2, motor_current, assist_level) disabled");
+			plots_enabled &= ~(1 << PLOT_ACCEL);
+			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2, motor_current, assist_level, accel) disabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0;
 			commands_printf("All plots disabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  torque2\r\n  motor_current\r\n  assist_level\r\n  main\r\n  all\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  torque2\r\n  motor_current\r\n  assist_level\r\n  accel\r\n  main\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -1069,9 +1078,9 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging. Logs are grouped by functionality. Groups can be enabled/disabled separately.");
 	commands_printf("    Log groups: sensor, motor, clutch, error");
 	commands_printf("  enable_plot [plot_name] - Enable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, torque2, motor_current, assist_level, main, all");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, torque2, motor_current, assist_level, accel, main, all");
 	commands_printf("  disable_plot [plot_name] - Disable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, torque2, motor_current, assist_level, main, all");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, torque2, motor_current, assist_level, accel, main, all");
 	commands_printf("  getconfig - Get the current configuration settings");
 	commands_printf("  setpin [pin] [value] - Set a pin value");
 	commands_printf("    Pins: tx, rx");
@@ -2359,6 +2368,10 @@ static void init_plots(void) {
 	if (plots_enabled & (1 << PLOT_ASSIST_LEVEL)) {
 		plot_numbers[PLOT_ASSIST_LEVEL] = plot_number++;
 		commands_plot_add_graph("Assist Level");
+	}
+	if (plots_enabled & (1 << PLOT_ACCEL)) {
+		plot_numbers[PLOT_ACCEL] = plot_number++;
+		commands_plot_add_graph("Acceleration (m/s^2)");
 	}
 }
 

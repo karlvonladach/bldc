@@ -43,6 +43,7 @@ typedef enum {
     PLOT_TORQUE2,
     PLOT_MOTOR_CURRENT,
     PLOT_ASSIST_LEVEL,
+    PLOT_ACCEL,
     PLOT_COUNT // This should always be the last element
 } plot_index_t;
 
