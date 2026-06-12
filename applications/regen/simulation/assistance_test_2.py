@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 #df = pd.read_excel('livetest260601.xlsx', sheet_name='2026-06-01_11-54-25', nrows=1528)
-#df = pd.read_excel('2026-06-08_00-44-10.xlsx', sheet_name='data')
+df = pd.read_excel('2026-06-08_00-44-10.xlsx', sheet_name='data')
 #df = pd.read_excel('2026-06-07_19-07-44.xlsx', sheet_name='data')
-df = pd.read_excel('2026-06-07_11-54-58.xlsx', sheet_name='data')
+#df = pd.read_excel('2026-06-07_11-54-58.xlsx', sheet_name='data')
 #df = pd.read_excel('2026-06-07_10-54-13.xlsx', sheet_name='data')
 
 # Convert all columns to numeric, coerce errors to NaN
@@ -88,6 +88,10 @@ expected_accel_m_s2 = np.clip(expected_accel_m_s2, 0.0, 50)
 motor_accel_rpm_s = np.gradient(motor_rpm, time2)
 motor_accel_rpm_s = np.clip(motor_accel_rpm_s, 0.0, None)
 
+# Distract acceleration caused by air resistance and rolling resistance from the expected acceleration.
+expacc2 = expected_accel_m_s2 - (7.5 + 0.2*wheel_velocity_m_s + 0.23*wheel_velocity_m_s**2)/100.0
+expacc2_realacc = expacc2 - realacc
+
 # Basic noise filtering: causal moving average (uses current and past samples only).
 accel_filter_window = 9
 n_samples = len(motor_accel_rpm_s)
@@ -121,6 +125,15 @@ expacc_realacc_trailing_sum = np.convolve(
 expacc_realacc_trailing_count = np.minimum(np.arange(1, n_samples + 1), accel_filter_window)
 expacc_realacc_filtered = expacc_realacc_trailing_sum / expacc_realacc_trailing_count
 
+# Apply similar causal moving average filtering to expacc_realacc difference.
+expacc2_realacc_trailing_sum = np.convolve(
+	expacc2_realacc,
+	np.ones(accel_filter_window),
+	mode='full',
+)[:n_samples]
+expacc2_realacc_trailing_count = np.minimum(np.arange(1, n_samples + 1), accel_filter_window)
+expacc2_realacc_filtered = expacc2_realacc_trailing_sum / expacc2_realacc_trailing_count
+
 grad_m_s = np.gradient(altitude, time2)*500
 grad_m_s_trailing_sum = np.convolve(
 	grad_m_s,
@@ -134,7 +147,6 @@ grad_m_s_filtered = grad_m_s_trailing_sum / grad_m_s_trailing_count
 # Bike acceleration based on gnss (m/s2).
 accel_m_s2 = np.gradient(speed, time2)
 accel_m_s2 = np.clip(accel_m_s2, 0.0, None)
-
 
 def get_zero_fraction(values, default=0.5):
 	finite_values = values[np.isfinite(values)]
@@ -196,6 +208,7 @@ ax_power.set_ylabel('Power (W)')
 ##ax_accel.plot(time2, expacc, label='ExpAcc measured', color='tab:pink', linewidth=2.0)
 ##ax_accel.plot(time2, realacc_filtered, label='RealAcc measured', color='tab:cyan', linewidth=2.0)
 ax_accel.plot(time2, expacc_realacc_filtered, label='ExpAcc-RealAcc measured', color='#222222', linewidth=2.0)
+ax_accel.plot(time2, expacc2_realacc_filtered, label='ExpAcc2-RealAcc measured', color='tab:pink', linewidth=2.0)
 ax_accel.set_ylabel('Acceleration (m/s²)')
 
 shared_zero_fraction = get_zero_fraction(np.concatenate([expacc, realacc, expacc_realacc]))
