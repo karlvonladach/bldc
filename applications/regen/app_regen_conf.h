@@ -44,6 +44,7 @@
 #define APP_CUSTOM_CONF_RESISTANCE_COEFF_0         7.5f  // zero order resistance coefficient, used for calculating normal resistance (air resistance, rolling resistance, etc.)
 #define APP_CUSTOM_CONF_RESISTANCE_COEFF_1         0.2f  // first order resistance coefficient, used for calculating normal resistance (air resistance, rolling resistance, etc.)
 #define APP_CUSTOM_CONF_RESISTANCE_COEFF_2         0.23f // second order resistance coefficient, used for calculating normal resistance (air resistance, rolling resistance, etc.)
+#define APP_CUSTOM_CONF_RESISTANCE_RATIO_MAX       5.0f  // maximum ratio of extra resistance to normal resistance, used to limit torque gain
 
 #define APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE     50u   // Hz - velocity sampling rate
 #define APP_CUSTOM_CONF_VELOCITY_FILTER            1.0f  // Range 0.0 to 1.0, where 1.0 gives the unfiltered velocity value
@@ -214,5 +215,6 @@
 #define APP_CUSTOM_CONF_ACCELERATION_FILTER_ADDR             79
 #define APP_CUSTOM_CONF_TORQUE_THRESHOLD_ADDR                80
 #define APP_CUSTOM_CONF_TORQUE_TIMEOUT_ADDR                  81
+#define APP_CUSTOM_CONF_RESISTANCE_RATIO_MAX_ADDR            82
 
 #endif /* APP_REGEN_CONF_H_ */

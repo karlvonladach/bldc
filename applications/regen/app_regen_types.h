@@ -113,6 +113,7 @@ typedef struct {
     float resistance_coeff_0;
     float resistance_coeff_1;
     float resistance_coeff_2;
+    float resistance_ratio_max;
 } motor_control_config_type;
 
 typedef struct {

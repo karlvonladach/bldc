@@ -86,6 +86,7 @@ static void update_wheel_speed(void);
 static void update_motor_speed(void);
 static void update_bike_speed_and_acc(void);
 static void update_clutch_state(void);
+static void update_assistance_level(void);
 static void update_motor_control(void);
 
 static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
@@ -203,6 +204,8 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_RESISTANCE_COEFF_1}, NULL},
 	{"asresc2", "[N*s^2/m^2] 2nd-order resistance coefficient", CONFIG_TYPE_FLOAT, &config.ctrl.resistance_coeff_2, APP_CUSTOM_CONF_RESISTANCE_COEFF_2_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_RESISTANCE_COEFF_2}, NULL},
+	{"asresratmax", "[float] Maximum ratio of extra resistance to normal resistance", CONFIG_TYPE_FLOAT, &config.ctrl.resistance_ratio_max, APP_CUSTOM_CONF_RESISTANCE_RATIO_MAX_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_RESISTANCE_RATIO_MAX}, NULL},
 
     {"velsrate", "[Hz] Velocity sampling rate", CONFIG_TYPE_UINT32, &config.velocity_sampling_rate, APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE_ADDR,
 	 {.uint32_default = APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE}, NULL},
@@ -616,10 +619,12 @@ static THD_FUNCTION(my_thread, arg) {
 
 		plot_points(PLOT_CLUTCH_STATE, timestamp, clutch_state);
 
+		// take care of auto-assist level changes
+		update_assistance_level();
+		plot_points(PLOT_ASSIST_LEVEL, timestamp, torque_gain);
+
 		//control motor speed/current according to the current state variables
 		update_motor_control();
-
-		plot_points(PLOT_ASSIST_LEVEL, timestamp, torque_gain);
 
 		//if wheel speed is small then release brake after N seconds
 		// note: motor speed is measured here because of the instability of wrpm in interrupt mode
@@ -1968,14 +1973,41 @@ static void update_clutch_state(void)
 	}
 }
 
+static void update_assistance_level()
+{
+	float motor_force, human_force;
+	float normal_resistance;
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+
+	if (config.ctrl.ctrl_type != CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO) {
+		return;
+	}
+
+	motor_force = mc_interface_get_tot_current_directional_filtered() * config.ctrl.motor_torque_constant * 
+				conf->si_gear_ratio * config.ctrl.motor_gear_efficiency / 
+				(conf->si_wheel_diameter * 0.5f);
+	human_power_w = pedal_torque_rel * config.torque_sensor.nm_max * 
+					pedal_speed * (2.0f * M_PI / 60.0f) * 
+					config.ctrl.pedal_gear_efficiency;
+	human_force = human_power_w / bike_speed;
+	normal_resistance = config.ctrl.resistance_coeff_0 +
+						config.ctrl.resistance_coeff_1 * bike_speed +
+						config.ctrl.resistance_coeff_2 * bike_speed * bike_speed;
+	extra_resistance = motor_force + human_force - bike_accel * config.ctrl.effective_mass - normal_resistance;
+	extra_resistance_rel = extra_resistance / MAX(normal_resistance, 0.1f);
+	utils_truncate_number((float *)&extra_resistance_rel, -config.ctrl.resistance_ratio_max, config.ctrl.resistance_ratio_max);
+	torque_gain = config.ctrl.torque_base_gain +
+				config.ctrl.torque_extra_rel_gain * extra_resistance_rel +
+				config.ctrl.torque_extra_abs_gain * extra_resistance +
+				config.ctrl.torque_acc_gain * bike_accel;
+	utils_truncate_number((float *)&torque_gain, 0.0, config.ctrl.torque_max_gain);
+}
+
 static void update_motor_control()
 {
 	char log_text[64];
 	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
-	const volatile mc_configuration *conf = mc_interface_get_configuration();
 	float torque_boosted;
-	float motor_force, human_force;
-	float normal_resistance;
 	static uint32_t cnt = 0;
 
 	if (command_line_speed >= 0){
@@ -2041,24 +2073,6 @@ static void update_motor_control()
 				mc_interface_set_current_rel(motor_current_rel);
 				break;
 			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO:
-				motor_force = mc_interface_get_tot_current_directional_filtered() * config.ctrl.motor_torque_constant * 
-							conf->si_gear_ratio * config.ctrl.motor_gear_efficiency / 
-							(conf->si_wheel_diameter * 0.5f);
-				human_power_w = pedal_torque_rel * config.torque_sensor.nm_max * 
-								pedal_speed * (2.0f * M_PI / 60.0f) * 
-								config.ctrl.pedal_gear_efficiency;
-				human_force = human_power_w / bike_speed;
-				normal_resistance = config.ctrl.resistance_coeff_0 +
-									config.ctrl.resistance_coeff_1 * bike_speed +
-									config.ctrl.resistance_coeff_2 * bike_speed * bike_speed;
-				extra_resistance = motor_force + human_force - bike_accel * config.ctrl.effective_mass - normal_resistance;
-				extra_resistance_rel = extra_resistance / MAX(normal_resistance, 0.1f);
-				torque_gain = config.ctrl.torque_base_gain +
-							config.ctrl.torque_extra_rel_gain * extra_resistance_rel +
-							config.ctrl.torque_extra_abs_gain * extra_resistance +
-							config.ctrl.torque_acc_gain * bike_accel;
-				utils_truncate_number((float *)&torque_gain, 0.0, config.ctrl.torque_max_gain);
-
 				if (config.ctrl.torque_exponent == 1.0f) {
 					torque_boosted = pedal_torque_rel;
 				} else {
