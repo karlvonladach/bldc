@@ -140,6 +140,8 @@ typedef struct {
     float decrease_interval;
     float filter;
     float nm_max;
+    float threshold;
+    float timeout;
 } torque_sensor_config_type;
 
 typedef struct {

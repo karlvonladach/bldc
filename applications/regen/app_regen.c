@@ -208,7 +208,7 @@ static const config_param_t config_table[] = {
 	 {.uint32_default = APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE}, NULL},
 	{"velfilt", "[0.0-1.0] Velocity filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.velocity_filter, APP_CUSTOM_CONF_VELOCITY_FILTER_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_VELOCITY_FILTER}, NULL},
-    
+
     // Pedal sensor config
     {"pedstype", "Pedal sensor encoding type", CONFIG_TYPE_ENUM, &config.pedal_sensor.sensor_type, APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE_ADDR, 
      {.enum_default = APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE}, "single_poll,single_int,quad_poll,quad_int"},
@@ -272,6 +272,10 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER}, NULL},
 	{"tqmaxnm", "[Nm] Maximum torque in Nm corresponding to max sensor value", CONFIG_TYPE_FLOAT, &config.torque_sensor.nm_max, APP_CUSTOM_CONF_TORQUE_NM_MAX_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_NM_MAX}, NULL},
+	{"tqthresh", "[Nm] Threshold for detecting if torque is being applied", CONFIG_TYPE_FLOAT, &config.torque_sensor.threshold, APP_CUSTOM_CONF_TORQUE_THRESHOLD_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_TORQUE_THRESHOLD}, NULL},
+	{"tqto", "[sec] Timeout for torque sensor in seconds", CONFIG_TYPE_FLOAT, &config.torque_sensor.timeout, APP_CUSTOM_CONF_TORQUE_TIMEOUT_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_TORQUE_TIMEOUT}, NULL},
 
     // Back pedal brake config
     {"brstpos", "[deg] Back pedal brake start position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR, 
@@ -1204,12 +1208,16 @@ static void update_pedal_torque(void)
 		static uint8_t old_state = 0;
 		static float torque_samples[PEDAL_SENSOR_MAX_MAGNETS / 2u] = {0};
 		static uint8_t torque_sample_index = 0;
+		static float torque_inactivity_time = 0;
 		float avg;
+
 		HALL1_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN1);
 		HALL2_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2);
+
 		new_state = HALL2_level * 2 + HALL1_level;
 		direction = QEM[old_state * 4 + new_state];
 		old_state = new_state;
+
 		if (config.pedal_sensor.invert_direction) {
 			direction *= -1;
 		}
@@ -1234,6 +1242,15 @@ static void update_pedal_torque(void)
 			pedal_torque2_filtered = 0;
 		} else {
 			// no movement, keep previous filtered value
+		}
+
+		if (torque2 * config.torque_sensor.nm_max < config.torque_sensor.threshold) {
+			torque_inactivity_time += 1.0 / (float)config.update_rate_hz;
+			if (torque_inactivity_time >= config.torque_sensor.timeout) {
+				pedal_torque2_filtered = 0;
+			}
+		} else {
+			torque_inactivity_time = 0;
 		}
 
 		pedal_torque = pedal_torque2_filtered;
