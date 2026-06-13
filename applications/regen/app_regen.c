@@ -208,6 +208,8 @@ static const config_param_t config_table[] = {
 	 {.uint32_default = APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE}, NULL},
 	{"velfilt", "[0.0-1.0] Velocity filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.velocity_filter, APP_CUSTOM_CONF_VELOCITY_FILTER_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_VELOCITY_FILTER}, NULL},
+	{"accfilt", "[0.0-1.0] Acceleration filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.acceleration_filter, APP_CUSTOM_CONF_ACCELERATION_FILTER_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_ACCELERATION_FILTER}, NULL},
 
     // Pedal sensor config
     {"pedstype", "Pedal sensor encoding type", CONFIG_TYPE_ENUM, &config.pedal_sensor.sensor_type, APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE_ADDR, 
