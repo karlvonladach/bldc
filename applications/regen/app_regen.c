@@ -139,6 +139,7 @@ static volatile float motor_current_rel = 0;
 static volatile float bike_speed = 0;       // m/s
 static volatile float bike_accel = 0;	    // m/s²
 static volatile float human_power_w = 0;    // Watts
+static volatile float normal_resistance = 0;
 static volatile float extra_resistance = 0; // Newton
 static volatile float extra_resistance_rel = 0;
 static volatile float torque_gain = 0;
@@ -534,10 +535,10 @@ void app_custom_get_rtdata(float* data) {
 	data[3] = pedal_brake_position;
 	data[4] = pedal_torque2 * 100;
 	data[5] = (float)clutch_state;
-	data[6] = (float)pedal_torque * 100;
+	data[6] = normal_resistance;
 	data[7] = (float)motor_current_rel * 100;
 	data[8] = (float)torque_gain;
-	data[9] =  extra_resistance_rel;
+	data[9] = extra_resistance;
 	data[10] = bike_accel;
 	data[11] = human_power_w;
 }
@@ -1718,6 +1719,8 @@ static void update_bike_speed_and_acc(void)
 		new_bike_accel = (bike_speed - old_bike_speed) / (timestamp - old_timestamp);
 
 		UTILS_LP_FAST(bike_accel, new_bike_accel, config.acceleration_filter);
+
+		utils_truncate_number((float*)&bike_accel, -5.0f, 5.0f);
 	}
 
 	old_bike_speed = bike_speed;
@@ -1976,7 +1979,6 @@ static void update_clutch_state(void)
 static void update_assistance_level()
 {
 	float motor_force, human_force;
-	float normal_resistance;
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 
 	if (config.ctrl.ctrl_type != CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO) {
