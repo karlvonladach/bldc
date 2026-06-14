@@ -190,6 +190,7 @@ typedef struct {
     uint32_t    velocity_sampling_rate;
     float       velocity_filter;
     float       acceleration_filter;
+    float       acceleration_timeout;
 	uint32_t    update_rate_hz;
 } custom_config_type;
 

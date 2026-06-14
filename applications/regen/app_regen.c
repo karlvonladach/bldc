@@ -214,6 +214,8 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_VELOCITY_FILTER}, NULL},
 	{"accfilt", "[0.0-1.0] Acceleration filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.acceleration_filter, APP_CUSTOM_CONF_ACCELERATION_FILTER_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_ACCELERATION_FILTER}, NULL},
+	{"acctout", "[sec] Time of pedal inactivity before zeroing acceleration", CONFIG_TYPE_FLOAT, &config.acceleration_timeout, APP_CUSTOM_CONF_ACCELERATION_TIMEOUT_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_ACCELERATION_TIMEOUT}, NULL},
 
     // Pedal sensor config
     {"pedstype", "Pedal sensor encoding type", CONFIG_TYPE_ENUM, &config.pedal_sensor.sensor_type, APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE_ADDR, 
@@ -1695,20 +1697,51 @@ static void update_motor_speed(void)
 
 static void update_bike_speed_and_acc(void)
 {
-	// calculate bike speed and acceleration from wheel speed
-	// bike speed is the same as wheel speed, but sampled with lower sampling rate, converted to m/s and with a simple low pass filter applied
+	// Calculate bike speed and acceleration from wheel speed.
+	// Sampling is synced to forward HALL1/HALL2 transitions, similarly to torque processing.
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 	const float wheel_circumference = M_PI * conf->si_wheel_diameter;
-	static uint32_t cnt = 0;
+	const int8_t QEM[] = {  0, -1,  1,  2,
+							1,  0,  2, -1,
+						   -1,  2,  0,  1,
+							2,  1, -1,  0};
+	static uint8_t old_state = 0;
 	static float old_bike_speed = 0;
 	static float old_timestamp = 0;
+	static float pedal_inactivity_time = 0;
+	static float bike_accel_samples[PEDAL_SENSOR_MAX_MAGNETS / 2u] = {0};
+	static uint8_t bike_accel_sample_index = 0;
+	static float bike_accel_filtered;
+	float accel_avg = 0;
+	int8_t direction;
+	uint8_t new_state;
 	float timestamp = APP_NOW_SEC;
     float new_bike_speed, new_bike_accel;
+	const uint8_t phases_per_half_turn = config.pedal_sensor.magnets / 2u;
 
-	if (++cnt >= config.update_rate_hz / config.velocity_sampling_rate) {
-		cnt = 0;
-	} else {
+	HALL1_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN1);
+	HALL2_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2);
+
+	new_state = HALL2_level * 2 + HALL1_level;
+	direction = QEM[old_state * 4 + new_state];
+	old_state = new_state;
+
+	if (config.pedal_sensor.invert_direction) {
+		direction *= -1;
+	}
+
+	if (direction != 1 || new_state != 3) {
+		pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
+		if (pedal_inactivity_time >= config.acceleration_timeout) {
+			// reset acceleration MA buffer
+			for (uint8_t i = 0; i < phases_per_half_turn; i++) {
+				bike_accel_samples[i] = 0;
+			}
+			bike_accel = 0;
+		}
 		return;
+	} else {
+		pedal_inactivity_time = 0;
 	}
 	
 	new_bike_speed = wheel_speed * wheel_circumference / 60.0;
@@ -1718,7 +1751,28 @@ static void update_bike_speed_and_acc(void)
 	if (old_timestamp != 0) {
 		new_bike_accel = (bike_speed - old_bike_speed) / (timestamp - old_timestamp);
 
-		UTILS_LP_FAST(bike_accel, new_bike_accel, config.acceleration_filter);
+		// Filter unrealistic values
+		utils_truncate_number((float*)&bike_accel, -10.0f, 10.0f);
+
+    	// Apply low-pass filter
+		UTILS_LP_FAST(bike_accel_filtered, new_bike_accel, config.acceleration_filter);
+
+		// Store sample in moving average buffer
+		bike_accel_samples[bike_accel_sample_index] = bike_accel_filtered;
+		bike_accel_sample_index++;
+		if (bike_accel_sample_index >= phases_per_half_turn) {
+			bike_accel_sample_index = 0;
+		}
+
+		accel_avg = 0;
+
+		// Calculate average of all samples in buffer
+		for (uint8_t i = 0; i < phases_per_half_turn; i++) {
+			accel_avg += bike_accel_samples[i];
+		}
+		accel_avg /= phases_per_half_turn;
+
+		bike_accel = accel_avg;
 
 		utils_truncate_number((float*)&bike_accel, -5.0f, 5.0f);
 	}

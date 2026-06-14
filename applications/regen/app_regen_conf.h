@@ -49,6 +49,7 @@
 #define APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE     50u   // Hz - velocity sampling rate
 #define APP_CUSTOM_CONF_VELOCITY_FILTER            1.0f  // Range 0.0 to 1.0, where 1.0 gives the unfiltered velocity value
 #define APP_CUSTOM_CONF_ACCELERATION_FILTER        0.3f  // Range 0.0 to 1.0, where 1.0 gives the unfiltered acceleration value
+#define APP_CUSTOM_CONF_ACCELERATION_TIMEOUT       0.25f  // seconds - time of pedal inactivity before zeroing acceleration
 
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE        SPEED_SENSOR_TYPE_QUADRATURE_POLL
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1       HW_HALL_ENC_GPIO1
@@ -216,5 +217,6 @@
 #define APP_CUSTOM_CONF_TORQUE_THRESHOLD_ADDR                80
 #define APP_CUSTOM_CONF_TORQUE_TIMEOUT_ADDR                  81
 #define APP_CUSTOM_CONF_RESISTANCE_RATIO_MAX_ADDR            82
+#define APP_CUSTOM_CONF_ACCELERATION_TIMEOUT_ADDR            83
 
 #endif /* APP_REGEN_CONF_H_ */
