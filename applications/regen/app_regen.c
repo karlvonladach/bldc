@@ -1216,7 +1216,7 @@ static void update_pedal_torque(void)
 		int8_t direction;
 		uint8_t new_state;
 		static uint8_t old_state = 0;
-		static float torque_samples[PEDAL_SENSOR_MAX_MAGNETS / 2u] = {0};
+		static float torque_samples[PEDAL_SENSOR_MAX_MAGNETS * 2u] = {0};
 		static uint8_t torque_sample_index = 0;
 		static float torque_inactivity_time = 0;
 		float avg;
