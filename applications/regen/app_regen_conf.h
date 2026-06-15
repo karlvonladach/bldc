@@ -36,6 +36,7 @@
 #define APP_CUSTOM_CONF_CTRL_TORQUE_ACC_GAIN       2.5f  // coefficient of additional torque gain based on current acceleration
 #define APP_CUSTOM_CONF_CTRL_CADENCE_GAIN          1.0f  // coefficient of additional torque gain based on pedal cadence
 #define APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN       4.0f  // maximum total torque gain to prevent excessive torque
+#define APP_CUSTOM_CONF_CTRL_TORQUE_MIN_GAIN       0.5f  // minimum total torque gain
 #define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT       0.9f  // nonlinearity coeff for torque control, where 1.0 is linear, < 1.0 gives more torque at low pedal inputs, and > 1.0 gives more torque at high pedal inputs
 #define APP_CUSTOM_CONF_MOTOR_TORQUE_CONSTANT      0.014f// Nm/A - motor torque constant, used for calculating assist level in human watts
 #define APP_CUSTOM_CONF_MOTOR_GEAR_EFFICIENCY      0.90f // range 0.0 to 1.0 - gear efficiency between motor and wheel
@@ -218,5 +219,6 @@
 #define APP_CUSTOM_CONF_TORQUE_TIMEOUT_ADDR                  81
 #define APP_CUSTOM_CONF_RESISTANCE_RATIO_MAX_ADDR            82
 #define APP_CUSTOM_CONF_ACCELERATION_TIMEOUT_ADDR            83
+#define APP_CUSTOM_CONF_CTRL_TORQUE_MIN_GAIN_ADDR            84
 
 #endif /* APP_REGEN_CONF_H_ */

@@ -187,6 +187,8 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_ACC_GAIN}, NULL},
     {"astmaxgain", "[float] Maximum allowed torque gain", CONFIG_TYPE_FLOAT, &config.ctrl.torque_max_gain, APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN_ADDR,
      {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN}, NULL},
+    {"astmingain", "[float] Minimum allowed torque gain", CONFIG_TYPE_FLOAT, &config.ctrl.torque_min_gain, APP_CUSTOM_CONF_CTRL_TORQUE_MIN_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_MIN_GAIN}, NULL},
     {"astexp", "[float] Torque control exponent (1.0 is linear, < 1.0 gives more torque at low pedal inputs)", CONFIG_TYPE_FLOAT, &config.ctrl.torque_exponent, APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT_ADDR,
      {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT}, NULL},
     {"ascgain", "[float] Cadence control gain", CONFIG_TYPE_FLOAT, &config.ctrl.cadence_gain, APP_CUSTOM_CONF_CTRL_CADENCE_GAIN_ADDR,
@@ -2056,7 +2058,7 @@ static void update_assistance_level()
 				config.ctrl.torque_extra_rel_gain * extra_resistance_rel +
 				config.ctrl.torque_extra_abs_gain * extra_resistance +
 				config.ctrl.torque_acc_gain * bike_accel;
-	utils_truncate_number((float *)&torque_gain, 0.0, config.ctrl.torque_max_gain);
+	utils_truncate_number((float *)&torque_gain, config.ctrl.torque_min_gain, config.ctrl.torque_max_gain);
 }
 
 static void update_motor_control()

@@ -104,6 +104,7 @@ typedef struct {
     float torque_extra_abs_gain;
     float torque_acc_gain;
     float torque_max_gain;
+    float torque_min_gain;
     float torque_exponent;
     float cadence_gain;
     float motor_torque_constant;
