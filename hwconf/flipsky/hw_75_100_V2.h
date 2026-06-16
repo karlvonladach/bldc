@@ -152,7 +152,7 @@
 #define HW_UART_RX_PIN			11
 
 // Permanent UART Peripheral - (jaykup) for UART2 port
-#define HW_UART_P_BAUD			115200
+#define HW_UART_P_BAUD			1200
 #define HW_UART_P_DEV			SD4
 #define HW_UART_P_GPIO_AF		GPIO_AF_UART4
 #define HW_UART_P_TX_PORT		GPIOC

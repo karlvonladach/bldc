@@ -34,6 +34,7 @@
 #include "hw.h"
 #include "commands.h"
 #include "timeout.h"
+#include "serial.h"
 
 #include <math.h>
 #include <string.h>
@@ -545,6 +546,11 @@ void app_custom_get_rtdata(float* data) {
 	data[9] = extra_resistance;
 	data[10] = bike_accel;
 	data[11] = human_power_w;
+}
+
+void app_custom_process_byte(unsigned char byte) {
+	//sdWrite(&HW_UART_P_DEV, &byte, 1);
+	commands_printf("SD:%02X\r\n", byte);
 }
 
 static THD_FUNCTION(my_thread, arg) {
