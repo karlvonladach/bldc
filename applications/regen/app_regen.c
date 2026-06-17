@@ -534,7 +534,7 @@ void app_custom_pin_isr(void){
 
 void app_custom_get_rtdata(float* data) {
 	data[0] = pedal_speed;
-	data[1] = pedal_torque2_filtered * 100;
+	data[1] = wheel_speed;
 	data[2] = motor_speed;
 	data[3] = pedal_brake_position;
 	data[4] = pedal_torque2 * 100;
@@ -545,6 +545,7 @@ void app_custom_get_rtdata(float* data) {
 	data[9] = extra_resistance;
 	data[10] = bike_accel;
 	data[11] = human_power_w;
+	data[12] = pedal_torque2_filtered * 100;
 }
 
 static THD_FUNCTION(my_thread, arg) {
