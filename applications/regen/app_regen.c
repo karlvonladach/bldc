@@ -128,11 +128,12 @@ static volatile float pedal_torque_rel = 0;
 static volatile float pedal_torque2 = 0;
 static volatile float pedal_torque2_filtered = 0;
 static volatile float pedal_speed  = 0;     //CRPM
-static volatile float pedal_speed_rel = 0; 
+static volatile float pedal_speed_rel = 0;
 static volatile float pedal_brake_position = 0;
 static volatile float pedal_brake_position_rel = 0;
 static volatile float wheel_speed  = 0;     //WRPM
 static volatile float wheel_speed_rel = 0;
+static volatile float wheel_speed_raw = 0;
 static volatile float wheel_speed_pred = 0;
 static volatile float motor_speed  = 0;     //MWRPM
 static volatile float motor_current_rel = 0;
@@ -614,7 +615,7 @@ static THD_FUNCTION(my_thread, arg) {
 		update_wheel_speed();
 
 		plot_points(PLOT_WHEEL_RPM, timestamp, wheel_speed);
-		plot_points(PLOT_WHEEL_PRED_RPM, timestamp, wheel_speed_pred);
+		plot_points(PLOT_WHEEL_PRED_RPM, timestamp, wheel_speed_raw);
 
 		//calculate bike speed and acceleration
 		update_bike_speed_and_acc();
@@ -1486,6 +1487,10 @@ static void update_wheel_speed(void)
 	static float old_period = 0;
 	static float old_periods[MAX_PERIODS_TO_AVG-1] = {0.0f};
 	static float wheel_speed_filtered = 0;
+	static float wheel_speed_filtered_n_minus_1 = 0;
+	static float wheel_speed_filtered_n_minus_2 = 0;
+	static float wheel_speed_n_minus_1 = 0;
+	static float wheel_speed_n_minus_2 = 0;
 	static float inactivity_time = 0;
 	static uint8_t HALL3_level_old =  1;
 	static float old_timestamp = 0;
@@ -1598,70 +1603,81 @@ static void update_wheel_speed(void)
 			avg_period = period;
 		}
 
-		// skip if the measured period is too short, probably a glitch
-		if(avg_period < min_wheel_period) {
-			return;
+		// if the measured period is too short, probably a glitch
+		if(avg_period >= min_wheel_period) {
+			// calculate speed from rotation time
+			wheel_speed_raw = 60.0 / avg_period;
+
+			// apply simple low pass filtering.
+			//UTILS_LP_FAST(wheel_speed_filtered, wheel_speed_raw, config.wheel_sensor.filter);
+			//wheel_speed = wheel_speed_filtered;
+
+			// predict wheel speed for the next sample - experimental
+			wheel_speed_pred = (60.0 / old_period) + ((60.0 / avg_period) - (60.0 / old_period)) * 1.5;
+			if (wheel_speed_pred < 0) {
+				wheel_speed_pred = 0.0;
+			}
+
+			for (uint8_t i = MAX_PERIODS_TO_AVG - 2; i > 0; i--) {
+				old_periods[i] = old_periods[i-1];
+			}
+			old_periods[0] = period;
+			old_period = period;
+			old_timestamp = new_timestamp;
+			inactivity_time = 0.0;
 		}
 
-		// calculate speed from rotation time
-		wheel_speed = 60.0 / avg_period;
-
-		// apply simple low pass filtering.
-		UTILS_LP_FAST(wheel_speed_filtered, wheel_speed, config.wheel_sensor.filter);
-		wheel_speed = wheel_speed_filtered;
-		if (wheel_speed < 0) {
-			wheel_speed = 0.0;
-		}
-
-		// predict wheel speed for the next sample - experimental
-		wheel_speed_pred = (60.0 / old_period) + ((60.0 / avg_period) - (60.0 / old_period)) * 1.5;
-		if (wheel_speed_pred < 0) {
-			wheel_speed_pred = 0.0;
-		}
-
-		for (uint8_t i = MAX_PERIODS_TO_AVG - 2; i > 0; i--) {
-			old_periods[i] = old_periods[i-1];
-		}
-		old_periods[0] = period;
-		old_period = period;
-		old_timestamp = new_timestamp;
-		inactivity_time = 0.0;
 	} else {
 		// if there was no measurement, check if the silent period is
 		// longer than the latest period and decrease estimated speed accordingly
 		period = (current_timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
 		
-		if (period < min_wheel_period) { //can't be that short, abort
-			return;
-		}
+		if (period >= min_wheel_period) {
+			if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
+				avg_period = 0.5 * (period + old_period);
+			} else {
+				avg_period = period;
+			}
 
-		if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
-			avg_period = 0.5 * (period + old_period);
-		} else {
-			avg_period = period;
-		}
+			if ((60.0 / avg_period) < wheel_speed) {
+				wheel_speed_raw = 60.0 / avg_period;
+			}
 
-		if ((60.0 / avg_period) < wheel_speed) {
-			wheel_speed = 60.0 / avg_period;
-		}
+			if ((60.0 / avg_period) < wheel_speed_pred) {
+				wheel_speed_pred = 60.0 / avg_period;
+			}
 
-		if ((60.0 / avg_period) < wheel_speed_pred) {
-			wheel_speed_pred = 60.0 / avg_period;
-		}
+			// increase inactivity time whenever we are between two measurements
+			// does not necessarily mean that the wheel is not rotating, we just
+			// don't know when the next measurement will happen
+			inactivity_time += 1.0 / (float)config.update_rate_hz;
 
-		// increase inactivity time whenever we are between two measurements
-		// does not necessarily mean that the wheel is not rotating, we just
-		// don't know when the next measurement will happen
-		inactivity_time += 1.0 / (float)config.update_rate_hz;
-
-		//if no wheel measurement for a given, long enough period, set RPM as zero
-		if(inactivity_time > max_wheel_period) {
-			wheel_speed = 0.0;
-			wheel_speed_pred = 0.0;
-			for (uint8_t i = 0; i < MAX_PERIODS_TO_AVG - 1; i++) {
-				old_periods[i] = 0;
+			//if no wheel measurement for a given, long enough period, set RPM as zero
+			if(inactivity_time > max_wheel_period) {
+				wheel_speed = 0.0;
+				wheel_speed_pred = 0.0;
+				wheel_speed_raw = 0.0;
+				for (uint8_t i = 0; i < MAX_PERIODS_TO_AVG - 1; i++) {
+					old_periods[i] = 0;
+				}
 			}
 		}
+	}
+
+	// apply 2nd order low pass filter (cf=2Hz at 500Hz sample rate)
+	wheel_speed_filtered = 0.00015517 * wheel_speed_raw + 
+						   0.00031034 * wheel_speed_n_minus_1 + 
+						   0.00015517 * wheel_speed_n_minus_2 + 
+						   1.96445773 * wheel_speed_filtered_n_minus_1 - 
+						   0.96507842 * wheel_speed_filtered_n_minus_2;
+	wheel_speed_n_minus_2 = wheel_speed_n_minus_1;
+	wheel_speed_n_minus_1 = wheel_speed_raw;
+	wheel_speed_filtered_n_minus_2 = wheel_speed_filtered_n_minus_1;
+	wheel_speed_filtered_n_minus_1 = wheel_speed_filtered;
+	
+	wheel_speed = wheel_speed_filtered;
+	if (wheel_speed < 0) {
+		wheel_speed = 0.0;
 	}
 
 	// calculate relative wheel speed
