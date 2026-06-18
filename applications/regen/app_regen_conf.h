@@ -31,9 +31,9 @@
 
 #define APP_CUSTOM_CONF_CTRL_TYPE                CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO
 #define APP_CUSTOM_CONF_CTRL_TORQUE_BASE_GAIN      1.0f  // base torque gain
-#define APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_REL_GAIN 1.5f  // coefficient of additional torque gain based on calculated (extra resistance / normal resistance)
+#define APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_REL_GAIN 0.0f  // coefficient of additional torque gain based on calculated (extra resistance / normal resistance)
 #define APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_ABS_GAIN 0.0f  // coefficient of additional torque gain based on calculated extra resistance
-#define APP_CUSTOM_CONF_CTRL_TORQUE_ACC_GAIN       2.5f  // coefficient of additional torque gain based on current acceleration
+#define APP_CUSTOM_CONF_CTRL_TORQUE_ACC_GAIN       1.0f  // coefficient of additional torque gain based on current acceleration
 #define APP_CUSTOM_CONF_CTRL_CADENCE_GAIN          1.0f  // coefficient of additional torque gain based on pedal cadence
 #define APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN       4.0f  // maximum total torque gain to prevent excessive torque
 #define APP_CUSTOM_CONF_CTRL_TORQUE_MIN_GAIN       0.5f  // minimum total torque gain
@@ -70,7 +70,7 @@
 #define APP_CUSTOM_CONF_PEDAL_INVERT_DIR           0     // 1/0 = invert/no invert
 #define APP_CUSTOM_CONF_PEDAL_GEAR_EFFICIENCY      0.95f // gear efficiency, used for calculating assist level in human watts
 
-#define APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE        SPEED_SENSOR_TYPE_NONE
+#define APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE        SPEED_SENSOR_TYPE_SINGLE_POLL
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1       HW_HALL_ENC_GPIO3
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1        HW_HALL_ENC_PIN3
 #define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM     100.0f  // WRPM at which to switch from poll to interrupt mode
@@ -117,8 +117,8 @@
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT            2.0f  // seconds
 #define APP_CUSTOM_CONF_CLUTCH_CLOSED_FIRST_CHECK_TIME 0.5f  // seconds
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF           1.0f  // WRPM
-#define APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF    8.0f  // WRPM
-#define APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF  40.0f  // WRPM
+#define APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF    1001.0f  // WRPM
+#define APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF   1001.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF     5.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN           55.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MIN_RPM_CLOSE          45.0f  // WRPM
@@ -130,7 +130,7 @@
 #define APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD           10.0f  // seconds - period for counting clutch errors
 #define APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME             0.3f  // seconds - time for the motor to slow down after opening
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_TIME               0.02f // seconds - time for ensuring stable sync
-#define APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING      1     // 1/0 = enable/disable motor to wheel sync while clutch is closing
+#define APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING      0     // 1/0 = enable/disable motor to wheel sync while clutch is closing
 #define APP_CUSTOM_CONF_CLUTCH_CURRENT_LIMIT_CLOSING   0.01f // relative current limit when clutch is closing (0.0 to 1.0)
 
 #define APP_CUSTOM_CONF_UPDATE_RATE_HZ               500     // Hz - sensor signal processing and clutch control
