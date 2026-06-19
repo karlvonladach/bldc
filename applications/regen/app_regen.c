@@ -1776,6 +1776,7 @@ static void update_bike_speed_and_acc(void)
 			bike_accel = 0;
 			bike_accel_filtered = 0;
 			old_bike_speed = 0;
+			old_timestamp = 0;
 		}
 		return;
 	} else {
