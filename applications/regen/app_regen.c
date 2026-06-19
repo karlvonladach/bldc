@@ -52,6 +52,20 @@
 #define DIFF_THRESHOLD_TO_APPLY_COMPENSATION    0.1f
 #define MAX_PERIODS_TO_AVG					    8u
 
+// 2nd order filter coeffs - cf = 2Hz
+//#define BUTTERWORTH_FILTER_B0			0.00015517f
+//#define BUTTERWORTH_FILTER_B1			0.00031034f
+//#define BUTTERWORTH_FILTER_B2			0.00015517f
+//#define BUTTERWORTH_FILTER_A1		   -1.96445773f
+//#define BUTTERWORTH_FILTER_A2			0.96507842f
+
+// 2nd order filter coeffs - cf = 1Hz
+#define BUTTERWORTH_FILTER_B0			0.00003913f
+#define BUTTERWORTH_FILTER_B1			0.00007826f
+#define BUTTERWORTH_FILTER_B2			0.00003913f
+#define BUTTERWORTH_FILTER_A1		   -1.98222893f
+#define BUTTERWORTH_FILTER_A2			0.98238545f
+
 // Macros
 #define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
 
@@ -1206,11 +1220,11 @@ static void update_pedal_torque(void)
 		pedal_torque2 = torque2;
 
 		// apply 2nd order low pass filter (cf=2Hz at 500Hz sample rate)
-		torque2_filtered = 0.00015517 * torque2 + 
-							0.00031034 * torque2_n_minus_1 + 
-							0.00015517 * torque2_n_minus_2 + 
-							1.96445773 * torque2_filtered_n_minus_1 - 
-							0.96507842 * torque2_filtered_n_minus_2;
+		torque2_filtered = BUTTERWORTH_FILTER_B0 * torque2 + 
+							BUTTERWORTH_FILTER_B1 * torque2_n_minus_1 + 
+							BUTTERWORTH_FILTER_B2 * torque2_n_minus_2 - 
+							BUTTERWORTH_FILTER_A1 * torque2_filtered_n_minus_1 - 
+							BUTTERWORTH_FILTER_A2 * torque2_filtered_n_minus_2;
 		torque2_n_minus_2 = torque2_n_minus_1;
 		torque2_n_minus_1 = torque2;
 		torque2_filtered_n_minus_2 = torque2_filtered_n_minus_1;
@@ -1682,11 +1696,11 @@ static void update_wheel_speed(void)
 	}
 
 	// apply 2nd order low pass filter (cf=2Hz at 500Hz sample rate)
-	wheel_speed_filtered = 0.00015517 * wheel_speed_raw + 
-						   0.00031034 * wheel_speed_n_minus_1 + 
-						   0.00015517 * wheel_speed_n_minus_2 + 
-						   1.96445773 * wheel_speed_filtered_n_minus_1 - 
-						   0.96507842 * wheel_speed_filtered_n_minus_2;
+	wheel_speed_filtered = BUTTERWORTH_FILTER_B0 * wheel_speed_raw + 
+						   BUTTERWORTH_FILTER_B1 * wheel_speed_n_minus_1 + 
+						   BUTTERWORTH_FILTER_B2 * wheel_speed_n_minus_2 - 
+						   BUTTERWORTH_FILTER_A1 * wheel_speed_filtered_n_minus_1 - 
+						   BUTTERWORTH_FILTER_A2 * wheel_speed_filtered_n_minus_2;
 	wheel_speed_n_minus_2 = wheel_speed_n_minus_1;
 	wheel_speed_n_minus_1 = wheel_speed_raw;
 	wheel_speed_filtered_n_minus_2 = wheel_speed_filtered_n_minus_1;
