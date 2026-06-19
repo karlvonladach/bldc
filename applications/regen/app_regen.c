@@ -1189,7 +1189,11 @@ static void update_pedal_torque(void)
 
 	} else
 	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_PEDAL) {
-
+		static float torque2_n_minus_1 = 0.0;
+		static float torque2_n_minus_2 = 0.0;
+		static float torque2_filtered_n_minus_1 = 0.0;
+		static float torque2_filtered_n_minus_2 = 0.0;
+		static float torque2_filtered = 0.0;
 		float torque2 = ADC_VOLTS(ADC_IND_EXT2);
 
 		// Map the read voltage to 0-1 range based on config values
@@ -1197,19 +1201,28 @@ static void update_pedal_torque(void)
 
 		// Optionally apply a low pass filter to reduce noise. 
 		// 1.0 means no filtering, 0.0 means infinitely strong filtering.
-		static float torque2_filtered = 0.0;
-		UTILS_LP_FAST(torque2_filtered, torque2, config.torque_sensor.filter);
-		if (config_adc.use_filter) {
-			torque2 = torque2_filtered;
-		}
+		//UTILS_LP_FAST(torque2_filtered, torque2, config.torque_sensor.filter);
+
+		pedal_torque2 = torque2;
+
+		// apply 2nd order low pass filter (cf=2Hz at 500Hz sample rate)
+		torque2_filtered = 0.00015517 * torque2 + 
+							0.00031034 * torque2_n_minus_1 + 
+							0.00015517 * torque2_n_minus_2 + 
+							1.96445773 * torque2_filtered_n_minus_1 - 
+							0.96507842 * torque2_filtered_n_minus_2;
+		torque2_n_minus_2 = torque2_n_minus_1;
+		torque2_n_minus_1 = torque2;
+		torque2_filtered_n_minus_2 = torque2_filtered_n_minus_1;
+		torque2_filtered_n_minus_1 = torque2_filtered;
+
+		pedal_torque2_filtered = torque2_filtered;
 
 		// Apply ramping
 		static systime_t last_time2 = 0;
 		static float torque2_ramp = 0.0;
-		apply_ramping(&torque2_ramp, &last_time2, torque2, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
-		torque2 = torque2_ramp;
-
-		pedal_torque2 = torque2;
+		apply_ramping(&torque2_ramp, &last_time2, pedal_torque2_filtered, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
+		pedal_torque2_filtered = torque2_ramp;
 
 		// Filtering cyclic variations - caused by pedal physics - by averaging one cycle, which equals to half turn
 		const int8_t QEM[] = {  0, -1,  1,  2,
@@ -1236,7 +1249,7 @@ static void update_pedal_torque(void)
 			direction *= -1;
 		}
 		if (direction == 1) {
-			torque_samples[torque_sample_index] = torque2;
+			torque_samples[torque_sample_index] = pedal_torque2_filtered;
 			torque_sample_index++;
 			if (torque_sample_index >= phases_per_half_turn) {
 				torque_sample_index = 0;
@@ -1247,13 +1260,17 @@ static void update_pedal_torque(void)
 			}
 			avg /= phases_per_half_turn;
 			utils_truncate_number(&avg, 0.0, 1.0);
-			pedal_torque2_filtered = avg;
+			if (config_adc.use_filter) {
+				pedal_torque2_filtered = avg;
+			}
 		} else if (direction == -1) {
 			// reset samples when changing direction to avoid applying average of one direction to the other direction
 			for (uint8_t i = 0; i < phases_per_half_turn; i++) {
-				torque_samples[i] = torque2;
+				torque_samples[i] = pedal_torque2_filtered;
 			}
-			pedal_torque2_filtered = 0;
+			if (config_adc.use_filter) {
+				pedal_torque2_filtered = 0;
+			}
 		} else {
 			// no movement, keep previous filtered value
 		}
@@ -1757,6 +1774,8 @@ static void update_bike_speed_and_acc(void)
 				bike_accel_samples[i] = 0;
 			}
 			bike_accel = 0;
+			bike_accel_filtered = 0;
+			old_bike_speed = 0;
 		}
 		return;
 	} else {
@@ -1771,7 +1790,7 @@ static void update_bike_speed_and_acc(void)
 		new_bike_accel = (bike_speed - old_bike_speed) / (timestamp - old_timestamp);
 
 		// Filter unrealistic values
-		utils_truncate_number((float*)&bike_accel, -10.0f, 10.0f);
+		utils_truncate_number((float*)&new_bike_accel, -10.0f, 10.0f);
 
     	// Apply low-pass filter
 		UTILS_LP_FAST(bike_accel_filtered, new_bike_accel, config.acceleration_filter);
@@ -1791,7 +1810,11 @@ static void update_bike_speed_and_acc(void)
 		}
 		accel_avg /= phases_per_half_turn;
 
-		bike_accel = accel_avg;
+		if (config.velocity_sampling_rate > 0) {
+			bike_accel = accel_avg;
+		} else {
+			bike_accel = bike_accel_filtered;
+		}
 
 		utils_truncate_number((float*)&bike_accel, -5.0f, 5.0f);
 	}
