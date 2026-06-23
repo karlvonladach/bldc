@@ -49,7 +49,7 @@
 
 #define APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE     50u   // Hz - velocity sampling rate
 #define APP_CUSTOM_CONF_VELOCITY_FILTER            1.0f  // Range 0.0 to 1.0, where 1.0 gives the unfiltered velocity value
-#define APP_CUSTOM_CONF_ACCELERATION_FILTER        0.3f  // Range 0.0 to 1.0, where 1.0 gives the unfiltered acceleration value
+#define APP_CUSTOM_CONF_ACCELERATION_FILTER        1.0f  // Range 0.0 to 1.0, where 1.0 gives the unfiltered acceleration value
 #define APP_CUSTOM_CONF_ACCELERATION_TIMEOUT       0.25f  // seconds - time of pedal inactivity before zeroing acceleration
 
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE        SPEED_SENSOR_TYPE_QUADRATURE_POLL
@@ -58,7 +58,7 @@
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2       HW_HALL_ENC_GPIO2
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2        HW_HALL_ENC_PIN2
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS      18u    // including "virtual magnets"
-#define PEDAL_SENSOR_MAX_MAGNETS                  36u    // maximum number of magnets supported by the code, used for array sizing
+#define PEDAL_SENSOR_MAX_MAGNETS                  24u    // maximum number of magnets supported by the code, used for array sizing
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER        0.8   // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM       10.0f  // CRPM - average last two samples above this value
 #define APP_CUSTOM_CONF_PEDAL_RPM_MIN             10.0f  // CRPM - set 0 CRPM below this value
@@ -96,7 +96,7 @@
 #define APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL    20.0f // WRPM - start decreasing torque before cutoff RPM by this interval
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER         0.1f // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_TORQUE_NM_MAX               88.0f // Maximum torque in Nm corresponding to max sensor value
-#define APP_CUSTOM_CONF_TORQUE_THRESHOLD             3.0f // Nm - threshold for detecting if torque is being applied
+#define APP_CUSTOM_CONF_TORQUE_THRESHOLD             8.0f // Nm - threshold for detecting if torque is being applied
 #define APP_CUSTOM_CONF_TORQUE_TIMEOUT               0.2f // seconds - timeout for torque sensor
 
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS           45.0f  // degree mechanical
