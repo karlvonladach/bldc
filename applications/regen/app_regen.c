@@ -1759,7 +1759,7 @@ static void update_bike_speed_and_acc(void)
 	static float old_bike_speed = 0;
 	static float old_timestamp = 0;
 	static float pedal_inactivity_time = 0;
-	static float bike_accel_samples[PEDAL_SENSOR_MAX_MAGNETS / 2u] = {0};
+	static float bike_accel_samples[PEDAL_SENSOR_MAX_MAGNETS * 2u] = {0};
 	static uint8_t bike_accel_sample_index = 0;
 	static float bike_accel_filtered;
 	float accel_avg = 0;
@@ -1767,7 +1767,7 @@ static void update_bike_speed_and_acc(void)
 	uint8_t new_state;
 	float timestamp = APP_NOW_SEC;
     float new_bike_speed, new_bike_accel;
-	const uint8_t phases_per_half_turn = config.pedal_sensor.magnets / 2u;
+	const uint8_t phases_per_half_turn = (config.velocity_sampling_rate <= 18) ? config.pedal_sensor.magnets / 2u : config.pedal_sensor.magnets * 2;
 
 	HALL1_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN1);
 	HALL2_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2);
@@ -1780,7 +1780,7 @@ static void update_bike_speed_and_acc(void)
 		direction *= -1;
 	}
 
-	if (direction != 1 || new_state != 3) {
+	if (direction != 1 || (config.velocity_sampling_rate <= 18 && new_state != 3)) {
 		pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
 		if (pedal_inactivity_time >= config.acceleration_timeout) {
 			// reset acceleration MA buffer
