@@ -53,26 +53,32 @@
 #define MAX_PERIODS_TO_AVG					    8u
 
 // 2nd order filter coeffs - cf = 2Hz
-//#define BUTTERWORTH_FILTER_B0			0.00015517f
-//#define BUTTERWORTH_FILTER_B1			0.00031034f
-//#define BUTTERWORTH_FILTER_B2			0.00015517f
-//#define BUTTERWORTH_FILTER_A1		   -1.96445773f
-//#define BUTTERWORTH_FILTER_A2			0.96507842f
+//#define BUTTERWORTH_FILTER_2HZ_B0			0.00015517f
+//#define BUTTERWORTH_FILTER_2HZ_B1			0.00031034f
+//#define BUTTERWORTH_FILTER_2HZ_B2			0.00015517f
+//#define BUTTERWORTH_FILTER_2HZ_A1		   -1.96445773f
+//#define BUTTERWORTH_FILTER_2HZ_A2			0.96507842f
 
 // 2nd order filter coeffs - cf = 1Hz
-#define BUTTERWORTH_FILTER_B0			0.00003913f
-#define BUTTERWORTH_FILTER_B1			0.00007826f
-#define BUTTERWORTH_FILTER_B2			0.00003913f
-#define BUTTERWORTH_FILTER_A1		   -1.98222893f
-#define BUTTERWORTH_FILTER_A2			0.98238545f
+#define BUTTERWORTH_FILTER_1HZ_B0			0.00003913f
+#define BUTTERWORTH_FILTER_1HZ_B1			0.00007826f
+#define BUTTERWORTH_FILTER_1HZ_B2			0.00003913f
+#define BUTTERWORTH_FILTER_1HZ_A1		   -1.98222893f
+#define BUTTERWORTH_FILTER_1HZ_A2			0.98238545f
+
+// 2nd order filter coeffs - cf = 0.5Hz
+#define BUTTERWORTH_FILTER_05HZ_B0			0.000009825917f
+#define BUTTERWORTH_FILTER_05HZ_B1			0.000019651834f
+#define BUTTERWORTH_FILTER_05HZ_B2			0.000009825917f
+#define BUTTERWORTH_FILTER_05HZ_A1		   -1.991114292202f
+#define BUTTERWORTH_FILTER_05HZ_A2			0.991153595869f
 
 // Biquad filter coeffs - cf = 1Hz
-#define BIQUAD_FILTER_B0				0.03913166f
-#define BIQUAD_FILTER_B1				0.0f
-#define BIQUAD_FILTER_B2			   -0.03913166f
-#define BIQUAD_FILTER_A1			   -1.98222718f
-#define BIQUAD_FILTER_A2				0.98238531f
-
+#define BIQUAD_FILTER_1HZ_B0				0.03913166f
+#define BIQUAD_FILTER_1HZ_B1				0.0f
+#define BIQUAD_FILTER_1HZ_B2			   -0.03913166f
+#define BIQUAD_FILTER_1HZ_A1			   -1.98222718f
+#define BIQUAD_FILTER_1HZ_A2				0.98238531f
 
 // Macros
 #define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
@@ -1228,11 +1234,11 @@ static void update_pedal_torque(void)
 		pedal_torque2 = torque2;
 
 		// apply 2nd order low pass filter (cf=2Hz at 500Hz sample rate)
-		torque2_filtered = BUTTERWORTH_FILTER_B0 * torque2 + 
-							BUTTERWORTH_FILTER_B1 * torque2_n_minus_1 + 
-							BUTTERWORTH_FILTER_B2 * torque2_n_minus_2 - 
-							BUTTERWORTH_FILTER_A1 * torque2_filtered_n_minus_1 - 
-							BUTTERWORTH_FILTER_A2 * torque2_filtered_n_minus_2;
+		torque2_filtered = BUTTERWORTH_FILTER_1HZ_B0 * torque2 + 
+							BUTTERWORTH_FILTER_1HZ_B1 * torque2_n_minus_1 + 
+							BUTTERWORTH_FILTER_1HZ_B2 * torque2_n_minus_2 - 
+							BUTTERWORTH_FILTER_1HZ_A1 * torque2_filtered_n_minus_1 - 
+							BUTTERWORTH_FILTER_1HZ_A2 * torque2_filtered_n_minus_2;
 		torque2_n_minus_2 = torque2_n_minus_1;
 		torque2_n_minus_1 = torque2;
 		torque2_filtered_n_minus_2 = torque2_filtered_n_minus_1;
@@ -1665,18 +1671,18 @@ static void update_wheel_speed(void)
 	}
 
 	// apply 2nd order low pass filter
-	wheel_speed_filtered = BUTTERWORTH_FILTER_B0 * wheel_speed_raw + 
-						   BUTTERWORTH_FILTER_B1 * wheel_speed_n_minus_1 + 
-						   BUTTERWORTH_FILTER_B2 * wheel_speed_n_minus_2 - 
-						   BUTTERWORTH_FILTER_A1 * wheel_speed_filtered_n_minus_1 - 
-						   BUTTERWORTH_FILTER_A2 * wheel_speed_filtered_n_minus_2;
+	wheel_speed_filtered = BUTTERWORTH_FILTER_1HZ_B0 * wheel_speed_raw + 
+						   BUTTERWORTH_FILTER_1HZ_B1 * wheel_speed_n_minus_1 + 
+						   BUTTERWORTH_FILTER_1HZ_B2 * wheel_speed_n_minus_2 - 
+						   BUTTERWORTH_FILTER_1HZ_A1 * wheel_speed_filtered_n_minus_1 - 
+						   BUTTERWORTH_FILTER_1HZ_A2 * wheel_speed_filtered_n_minus_2;
 
 	// apply biquad filter (2nd order lowpass + derivator)
-	wheel_accel_filtered = BIQUAD_FILTER_B0 * wheel_speed_raw + 
-						   BIQUAD_FILTER_B1 * wheel_speed_n_minus_1 + 
-						   BIQUAD_FILTER_B2 * wheel_speed_n_minus_2 - 
-						   BIQUAD_FILTER_A1 * wheel_accel_filtered_n_minus_1 - 
-						   BIQUAD_FILTER_A2 * wheel_accel_filtered_n_minus_2;
+	wheel_accel_filtered = BIQUAD_FILTER_1HZ_B0 * wheel_speed_raw + 
+						   BIQUAD_FILTER_1HZ_B1 * wheel_speed_n_minus_1 + 
+						   BIQUAD_FILTER_1HZ_B2 * wheel_speed_n_minus_2 - 
+						   BIQUAD_FILTER_1HZ_A1 * wheel_accel_filtered_n_minus_1 - 
+						   BIQUAD_FILTER_1HZ_A2 * wheel_accel_filtered_n_minus_2;
 
 	wheel_speed_n_minus_2 = wheel_speed_n_minus_1;
 	wheel_speed_n_minus_1 = wheel_speed_raw;
@@ -1985,6 +1991,12 @@ static void update_clutch_state(void)
 static void update_assistance_level()
 {
 	float motor_force, human_force;
+	float extra_resistance_raw;
+	float extra_resistance_filtered;
+	static float extra_resistance_n_minus_1 = 0;
+	static float extra_resistance_n_minus_2 = 0;
+	static float extra_resistance_filtered_n_minus_1 = 0;
+	static float extra_resistance_filtered_n_minus_2 = 0;
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 
 	if (config.ctrl.ctrl_type != CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO) {
@@ -2001,8 +2013,23 @@ static void update_assistance_level()
 	normal_resistance = config.ctrl.resistance_coeff_0 +
 						config.ctrl.resistance_coeff_1 * bike_speed +
 						config.ctrl.resistance_coeff_2 * bike_speed * bike_speed;
-	extra_resistance = motor_force + human_force - bike_accel * config.ctrl.effective_mass - normal_resistance;
+	extra_resistance_raw = motor_force + human_force - bike_accel * config.ctrl.effective_mass - normal_resistance;
+
+	extra_resistance_filtered = BUTTERWORTH_FILTER_05HZ_B0 * extra_resistance_raw + 
+						   		BUTTERWORTH_FILTER_05HZ_B1 * extra_resistance_n_minus_1 + 
+						   		BUTTERWORTH_FILTER_05HZ_B2 * extra_resistance_n_minus_2 - 
+						   		BUTTERWORTH_FILTER_05HZ_A1 * extra_resistance_filtered_n_minus_1 - 
+						   		BUTTERWORTH_FILTER_05HZ_A2 * extra_resistance_filtered_n_minus_2;
+
+	extra_resistance_n_minus_2 = extra_resistance_n_minus_1;
+	extra_resistance_n_minus_1 = extra_resistance_raw;
+	extra_resistance_filtered_n_minus_2 = extra_resistance_filtered_n_minus_1;
+	extra_resistance_filtered_n_minus_1 = extra_resistance_filtered;
+
+	extra_resistance = extra_resistance_filtered;
+
 	extra_resistance_rel = extra_resistance / MAX(normal_resistance, 0.1f);
+
 	utils_truncate_number((float *)&extra_resistance_rel, -config.ctrl.resistance_ratio_max, config.ctrl.resistance_ratio_max);
 	torque_gain = config.ctrl.torque_base_gain +
 				config.ctrl.torque_extra_rel_gain * extra_resistance_rel +
