@@ -66,6 +66,14 @@
 #define BUTTERWORTH_FILTER_A1		   -1.98222893f
 #define BUTTERWORTH_FILTER_A2			0.98238545f
 
+// Biquad filter coeffs - cf = 1Hz
+#define BIQUAD_FILTER_B0				0.03913166f
+#define BIQUAD_FILTER_B1				0.0f
+#define BIQUAD_FILTER_B2			   -0.03913166f
+#define BIQUAD_FILTER_A1			   -1.98222718f
+#define BIQUAD_FILTER_A2				0.98238531f
+
+
 // Macros
 #define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
 
@@ -98,12 +106,12 @@ static void update_pedal_torque(void);
 static void update_pedal_speed_and_position(float set_brake_position);
 static void update_wheel_speed(void);
 static void update_motor_speed(void);
-static void update_bike_speed_and_acc(void);
 static void update_clutch_state(void);
 static void update_assistance_level(void);
 static void update_motor_control(void);
 
-static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
+static float cycle_filter(float new_value, float *memory, uint8_t filter_size, float timeout);
+static void  calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
 static float compensate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
 
 static void record_clutch_operation(void);
@@ -145,6 +153,7 @@ static volatile float pedal_speed  = 0;     //CRPM
 static volatile float pedal_speed_rel = 0;
 static volatile float pedal_brake_position = 0;
 static volatile float pedal_brake_position_rel = 0;
+static volatile float pedal_current_direction = 0;
 static volatile float wheel_speed  = 0;     //WRPM
 static volatile float wheel_speed_rel = 0;
 static volatile float wheel_speed_raw = 0;
@@ -265,7 +274,7 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM}, NULL},
     {"whmagn", "[count] Number of wheel sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.wheel_sensor.magnets, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR, 
      {.uint32_default = APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS}, NULL},
-    {"whfilt", "[0.0-1.0] Wheel sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.filter, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR, 
+    {"whma", "[0/1] Wheel sensor moving average filter: 0=disable, 1=enable", CONFIG_TYPE_FLOAT, &config.wheel_sensor.filter, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER}, NULL},
     {"whavgrpm", "[rpm] WRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.wheel_sensor.avg_above_rpm, APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM}, NULL},
@@ -293,7 +302,7 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM}, NULL},
 	{"tqcutint", "[rpm] WRPM interval before cutoff where torque (non-linearly) decreases", CONFIG_TYPE_FLOAT, &config.torque_sensor.decrease_interval, APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR,	
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL}, NULL},
-	{"tqfilt", "[0.0-1.0] Torque sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.torque_sensor.filter, APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR,
+	{"tqma", "[0/1] Torque sensor moving average filter: 0=disable, 1=enable", CONFIG_TYPE_FLOAT, &config.torque_sensor.filter, APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER}, NULL},
 	{"tqmaxnm", "[Nm] Maximum torque in Nm corresponding to max sensor value", CONFIG_TYPE_FLOAT, &config.torque_sensor.nm_max, APP_CUSTOM_CONF_TORQUE_NM_MAX_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_NM_MAX}, NULL},
@@ -630,9 +639,6 @@ static THD_FUNCTION(my_thread, arg) {
 
 		plot_points(PLOT_WHEEL_RPM, timestamp, wheel_speed);
 		plot_points(PLOT_WHEEL_PRED_RPM, timestamp, wheel_speed_raw);
-
-		//calculate bike speed and acceleration
-		update_bike_speed_and_acc();
 		plot_points(PLOT_ACCEL, timestamp, bike_accel);
 
 		//take care of clutch state transitions
@@ -1164,7 +1170,7 @@ static void terminal_set_pin(int argc, const char **argv) {
 
 static void update_pedal_torque(void)
 {
-    if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_THROTTLE) {
+	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_THROTTLE) {
 		// Read the external ADC pin voltage
 		float torque = ADC_VOLTS(ADC_IND_EXT);
 
@@ -1208,6 +1214,8 @@ static void update_pedal_torque(void)
 		static float torque2_filtered_n_minus_1 = 0.0;
 		static float torque2_filtered_n_minus_2 = 0.0;
 		static float torque2_filtered = 0.0;
+		static float torque_inactivity_time = 0;
+		static float torque_ma_filter_memory[PEDAL_SENSOR_MAX_MAGNETS * 2 + 2] = {0};
 		float torque2 = ADC_VOLTS(ADC_IND_EXT2);
 
 		// Map the read voltage to 0-1 range based on config values
@@ -1238,55 +1246,8 @@ static void update_pedal_torque(void)
 		apply_ramping(&torque2_ramp, &last_time2, pedal_torque2_filtered, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
 		pedal_torque2_filtered = torque2_ramp;
 
-		// Filtering cyclic variations - caused by pedal physics - by averaging one cycle, which equals to half turn
-		const int8_t QEM[] = {  0, -1,  1,  2,
-	                    		1,  0,  2, -1,
-						   	   -1,  2,  0,  1,
-						    	2,  1, -1,  0};
-		const uint8_t phases_per_half_turn = config.pedal_sensor.magnets * 2; // 4 phases/magnet
-		int8_t direction;
-		uint8_t new_state;
-		static uint8_t old_state = 0;
-		static float torque_samples[PEDAL_SENSOR_MAX_MAGNETS * 2u] = {0};
-		static uint8_t torque_sample_index = 0;
-		static float torque_inactivity_time = 0;
-		float avg;
-
-		HALL1_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN1);
-		HALL2_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2);
-
-		new_state = HALL2_level * 2 + HALL1_level;
-		direction = QEM[old_state * 4 + new_state];
-		old_state = new_state;
-
-		if (config.pedal_sensor.invert_direction) {
-			direction *= -1;
-		}
-		if (direction == 1) {
-			torque_samples[torque_sample_index] = pedal_torque2_filtered;
-			torque_sample_index++;
-			if (torque_sample_index >= phases_per_half_turn) {
-				torque_sample_index = 0;
-			}
-			avg = 0;
-			for (uint8_t i = 0; i < phases_per_half_turn; i++) {
-				avg += torque_samples[i];
-			}
-			avg /= phases_per_half_turn;
-			utils_truncate_number(&avg, 0.0, 1.0);
-			if (config_adc.use_filter) {
-				pedal_torque2_filtered = avg;
-			}
-		} else if (direction == -1) {
-			// reset samples when changing direction to avoid applying average of one direction to the other direction
-			for (uint8_t i = 0; i < phases_per_half_turn; i++) {
-				torque_samples[i] = pedal_torque2_filtered;
-			}
-			if (config_adc.use_filter) {
-				pedal_torque2_filtered = 0;
-			}
-		} else {
-			// no movement, keep previous filtered value
+		if (config.torque_sensor.filter > 0.5f) {	
+			pedal_torque2_filtered = cycle_filter(pedal_torque2_filtered, torque_ma_filter_memory, config.pedal_sensor.magnets * 2, config.torque_sensor.timeout);
 		}
 
 		if (torque2 * config.torque_sensor.nm_max < config.torque_sensor.threshold) {
@@ -1365,6 +1326,8 @@ static void update_pedal_speed_and_position(float set_brake_position)
 	if (config.pedal_sensor.invert_direction) {
         direction *= -1;
 	}
+
+	pedal_current_direction = direction;
 
     max_backward_counter = ceil((float)(config.back_pedal_brake.end_pos) / (360.0f / (float)(4.0 * config.pedal_sensor.magnets)));
 
@@ -1522,6 +1485,10 @@ static void update_wheel_speed(void)
 	static float wheel_speed_filtered_n_minus_2 = 0;
 	static float wheel_speed_n_minus_1 = 0;
 	static float wheel_speed_n_minus_2 = 0;
+	static float wheel_accel_filtered = 0;
+	static float wheel_accel_filtered_n_minus_1 = 0;
+	static float wheel_accel_filtered_n_minus_2 = 0;
+	static float accel_ma_filter_memory[PEDAL_SENSOR_MAX_MAGNETS * 2 + 2] = {0};
 	static float inactivity_time = 0;
 	static uint8_t HALL3_level_old =  1;
 	static float old_timestamp = 0;
@@ -1530,6 +1497,8 @@ static void update_wheel_speed(void)
 	float period, avg_period;
 	float current_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 	uint8_t num_events = 0;
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+	const float wheel_circumference = M_PI * conf->si_wheel_diameter;
 
 	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT ||
 	    (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT && interrupt_mode == true)) {
@@ -1695,20 +1664,39 @@ static void update_wheel_speed(void)
 		}
 	}
 
-	// apply 2nd order low pass filter (cf=2Hz at 500Hz sample rate)
+	// apply 2nd order low pass filter
 	wheel_speed_filtered = BUTTERWORTH_FILTER_B0 * wheel_speed_raw + 
 						   BUTTERWORTH_FILTER_B1 * wheel_speed_n_minus_1 + 
 						   BUTTERWORTH_FILTER_B2 * wheel_speed_n_minus_2 - 
 						   BUTTERWORTH_FILTER_A1 * wheel_speed_filtered_n_minus_1 - 
 						   BUTTERWORTH_FILTER_A2 * wheel_speed_filtered_n_minus_2;
+
+	// apply biquad filter (2nd order lowpass + derivator)
+	wheel_accel_filtered = BIQUAD_FILTER_B0 * wheel_speed_raw + 
+						   BIQUAD_FILTER_B1 * wheel_speed_n_minus_1 + 
+						   BIQUAD_FILTER_B2 * wheel_speed_n_minus_2 - 
+						   BIQUAD_FILTER_A1 * wheel_accel_filtered_n_minus_1 - 
+						   BIQUAD_FILTER_A2 * wheel_accel_filtered_n_minus_2;
+
 	wheel_speed_n_minus_2 = wheel_speed_n_minus_1;
 	wheel_speed_n_minus_1 = wheel_speed_raw;
 	wheel_speed_filtered_n_minus_2 = wheel_speed_filtered_n_minus_1;
 	wheel_speed_filtered_n_minus_1 = wheel_speed_filtered;
+	wheel_accel_filtered_n_minus_2 = wheel_accel_filtered_n_minus_1;
+	wheel_accel_filtered_n_minus_1 = wheel_accel_filtered;
 	
 	wheel_speed = wheel_speed_filtered;
 	if (wheel_speed < 0) {
 		wheel_speed = 0.0;
+	}
+
+	// calculate bike speed and acceleration from wheel speed
+	bike_speed = wheel_speed * wheel_circumference / 60.0;
+	bike_accel = wheel_accel_filtered * wheel_circumference / 60.0;
+	utils_truncate_number((float*)&bike_accel, -5.0f, 5.0f);
+
+	if (config.wheel_sensor.filter > 0.5f) {	
+		bike_accel = cycle_filter(bike_accel, accel_ma_filter_memory, config.pedal_sensor.magnets * 2, config.acceleration_timeout);
 	}
 
 	// calculate relative wheel speed
@@ -1743,99 +1731,6 @@ static void update_motor_speed(void)
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 	const float mrpm = mc_interface_get_rpm() / (conf->si_motor_poles / 2.0);
 	motor_speed = mrpm / conf->si_gear_ratio;
-}
-
-static void update_bike_speed_and_acc(void)
-{
-	// Calculate bike speed and acceleration from wheel speed.
-	// Sampling is synced to forward HALL1/HALL2 transitions, similarly to torque processing.
-	const volatile mc_configuration *conf = mc_interface_get_configuration();
-	const float wheel_circumference = M_PI * conf->si_wheel_diameter;
-	const int8_t QEM[] = {  0, -1,  1,  2,
-							1,  0,  2, -1,
-						   -1,  2,  0,  1,
-							2,  1, -1,  0};
-	static uint8_t old_state = 0;
-	static float old_bike_speed = 0;
-	static float old_timestamp = 0;
-	static float pedal_inactivity_time = 0;
-	static float bike_accel_samples[PEDAL_SENSOR_MAX_MAGNETS * 2u] = {0};
-	static uint8_t bike_accel_sample_index = 0;
-	static float bike_accel_filtered;
-	float accel_avg = 0;
-	int8_t direction;
-	uint8_t new_state;
-	float timestamp = APP_NOW_SEC;
-    float new_bike_speed, new_bike_accel;
-	const uint8_t phases_per_half_turn = (config.velocity_sampling_rate <= 18) ? config.pedal_sensor.magnets / 2u : config.pedal_sensor.magnets * 2;
-
-	HALL1_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT1, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN1);
-	HALL2_level = palReadPad(APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2, APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2);
-
-	new_state = HALL2_level * 2 + HALL1_level;
-	direction = QEM[old_state * 4 + new_state];
-	old_state = new_state;
-
-	if (config.pedal_sensor.invert_direction) {
-		direction *= -1;
-	}
-
-	if (direction != 1 || (config.velocity_sampling_rate <= 18 && new_state != 3)) {
-		pedal_inactivity_time += 1.0 / (float)config.update_rate_hz;
-		if (pedal_inactivity_time >= config.acceleration_timeout) {
-			// reset acceleration MA buffer
-			for (uint8_t i = 0; i < phases_per_half_turn; i++) {
-				bike_accel_samples[i] = 0;
-			}
-			bike_accel = 0;
-			bike_accel_filtered = 0;
-			old_bike_speed = 0;
-			old_timestamp = 0;
-		}
-		return;
-	} else {
-		pedal_inactivity_time = 0;
-	}
-	
-	new_bike_speed = wheel_speed * wheel_circumference / 60.0;
-
-	UTILS_LP_FAST(bike_speed, new_bike_speed, config.velocity_filter);
-
-	if (old_timestamp != 0) {
-		new_bike_accel = (bike_speed - old_bike_speed) / (timestamp - old_timestamp);
-
-		// Filter unrealistic values
-		utils_truncate_number((float*)&new_bike_accel, -10.0f, 10.0f);
-
-    	// Apply low-pass filter
-		UTILS_LP_FAST(bike_accel_filtered, new_bike_accel, config.acceleration_filter);
-
-		// Store sample in moving average buffer
-		bike_accel_samples[bike_accel_sample_index] = bike_accel_filtered;
-		bike_accel_sample_index++;
-		if (bike_accel_sample_index >= phases_per_half_turn) {
-			bike_accel_sample_index = 0;
-		}
-
-		accel_avg = 0;
-
-		// Calculate average of all samples in buffer
-		for (uint8_t i = 0; i < phases_per_half_turn; i++) {
-			accel_avg += bike_accel_samples[i];
-		}
-		accel_avg /= phases_per_half_turn;
-
-		if (config.velocity_sampling_rate > 0) {
-			bike_accel = accel_avg;
-		} else {
-			bike_accel = bike_accel_filtered;
-		}
-
-		utils_truncate_number((float*)&bike_accel, -5.0f, 5.0f);
-	}
-
-	old_bike_speed = bike_speed;
-	old_timestamp = timestamp;
 }
 
 static void update_clutch_state(void)
@@ -2208,6 +2103,54 @@ static void update_motor_control()
 	if (cnt++ % (config.update_rate_hz / 10) == 0){
 		print_log(LOG_GROUP_MOTOR,"[%4.2f] %s", (double)timestamp, log_text);
 	}
+}
+
+static float cycle_filter(float new_value, float *memory, uint8_t filter_size, float timeout) {
+	//Filtering cyclic variations - caused by pedal physics - by averaging one cycle, which equals to half turn
+	uint8_t index = (int)memory[filter_size];
+	float inactivity_time = memory[filter_size + 1];
+	float avg;
+
+	if (pedal_current_direction == 1) {
+		memory[index] = new_value;
+		index++;
+		if (index >= filter_size) {
+			index = 0;
+		}
+		avg = 0;
+		for (uint8_t i = 0; i < filter_size; i++) {
+			avg += memory[i];
+		}
+		avg /= filter_size;
+		inactivity_time = 0;
+	} else if (pedal_current_direction == -1) {
+		// reset samples when changing direction to avoid applying average of one direction to the other direction
+		for (uint8_t i = 0; i < filter_size; i++) {
+			memory[i] = 0;
+		}
+		avg = 0;
+		inactivity_time = 0;
+	} else {
+		inactivity_time += 1.0 / config.update_rate_hz;
+		if (inactivity_time > timeout) {
+			inactivity_time = timeout;
+			for (uint8_t i = 0; i < filter_size; i++) {
+				memory[i] = 0;
+			}
+			avg = 0;
+		} else {
+			// no movement, keep previous filtered value
+			avg = 0;
+			for (uint8_t i = 0; i < filter_size; i++) {
+				avg += memory[i];
+			}
+			avg /= filter_size;
+		}
+	}
+
+	memory[filter_size] = index;
+	memory[filter_size + 1] = inactivity_time;
+	return avg;
 }
 
 static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed) {
