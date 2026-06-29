@@ -2009,7 +2009,7 @@ static void update_assistance_level()
 	human_power_w = pedal_torque_rel * config.torque_sensor.nm_max * 
 					pedal_speed * (2.0f * M_PI / 60.0f) * 
 					config.ctrl.pedal_gear_efficiency;
-	human_force = human_power_w / bike_speed;
+	human_force = human_power_w / MAX(bike_speed, 0.1f);
 	normal_resistance = config.ctrl.resistance_coeff_0 +
 						config.ctrl.resistance_coeff_1 * bike_speed +
 						config.ctrl.resistance_coeff_2 * bike_speed * bike_speed;
