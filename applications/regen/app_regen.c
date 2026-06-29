@@ -2033,7 +2033,7 @@ static void update_assistance_level()
 	utils_truncate_number((float *)&extra_resistance_rel, -config.ctrl.resistance_ratio_max, config.ctrl.resistance_ratio_max);
 	torque_gain = config.ctrl.torque_base_gain +
 				config.ctrl.torque_extra_rel_gain * extra_resistance_rel +
-				config.ctrl.torque_extra_abs_gain * extra_resistance +
+				config.ctrl.torque_extra_abs_gain / config.ctrl.effective_mass * extra_resistance +
 				config.ctrl.torque_acc_gain * bike_accel;
 	utils_truncate_number((float *)&torque_gain, config.ctrl.torque_min_gain, config.ctrl.torque_max_gain);
 }
