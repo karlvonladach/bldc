@@ -51,34 +51,35 @@
 #define CALIBRATION_ROUNDS			           10u
 #define DIFF_THRESHOLD_TO_APPLY_COMPENSATION    0.1f
 #define MAX_PERIODS_TO_AVG					    8u
+#define BIQUAD_FILTER_MEMORY_SIZE               4u
 
-// 2nd order filter coeffs - cf = 2Hz
-//#define BUTTERWORTH_FILTER_2HZ_B0			0.00015517f
-//#define BUTTERWORTH_FILTER_2HZ_B1			0.00031034f
-//#define BUTTERWORTH_FILTER_2HZ_B2			0.00015517f
-//#define BUTTERWORTH_FILTER_2HZ_A1		   -1.96445773f
-//#define BUTTERWORTH_FILTER_2HZ_A2			0.96507842f
+// 2nd order filter coeffs - cf = 10Hz
+#define BIQUAD_FILTER_10HZ_B0			0.00362168f
+#define BIQUAD_FILTER_10HZ_B1			0.00724336f
+#define BIQUAD_FILTER_10HZ_B2			0.00362168f
+#define BIQUAD_FILTER_10HZ_A1		   -1.82269493f
+#define BIQUAD_FILTER_10HZ_A2			0.83718165f
 
 // 2nd order filter coeffs - cf = 1Hz
-#define BUTTERWORTH_FILTER_1HZ_B0			0.00003913f
-#define BUTTERWORTH_FILTER_1HZ_B1			0.00007826f
-#define BUTTERWORTH_FILTER_1HZ_B2			0.00003913f
-#define BUTTERWORTH_FILTER_1HZ_A1		   -1.98222893f
-#define BUTTERWORTH_FILTER_1HZ_A2			0.98238545f
+#define BIQUAD_FILTER_1HZ_B0			0.00003913f
+#define BIQUAD_FILTER_1HZ_B1			0.00007826f
+#define BIQUAD_FILTER_1HZ_B2			0.00003913f
+#define BIQUAD_FILTER_1HZ_A1		   -1.98222893f
+#define BIQUAD_FILTER_1HZ_A2			0.98238545f
 
-// 2nd order filter coeffs - cf = 0.5Hz
-#define BUTTERWORTH_FILTER_05HZ_B0			0.000009825917f
-#define BUTTERWORTH_FILTER_05HZ_B1			0.000019651834f
-#define BUTTERWORTH_FILTER_05HZ_B2			0.000009825917f
-#define BUTTERWORTH_FILTER_05HZ_A1		   -1.991114292202f
-#define BUTTERWORTH_FILTER_05HZ_A2			0.991153595869f
+// 2nd order derivator filter coeffs - cf = 10Hz
+#define BIQUAD_DERIVATOR_FILTER_10HZ_B0				3.62168151f
+#define BIQUAD_DERIVATOR_FILTER_10HZ_B1				0.0f
+#define BIQUAD_DERIVATOR_FILTER_10HZ_B2			   -3.62168151f
+#define BIQUAD_DERIVATOR_FILTER_10HZ_A1			   -1.82269493f
+#define BIQUAD_DERIVATOR_FILTER_10HZ_A2				0.83718165f
 
-// Biquad filter coeffs - cf = 1Hz
-#define BIQUAD_FILTER_1HZ_B0				0.03913166f
-#define BIQUAD_FILTER_1HZ_B1				0.0f
-#define BIQUAD_FILTER_1HZ_B2			   -0.03913166f
-#define BIQUAD_FILTER_1HZ_A1			   -1.98222718f
-#define BIQUAD_FILTER_1HZ_A2				0.98238531f
+// 2nd order derivator filter coeffs - cf = 1Hz
+#define BIQUAD_DERIVATOR_FILTER_1HZ_B0				0.03913166f
+#define BIQUAD_DERIVATOR_FILTER_1HZ_B1				0.0f
+#define BIQUAD_DERIVATOR_FILTER_1HZ_B2			   -0.03913166f
+#define BIQUAD_DERIVATOR_FILTER_1HZ_A1			   -1.98222718f
+#define BIQUAD_DERIVATOR_FILTER_1HZ_A2				0.98238531f
 
 // Macros
 #define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
@@ -117,6 +118,7 @@ static void update_assistance_level(void);
 static void update_motor_control(void);
 
 static float cycle_filter(float new_value, float *memory, uint8_t filter_size, float timeout);
+static float biquad_filter(float new_value, float *memory, float cutoff_freq, bool derivator);
 //static void  calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
 //static float compensate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
 
@@ -1215,13 +1217,10 @@ static void update_pedal_torque(void)
 
 	} else
 	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_PEDAL) {
-		static float torque2_n_minus_1 = 0.0;
-		static float torque2_n_minus_2 = 0.0;
-		static float torque2_filtered_n_minus_1 = 0.0;
-		static float torque2_filtered_n_minus_2 = 0.0;
 		static float torque2_filtered = 0.0;
 		static float torque_inactivity_time = 0;
 		static float torque_ma_filter_memory[PEDAL_SENSOR_MAX_MAGNETS * 2 + 2] = {0};
+		static float torque_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
 		float torque2 = ADC_VOLTS(ADC_IND_EXT2);
 
 		// Map the read voltage to 0-1 range based on config values
@@ -1233,16 +1232,8 @@ static void update_pedal_torque(void)
 
 		pedal_torque2 = torque2;
 
-		// apply 2nd order low pass filter (cf=2Hz at 500Hz sample rate)
-		torque2_filtered = BUTTERWORTH_FILTER_1HZ_B0 * torque2 + 
-							BUTTERWORTH_FILTER_1HZ_B1 * torque2_n_minus_1 + 
-							BUTTERWORTH_FILTER_1HZ_B2 * torque2_n_minus_2 - 
-							BUTTERWORTH_FILTER_1HZ_A1 * torque2_filtered_n_minus_1 - 
-							BUTTERWORTH_FILTER_1HZ_A2 * torque2_filtered_n_minus_2;
-		torque2_n_minus_2 = torque2_n_minus_1;
-		torque2_n_minus_1 = torque2;
-		torque2_filtered_n_minus_2 = torque2_filtered_n_minus_1;
-		torque2_filtered_n_minus_1 = torque2_filtered;
+		// apply 2nd order low pass filter
+		torque2_filtered = biquad_filter(torque2, torque_bq_filter_memory, 1.0f, false);
 
 		pedal_torque2_filtered = torque2_filtered;
 
@@ -1487,14 +1478,10 @@ static void update_wheel_speed(void)
 	static float old_period = 0;
 	static float old_periods[MAX_PERIODS_TO_AVG-1] = {0.0f};
 	static float wheel_speed_filtered = 0;
-	static float wheel_speed_filtered_n_minus_1 = 0;
-	static float wheel_speed_filtered_n_minus_2 = 0;
-	static float wheel_speed_n_minus_1 = 0;
-	static float wheel_speed_n_minus_2 = 0;
+	static float wheel_speed_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE];
 	static float wheel_accel_filtered = 0;
-	static float wheel_accel_filtered_n_minus_1 = 0;
-	static float wheel_accel_filtered_n_minus_2 = 0;
-	static float accel_ma_filter_memory[PEDAL_SENSOR_MAX_MAGNETS * 2 + 2] = {0};
+	static float wheel_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE];
+	static float wheel_accel_ma_filter_memory[PEDAL_SENSOR_MAX_MAGNETS * 2 + 2] = {0};
 	static float inactivity_time = 0;
 	static uint8_t HALL3_level_old =  1;
 	static float old_timestamp = 0;
@@ -1670,26 +1657,11 @@ static void update_wheel_speed(void)
 		}
 	}
 
-	// apply 2nd order low pass filter
-	wheel_speed_filtered = BUTTERWORTH_FILTER_1HZ_B0 * wheel_speed_raw + 
-						   BUTTERWORTH_FILTER_1HZ_B1 * wheel_speed_n_minus_1 + 
-						   BUTTERWORTH_FILTER_1HZ_B2 * wheel_speed_n_minus_2 - 
-						   BUTTERWORTH_FILTER_1HZ_A1 * wheel_speed_filtered_n_minus_1 - 
-						   BUTTERWORTH_FILTER_1HZ_A2 * wheel_speed_filtered_n_minus_2;
+	// apply 2nd order low pass filter on wheel speed
+	wheel_speed_filtered = biquad_filter(wheel_speed_raw, wheel_speed_bq_filter_memory, 1.0f, false);
 
-	// apply biquad filter (2nd order lowpass + derivator)
-	wheel_accel_filtered = BIQUAD_FILTER_1HZ_B0 * wheel_speed_raw + 
-						   BIQUAD_FILTER_1HZ_B1 * wheel_speed_n_minus_1 + 
-						   BIQUAD_FILTER_1HZ_B2 * wheel_speed_n_minus_2 - 
-						   BIQUAD_FILTER_1HZ_A1 * wheel_accel_filtered_n_minus_1 - 
-						   BIQUAD_FILTER_1HZ_A2 * wheel_accel_filtered_n_minus_2;
-
-	wheel_speed_n_minus_2 = wheel_speed_n_minus_1;
-	wheel_speed_n_minus_1 = wheel_speed_raw;
-	wheel_speed_filtered_n_minus_2 = wheel_speed_filtered_n_minus_1;
-	wheel_speed_filtered_n_minus_1 = wheel_speed_filtered;
-	wheel_accel_filtered_n_minus_2 = wheel_accel_filtered_n_minus_1;
-	wheel_accel_filtered_n_minus_1 = wheel_accel_filtered;
+	// apply 2nd order lowpass + derivator filter on wheel speed to calculate acceleration
+	wheel_accel_filtered = biquad_filter(wheel_speed_raw, wheel_accel_bq_filter_memory, 1.0f, true);
 	
 	wheel_speed = wheel_speed_filtered;
 	if (wheel_speed < 0) {
@@ -1702,7 +1674,7 @@ static void update_wheel_speed(void)
 	utils_truncate_number((float*)&bike_accel, -5.0f, 5.0f);
 
 	if (config.wheel_sensor.filter > 0.5f) {	
-		bike_accel = cycle_filter(bike_accel, accel_ma_filter_memory, config.pedal_sensor.magnets * 2, config.acceleration_timeout);
+		bike_accel = cycle_filter(bike_accel, wheel_accel_ma_filter_memory, config.pedal_sensor.magnets * 2, config.acceleration_timeout);
 	}
 
 	// calculate relative wheel speed
@@ -1993,10 +1965,7 @@ static void update_assistance_level()
 	float motor_force, human_force;
 	float extra_resistance_raw;
 	float extra_resistance_filtered;
-	static float extra_resistance_n_minus_1 = 0;
-	static float extra_resistance_n_minus_2 = 0;
-	static float extra_resistance_filtered_n_minus_1 = 0;
-	static float extra_resistance_filtered_n_minus_2 = 0;
+	static float extra_resistance_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 
 	if (config.ctrl.ctrl_type != CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO) {
@@ -2015,16 +1984,7 @@ static void update_assistance_level()
 						config.ctrl.resistance_coeff_2 * bike_speed * bike_speed;
 	extra_resistance_raw = motor_force + human_force - bike_accel * config.ctrl.effective_mass - normal_resistance;
 
-	extra_resistance_filtered = BUTTERWORTH_FILTER_05HZ_B0 * extra_resistance_raw + 
-						   		BUTTERWORTH_FILTER_05HZ_B1 * extra_resistance_n_minus_1 + 
-						   		BUTTERWORTH_FILTER_05HZ_B2 * extra_resistance_n_minus_2 - 
-						   		BUTTERWORTH_FILTER_05HZ_A1 * extra_resistance_filtered_n_minus_1 - 
-						   		BUTTERWORTH_FILTER_05HZ_A2 * extra_resistance_filtered_n_minus_2;
-
-	extra_resistance_n_minus_2 = extra_resistance_n_minus_1;
-	extra_resistance_n_minus_1 = extra_resistance_raw;
-	extra_resistance_filtered_n_minus_2 = extra_resistance_filtered_n_minus_1;
-	extra_resistance_filtered_n_minus_1 = extra_resistance_filtered;
+	extra_resistance_filtered = biquad_filter(extra_resistance_raw, extra_resistance_bq_filter_memory, 0.5f, false);
 
 	extra_resistance = extra_resistance_filtered;
 
@@ -2178,6 +2138,57 @@ static float cycle_filter(float new_value, float *memory, uint8_t filter_size, f
 	memory[filter_size] = index;
 	memory[filter_size + 1] = inactivity_time;
 	return avg;
+}
+
+static float biquad_filter(float new_value, float *memory, float cutoff_freq, bool derivator)
+{
+	float y;
+	float b0, b1, b2;
+	float a1, a2;
+
+	// calculate coeffs based on cutoff freq
+	if (derivator) {
+		if (cutoff_freq == 1.0f){
+			b0 = BIQUAD_DERIVATOR_FILTER_1HZ_B0;
+			b1 = BIQUAD_DERIVATOR_FILTER_1HZ_B1;
+			b2 = BIQUAD_DERIVATOR_FILTER_1HZ_B2;
+			a1 = BIQUAD_DERIVATOR_FILTER_1HZ_A1;
+			a2 = BIQUAD_DERIVATOR_FILTER_1HZ_A2;
+		} else {
+			b0 = expf(utils_map(logf(cutoff_freq), logf(1), logf(10), logf(BIQUAD_DERIVATOR_FILTER_1HZ_B0), logf(BIQUAD_DERIVATOR_FILTER_10HZ_B0)));
+			b1 = 0.0f;
+			b2 = -b0;
+			a1 = utils_map(cutoff_freq, 1, 10, BIQUAD_DERIVATOR_FILTER_1HZ_A1, BIQUAD_DERIVATOR_FILTER_10HZ_A1);
+			a2 = utils_map(cutoff_freq, 1, 10, BIQUAD_DERIVATOR_FILTER_1HZ_A2, BIQUAD_DERIVATOR_FILTER_10HZ_A2);
+		}
+	} else {
+		if (cutoff_freq == 1.0f){
+			b0 = BIQUAD_FILTER_1HZ_B0;
+			b1 = BIQUAD_FILTER_1HZ_B1;
+			b2 = BIQUAD_FILTER_1HZ_B2;
+			a1 = BIQUAD_FILTER_1HZ_A1;
+			a2 = BIQUAD_FILTER_1HZ_A2;
+		} else {
+			b0 = expf(utils_map(logf(cutoff_freq), logf(1), logf(10), logf(BIQUAD_FILTER_1HZ_B0), logf(BIQUAD_FILTER_10HZ_B0)));
+			b1 = expf(utils_map(logf(cutoff_freq), logf(1), logf(10), logf(BIQUAD_FILTER_1HZ_B1), logf(BIQUAD_FILTER_10HZ_B1)));
+			b2 = b0;
+			a1 = utils_map(cutoff_freq, 1, 10, BIQUAD_FILTER_1HZ_A1, BIQUAD_FILTER_10HZ_A1);
+			a2 = utils_map(cutoff_freq, 1, 10, BIQUAD_FILTER_1HZ_A2, BIQUAD_FILTER_10HZ_A2);
+		}
+	}
+
+	y = b0 * new_value +   // b0 * x[n]
+		b1 * memory[0] +   // b1 * x[n-1]
+		b2 * memory[1] -   // b2 * x[n-2]
+		a1 * memory[2] -   // a1 * y[n-1]
+		a2 * memory[3];    // a2 * y[n-2]
+
+	memory[1] = memory[0];
+	memory[0] = new_value;
+	memory[3] = memory[2];
+	memory[2] = y;
+
+	return y;
 }
 
 // static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed) {
