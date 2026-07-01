@@ -285,7 +285,7 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM}, NULL},
     {"whmagn", "[count] Number of wheel sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.wheel_sensor.magnets, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR, 
      {.uint32_default = APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS}, NULL},
-    {"whfilter", "[0/1/2] Wheel sensor filter: 0=disable, 1=enable ma, 2=enable notch", CONFIG_TYPE_FLOAT, &config.wheel_sensor.filter, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR, 
+    {"whfilter", "[0/1/2] Wheel sensor filter: 0=biquad only, 1=biquad+ma, 2=biquad+notch", CONFIG_TYPE_FLOAT, &config.wheel_sensor.filter, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER}, NULL},
     {"whavgrpm", "[rpm] WRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.wheel_sensor.avg_above_rpm, APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM}, NULL},
@@ -313,7 +313,7 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM}, NULL},
 	{"tqcutint", "[rpm] WRPM interval before cutoff where torque (non-linearly) decreases", CONFIG_TYPE_FLOAT, &config.torque_sensor.decrease_interval, APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR,	
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL}, NULL},
-	{"tqfilter", "[0/1/2] Torque sensor filter: 0=disable, 1=enable ma, 2=enable notch", CONFIG_TYPE_FLOAT, &config.torque_sensor.filter, APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR,
+	{"tqfilter", "[0/1/2] Torque sensor filter: 0=biquad only, 1=biquad+ma, 2=biquad+notch, 3=ma only, 4=notch only", CONFIG_TYPE_FLOAT, &config.torque_sensor.filter, APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER}, NULL},
 	{"tqmaxnm", "[Nm] Maximum torque in Nm corresponding to max sensor value", CONFIG_TYPE_FLOAT, &config.torque_sensor.nm_max, APP_CUSTOM_CONF_TORQUE_NM_MAX_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_NM_MAX}, NULL},
@@ -1240,10 +1240,12 @@ static void update_pedal_torque(void)
 
 		pedal_torque2 = torque2;
 
-		// apply 2nd order low pass filter with adaptive cutoff frequency
-		float cutoff_freq = utils_map(1.0/bike_speed, 0.5, 2.0, 1.0, 5.0);
-		utils_truncate_number(&cutoff_freq, 1.0, 5.0);
-		torque2_filtered = biquad_filter(torque2, torque_bq_filter_memory, cutoff_freq, false);
+		torque2_filtered = torque2;
+		if (config.torque_sensor.filter == 0.0f || config.torque_sensor.filter == 1.0f || config.torque_sensor.filter == 2.0f) {	
+			float cutoff_freq = utils_map(1.0/bike_speed, 0.5, 2.0, 1.0, 5.0);
+			utils_truncate_number(&cutoff_freq, 1.0, 5.0);
+			torque2_filtered = biquad_filter(torque2, torque_bq_filter_memory, cutoff_freq, false);
+		}
 
 		pedal_torque2_filtered = torque2_filtered;
 
@@ -1253,10 +1255,10 @@ static void update_pedal_torque(void)
 		apply_ramping(&torque2_ramp, &last_time2, pedal_torque2_filtered, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
 		pedal_torque2_filtered = torque2_ramp;
 
-		if (config.torque_sensor.filter == 1.0f) {	
+		if (config.torque_sensor.filter == 1.0f || config.torque_sensor.filter == 3.0f) {	
 			pedal_torque2_filtered = ma_filter(pedal_torque2_filtered, torque_ma_filter_memory, config.torque_sensor.timeout);
 		}
-		if (config.torque_sensor.filter == 2.0f) {	
+		if (config.torque_sensor.filter == 2.0f || config.torque_sensor.filter == 4.0f) {	
 			pedal_torque2_filtered = notch_filter(pedal_torque2_filtered, torque_notch_filter_memory, config.torque_sensor.timeout);
 		}
 
