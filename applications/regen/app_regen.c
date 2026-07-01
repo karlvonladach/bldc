@@ -52,6 +52,7 @@
 #define DIFF_THRESHOLD_TO_APPLY_COMPENSATION    0.1f
 #define MAX_PERIODS_TO_AVG					    8u
 #define BIQUAD_FILTER_MEMORY_SIZE               4u
+#define NOTCH_FILTER_MEMORY_SIZE				5u
 
 // 2nd order filter coeffs - cf = 10Hz
 #define BIQUAD_FILTER_10HZ_B0			0.00362168f
@@ -117,7 +118,8 @@ static void update_clutch_state(void);
 static void update_assistance_level(void);
 static void update_motor_control(void);
 
-static float cycle_filter(float new_value, float *memory, uint8_t filter_size, float timeout);
+static float ma_filter(float new_value, float *memory, float timeout);
+static float notch_filter(float new_value, float *memory, float timeout);
 static float biquad_filter(float new_value, float *memory, float cutoff_freq, bool derivator);
 //static void  calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
 //static float compensate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
@@ -203,6 +205,7 @@ static volatile uint32_t calibration_step = 0;
 //static volatile float    last_wheel_speeds[WHEEL_SENSOR_CALIBRATION_VALUES_COUNT] = {0};
 static volatile uint8_t  wheel_sensor_magnet_cntr = 0;
 static volatile bool     compensation_active = false;
+static volatile float    sin_lut[PEDAL_SENSOR_MAX_MAGNETS * 2] = {0};
 
 // Config table - add new parameters here
 static const config_param_t config_table[] = {
@@ -282,7 +285,7 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM}, NULL},
     {"whmagn", "[count] Number of wheel sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.wheel_sensor.magnets, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR, 
      {.uint32_default = APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS}, NULL},
-    {"whma", "[0/1] Wheel sensor moving average filter: 0=disable, 1=enable", CONFIG_TYPE_FLOAT, &config.wheel_sensor.filter, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR, 
+    {"whfilter", "[0/1/2] Wheel sensor filter: 0=disable, 1=enable ma, 2=enable notch", CONFIG_TYPE_FLOAT, &config.wheel_sensor.filter, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER}, NULL},
     {"whavgrpm", "[rpm] WRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.wheel_sensor.avg_above_rpm, APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM}, NULL},
@@ -310,7 +313,7 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM}, NULL},
 	{"tqcutint", "[rpm] WRPM interval before cutoff where torque (non-linearly) decreases", CONFIG_TYPE_FLOAT, &config.torque_sensor.decrease_interval, APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR,	
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL}, NULL},
-	{"tqma", "[0/1] Torque sensor moving average filter: 0=disable, 1=enable", CONFIG_TYPE_FLOAT, &config.torque_sensor.filter, APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR,
+	{"tqfilter", "[0/1/2] Torque sensor filter: 0=disable, 1=enable ma, 2=enable notch", CONFIG_TYPE_FLOAT, &config.torque_sensor.filter, APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER}, NULL},
 	{"tqmaxnm", "[Nm] Maximum torque in Nm corresponding to max sensor value", CONFIG_TYPE_FLOAT, &config.torque_sensor.nm_max, APP_CUSTOM_CONF_TORQUE_NM_MAX_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_NM_MAX}, NULL},
@@ -554,6 +557,10 @@ void app_custom_configure(app_configuration *conf) {
 
 	// if wheel spins at max rpm, assume its beyond limits
 	min_wheel_period = 1.0 / ((config.wheel_sensor.rpm_max / 60.0) * config.wheel_sensor.magnets);
+
+	for (uint8_t i=0; i < config.pedal_sensor.magnets*2; i++) {
+		sin_lut[i] = sinf((float)i * 2.0f * M_PI / (config.pedal_sensor.magnets*2));
+	}
 
 	enable_interrupt();
 }
@@ -1221,6 +1228,7 @@ static void update_pedal_torque(void)
 		static float torque_inactivity_time = 0;
 		static float torque_ma_filter_memory[PEDAL_SENSOR_MAX_MAGNETS * 2 + 2] = {0};
 		static float torque_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
+		static float torque_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
 		float torque2 = ADC_VOLTS(ADC_IND_EXT2);
 
 		// Map the read voltage to 0-1 range based on config values
@@ -1245,8 +1253,11 @@ static void update_pedal_torque(void)
 		apply_ramping(&torque2_ramp, &last_time2, pedal_torque2_filtered, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
 		pedal_torque2_filtered = torque2_ramp;
 
-		if (config.torque_sensor.filter > 0.5f) {	
-			pedal_torque2_filtered = cycle_filter(pedal_torque2_filtered, torque_ma_filter_memory, config.pedal_sensor.magnets * 2, config.torque_sensor.timeout);
+		if (config.torque_sensor.filter == 1.0f) {	
+			pedal_torque2_filtered = ma_filter(pedal_torque2_filtered, torque_ma_filter_memory, config.torque_sensor.timeout);
+		}
+		if (config.torque_sensor.filter == 2.0f) {	
+			pedal_torque2_filtered = notch_filter(pedal_torque2_filtered, torque_notch_filter_memory, config.torque_sensor.timeout);
 		}
 
 		if (torque2 * config.torque_sensor.nm_max < config.torque_sensor.threshold) {
@@ -1484,6 +1495,7 @@ static void update_wheel_speed(void)
 	static float wheel_accel_filtered = 0;
 	static float wheel_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE];
 	static float wheel_accel_ma_filter_memory[PEDAL_SENSOR_MAX_MAGNETS * 2 + 2] = {0};
+	static float wheel_accel_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
 	static float inactivity_time = 0;
 	static uint8_t HALL3_level_old =  1;
 	static float old_timestamp = 0;
@@ -1677,8 +1689,11 @@ static void update_wheel_speed(void)
 	bike_accel = wheel_accel_filtered * wheel_circumference / 60.0;
 	utils_truncate_number((float*)&bike_accel, -5.0f, 5.0f);
 
-	if (config.wheel_sensor.filter > 0.5f) {	
-		bike_accel = cycle_filter(bike_accel, wheel_accel_ma_filter_memory, config.pedal_sensor.magnets * 2, config.acceleration_timeout);
+	if (config.wheel_sensor.filter == 1.0f) {	
+		bike_accel = ma_filter(bike_accel, wheel_accel_ma_filter_memory, config.acceleration_timeout);
+	}
+	if (config.wheel_sensor.filter == 2.0f) {	
+		bike_accel = notch_filter(bike_accel, wheel_accel_notch_filter_memory, config.acceleration_timeout);
 	}
 
 	// calculate relative wheel speed
@@ -2096,8 +2111,9 @@ static void update_motor_control()
 	}
 }
 
-static float cycle_filter(float new_value, float *memory, uint8_t filter_size, float timeout) {
+static float ma_filter(float new_value, float *memory, float timeout) {
 	//Filtering cyclic variations - caused by pedal physics - by averaging one cycle, which equals to half turn
+	uint8_t filter_size = config.pedal_sensor.magnets * 2;
 	uint8_t index = (int)memory[filter_size];
 	float inactivity_time = memory[filter_size + 1];
 	float avg;
@@ -2142,6 +2158,67 @@ static float cycle_filter(float new_value, float *memory, uint8_t filter_size, f
 	memory[filter_size] = index;
 	memory[filter_size + 1] = inactivity_time;
 	return avg;
+}
+
+static float notch_filter(float new_value, float *memory, float timeout) {
+	//Filtering cyclic variations - caused by pedal physics - by removing estimated periodic component
+	float A = memory[0];
+	float B = memory[1];
+	int   index = (int)memory[2];
+	float inactivity_time = memory[3];
+	float last_filtered = memory[4];
+	uint8_t filter_size = config.pedal_sensor.magnets * 2;
+	const float mu = 0.1;
+	float filtered = 0;
+
+	if (pedal_current_direction == 1) {
+		float x1 = sin_lut[index % filter_size];
+    	float x2 = sin_lut[(index + filter_size / 4) % filter_size];
+
+		// Estimate next sample
+		float y_estimated = (A * x1) + (B * x2);
+
+		// Calculate error.
+		// This is also the filtered value (periodic component removed from raw value)
+		filtered = new_value - y_estimated;
+
+		// Update estimator params
+		A = A + (mu * filtered * x1);
+    	B = B + (mu * filtered * x2);
+
+		// Advance phase
+		index++;
+		if (index >= filter_size) {
+			index = 0;
+		}
+		inactivity_time = 0;
+	} else if (pedal_current_direction == -1) {
+		// reset samples when changing direction to avoid applying average of one direction to the other direction
+		A = 0;
+		B = 0;
+		index = 0;
+		inactivity_time = 0;
+		filtered = 0;
+	} else {
+		inactivity_time += 1.0 / config.update_rate_hz;
+		if (inactivity_time > timeout) {
+			inactivity_time = timeout;
+			A = 0;
+			B = 0;
+			index = 0;
+			filtered = 0;
+		} else {
+			// no movement, keep previous filtered value
+			filtered = last_filtered;
+		}
+	}
+
+	memory[0] = A;
+	memory[1] = B;
+	memory[2] = index;
+	memory[3] = inactivity_time;
+	memory[4] = filtered;
+	return filtered;
 }
 
 static float biquad_filter(float new_value, float *memory, float cutoff_freq, bool derivator)
