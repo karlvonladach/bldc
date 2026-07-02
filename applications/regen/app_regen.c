@@ -1242,7 +1242,7 @@ static void update_pedal_torque(void)
 
 		torque2_filtered = torque2;
 		if (config.torque_sensor.filter == 0.0f || config.torque_sensor.filter == 1.0f || config.torque_sensor.filter == 2.0f) {	
-			float cutoff_freq = utils_map(1.0/bike_speed, 0.5, 2.0, 1.0, 5.0);
+			float cutoff_freq = utils_map(1.0f / MAX(bike_speed, 0.1f), 0.5, 2.0, 1.0, 5.0);
 			utils_truncate_number(&cutoff_freq, 1.0, 5.0);
 			torque2_filtered = biquad_filter(torque2, torque_bq_filter_memory, cutoff_freq, false);
 		}
@@ -1678,7 +1678,7 @@ static void update_wheel_speed(void)
 	}
 
 	// apply 2nd order low pass filter on wheel speed with adaptive cutoff frequency
-	float cutoff_freq = utils_map(1.0/bike_speed, 0.5, 2.0, 1.0, 5.0);
+	float cutoff_freq = utils_map(1.0 / MAX(bike_speed, 0.1f), 0.5, 2.0, 1.0, 5.0);
 	utils_truncate_number(&cutoff_freq, 1.0, 5.0);
 	wheel_speed_filtered = biquad_filter(wheel_speed_raw, wheel_speed_bq_filter_memory, cutoff_freq, false);
 
