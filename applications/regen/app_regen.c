@@ -1315,6 +1315,7 @@ static void update_pedal_speed_and_position(float set_brake_position)
 						    2,  1, -1,  0};
 	int8_t direction;
 	int32_t max_backward_counter;
+	int32_t brake_start_backward_counter;
 	uint8_t new_state;
 	float avg_period;
 	static uint8_t old_state = 0;
@@ -1342,15 +1343,21 @@ static void update_pedal_speed_and_position(float set_brake_position)
 	pedal_current_direction = direction;
 
     max_backward_counter = ceil((float)(config.back_pedal_brake.end_pos) / (360.0f / (float)(4.0 * config.pedal_sensor.magnets)));
+	brake_start_backward_counter = ceil((float)(config.back_pedal_brake.start_pos) / (360.0f / (float)(4.0 * config.pedal_sensor.magnets)));
 
 	// count the number of consecutive forward/backward phase changes
-	// - backward counter is limited based on the back padal brake config
+	// - backward counter is limited based on the back pedal brake config
 	// - to filter glitches, there should be always a 0 direction between 
 	//      two state changes, meaning that we stay at least for 2 samples 
 	//      in the same state
 	if (direction == 1) {
 		if (backward_direction_counter > 0){
+			if (backward_direction_counter < brake_start_backward_counter) {
+				backward_direction_counter = 0;
+				forward_direction_counter++;
+			} else {
 			backward_direction_counter--;
+			}
 		} else {
 			forward_direction_counter++;
 		}
@@ -1377,14 +1384,11 @@ static void update_pedal_speed_and_position(float set_brake_position)
     plot_points(PLOT_HALL2, timestamp, HALL2_level * 20);
 
 	// calculate forward speed (for assistance)
-	// sensors are poorly placed, so use only one rising edge as reference.
-	if( (new_state == 3) &&  (direction == 1)) {
+	if(direction == 1) {
 		// calculate the time of one full rotation from the time difference
-		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets;
+		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets * 4;
 
-		// quadrature encoder has 4 states, so we should observe 4 phase changes 
-		// in the same direction before we reach a specific state again. 
-		if (forward_direction_counter == 4) {
+		if (forward_direction_counter > 0) {
 			if (pedal_speed > config.pedal_sensor.avg_above_rpm) {
 				// average last 2 periods due to differences between the upward and downward magnet orientation
 				avg_period = 0.5 * (period + old_period);
@@ -1419,7 +1423,7 @@ static void update_pedal_speed_and_position(float set_brake_position)
 	else {
 		// if there was no measurement, check if the silent period is
 		// longer than the latest period and decrease estimated speed accordingly
-		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets;
+		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets * 4;
 		if (pedal_speed > config.pedal_sensor.avg_above_rpm) {
 			// average last 2 periods due to differences between the upward and downward magnet orientation
 			avg_period = 0.5 * (period + old_period);
