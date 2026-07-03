@@ -48,7 +48,7 @@
 #define APP_CUSTOM_CONF_RESISTANCE_RATIO_MAX       5.0f  // maximum ratio of extra resistance to normal resistance, used to limit torque gain
 
 #define APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE     50u   // Hz - velocity sampling rate
-#define APP_CUSTOM_CONF_VELOCITY_FILTER            1.0f  // Range 0.0 to 1.0, where 1.0 gives the unfiltered velocity value
+#define APP_CUSTOM_CONF_EXTRA_RESISTANCE_FILTER    0.002f// Range 0.0 to 1.0, where 1.0 gives the unfiltered extra resistance value
 #define APP_CUSTOM_CONF_ACCELERATION_FILTER        1.0f  // Range 0.0 to 1.0, where 1.0 gives the unfiltered acceleration value
 #define APP_CUSTOM_CONF_ACCELERATION_TIMEOUT       0.2f  // seconds - time of pedal inactivity before zeroing acceleration
 
@@ -213,7 +213,7 @@
 #define APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_ABS_GAIN_ADDR      75
 #define APP_CUSTOM_CONF_CTRL_TORQUE_ACC_GAIN_ADDR            76
 #define APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN_ADDR            77
-#define APP_CUSTOM_CONF_VELOCITY_FILTER_ADDR                 78
+#define APP_CUSTOM_CONF_EXTRA_RESISTANCE_FILTER_ADDR         78
 #define APP_CUSTOM_CONF_ACCELERATION_FILTER_ADDR             79
 #define APP_CUSTOM_CONF_TORQUE_THRESHOLD_ADDR                80
 #define APP_CUSTOM_CONF_TORQUE_TIMEOUT_ADDR                  81

@@ -247,8 +247,8 @@ static const config_param_t config_table[] = {
 
     {"velsrate", "[Hz] Velocity sampling rate", CONFIG_TYPE_UINT32, &config.velocity_sampling_rate, APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE_ADDR,
 	 {.uint32_default = APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE}, NULL},
-	{"velfilt", "[0.0-1.0] Velocity filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.velocity_filter, APP_CUSTOM_CONF_VELOCITY_FILTER_ADDR,
-	 {.float_default = APP_CUSTOM_CONF_VELOCITY_FILTER}, NULL},
+	{"xresfilt", "[0.0-1.0] Extra resistance filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.extra_resistance_filter, APP_CUSTOM_CONF_EXTRA_RESISTANCE_FILTER_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_EXTRA_RESISTANCE_FILTER}, NULL},
 	{"accfilt", "[0.0-1.0] Acceleration filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.acceleration_filter, APP_CUSTOM_CONF_ACCELERATION_FILTER_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_ACCELERATION_FILTER}, NULL},
 	{"acctout", "[sec] Time of pedal inactivity before zeroing acceleration", CONFIG_TYPE_FLOAT, &config.acceleration_timeout, APP_CUSTOM_CONF_ACCELERATION_TIMEOUT_ADDR,
@@ -1985,8 +1985,7 @@ static void update_assistance_level()
 {
 	float motor_force, human_force;
 	float extra_resistance_raw;
-	float extra_resistance_filtered;
-	static float extra_resistance_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
+	static float extra_resistance_filtered;
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 
 	if (config.ctrl.ctrl_type != CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO) {
@@ -2005,7 +2004,7 @@ static void update_assistance_level()
 						config.ctrl.resistance_coeff_2 * bike_speed * bike_speed;
 	extra_resistance_raw = motor_force + human_force - bike_accel * config.ctrl.effective_mass - normal_resistance;
 
-	extra_resistance_filtered = biquad_filter(extra_resistance_raw, extra_resistance_bq_filter_memory, 0.5f, false);
+	UTILS_LP_FAST(extra_resistance_filtered, extra_resistance_raw, config.extra_resistance_filter);
 
 	extra_resistance = extra_resistance_filtered;
 
@@ -2238,6 +2237,7 @@ static float biquad_filter(float new_value, float *memory, float cutoff_freq, bo
 			a1 = BIQUAD_DERIVATOR_FILTER_1HZ_A1;
 			a2 = BIQUAD_DERIVATOR_FILTER_1HZ_A2;
 		} else {
+			/* experimental */
 			b0 = expf(utils_map(logf(cutoff_freq), logf(1), logf(10), logf(BIQUAD_DERIVATOR_FILTER_1HZ_B0), logf(BIQUAD_DERIVATOR_FILTER_10HZ_B0)));
 			b1 = 0.0f;
 			b2 = -b0;
@@ -2252,6 +2252,7 @@ static float biquad_filter(float new_value, float *memory, float cutoff_freq, bo
 			a1 = BIQUAD_FILTER_1HZ_A1;
 			a2 = BIQUAD_FILTER_1HZ_A2;
 		} else {
+			/* experimental */
 			b0 = expf(utils_map(logf(cutoff_freq), logf(1), logf(10), logf(BIQUAD_FILTER_1HZ_B0), logf(BIQUAD_FILTER_10HZ_B0)));
 			b1 = expf(utils_map(logf(cutoff_freq), logf(1), logf(10), logf(BIQUAD_FILTER_1HZ_B1), logf(BIQUAD_FILTER_10HZ_B1)));
 			b2 = b0;
