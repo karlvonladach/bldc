@@ -78,7 +78,7 @@
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER         0.0f  // [0/1] 0: disable MA filter, 1: enable MA filter
 #define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM        35.0f  // WRPM - average last two samples above this value
 #define APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM   0.0f  // WRPM - if > 0, use progressive averaging, adding one more sample to the average for every multiple of this RPM
-#define APP_CUSTOM_CONF_WHEEL_RPM_MIN               5.0f  // WRPM - set 0 WRPM below this value
+#define APP_CUSTOM_CONF_WHEEL_RPM_MIN               2.5f  // WRPM - set 0 WRPM below this value
 #define APP_CUSTOM_CONF_WHEEL_RPM_MAX            1000.0f  // WRPM - raise error above this value
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS         0.3f  // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG         0.3f  // sec/fullscale (min to max)

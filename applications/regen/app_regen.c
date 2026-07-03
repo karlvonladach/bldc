@@ -1682,7 +1682,7 @@ static void update_wheel_speed(void)
 	wheel_accel_filtered = biquad_filter(wheel_speed_raw, wheel_accel_bq_filter_memory, 1.0f, true);
 	
 	wheel_speed = wheel_speed_filtered;
-	if (wheel_speed < 0) {
+	if (wheel_speed < config.wheel_sensor.rpm_min) {
 		wheel_speed = 0.0;
 	}
 
