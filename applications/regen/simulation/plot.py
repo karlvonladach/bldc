@@ -48,8 +48,55 @@ time2 = (time - time[0]) / 1000.0
 Kt = 0.62  # Nm/A
 wheel_radius = 0.319
 mass = 100.0
+motor_gear_eff = 0.90
+pedal_gear_eff = 0.95
 
-motor_power = (motor_rpm * motor_current * Kt * 2 * np.pi) / 60.0
+# cf = 1Hz
+BIQUAD_FILTER_B0 = 1.34910548
+BIQUAD_FILTER_B1 = 0.0
+BIQUAD_FILTER_B2 = -1.34910548
+BIQUAD_FILTER_A1 = -1.14298050
+BIQUAD_FILTER_A2 = 0.41280160
+
+# cf = 0.5Hz
+BTW_FILTER_05_B0 = 0.02008337
+BTW_FILTER_05_B1 = 0.04016673	
+BTW_FILTER_05_B2 = 0.02008337	
+BTW_FILTER_05_A1 = -1.56101808	
+BTW_FILTER_05_A2 = 0.64135154	
+
+# cf = 1Hz
+BTW_FILTER_1_B0 = 0.06745527
+BTW_FILTER_1_B1 = 0.13491055
+BTW_FILTER_1_B2 = 0.06745527
+BTW_FILTER_1_A1 = -1.14298050
+BTW_FILTER_1_A2 = 0.41280160
+
+def apply_biquad_filter(x, b0, b1, b2, a1, a2):
+	y = np.zeros_like(x, dtype=float)
+	x1 = 0.0
+	x2 = 0.0
+	y1 = 0.0
+	y2 = 0.0
+
+	for i, xn in enumerate(x):
+		yn = b0 * xn + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
+		y[i] = yn
+		x2, x1 = x1, xn
+		y2, y1 = y1, yn
+
+	return y
+
+def safe_divide(numerator, denominator, min_abs=1e-6):
+	numerator = np.asarray(numerator, dtype=float)
+	denominator = np.asarray(denominator, dtype=float)
+	out = np.full_like(numerator, np.nan, dtype=float)
+	valid = np.isfinite(numerator) & np.isfinite(denominator) & (np.abs(denominator) > min_abs)
+	np.divide(numerator, denominator, out=out, where=valid)
+	return out
+
+motor_power = (motor_rpm * motor_current * Kt * 2 * np.pi) / 60.0 * motor_gear_eff
+motor_force = motor_current * Kt * motor_gear_eff / wheel_radius
 wheel_speed = (wheel_rpm * 2 * np.pi * wheel_radius) / 60.0
 
 valid = (
@@ -59,6 +106,9 @@ valid = (
 	& np.isfinite(pedal_torque_raw)
 	& np.isfinite(motor_rpm)
 	& np.isfinite(motor_current)
+	& np.isfinite(wheel_rpm)
+	& np.isfinite(normal_res)
+	& np.isfinite(wheel_speed)
     & np.isfinite(speed)
     & np.isfinite(altitude)
 	& np.isfinite(extra_res)
@@ -72,6 +122,10 @@ pedal_torque = pedal_torque[valid]
 pedal_torque_raw = pedal_torque_raw[valid]
 motor_rpm = motor_rpm[valid]
 motor_current = motor_current[valid]
+wheel_rpm = wheel_rpm[valid]
+normal_res = normal_res[valid]
+motor_force = motor_force[valid]
+wheel_speed = wheel_speed[valid]
 speed = speed[valid]
 altitude = altitude[valid]
 extra_res = extra_res[valid]
@@ -79,24 +133,56 @@ acc = acc[valid]
 human_power = human_power[valid]
 astgain = astgain[valid]
 
+pedal_rpm_filtered = apply_biquad_filter(
+	pedal_rpm,
+	BTW_FILTER_1_B0,
+	BTW_FILTER_1_B1,
+	BTW_FILTER_1_B2,
+	BTW_FILTER_1_A1,
+	BTW_FILTER_1_A2,
+)
+
+human_power_calculated = pedal_torque * pedal_rpm_filtered * 2 * np.pi / 60.0 * pedal_gear_eff
+human_force = safe_divide(human_power, wheel_speed)
+human_force_calculated = safe_divide(human_power_calculated, wheel_speed)
+total_force = human_force + motor_force
+extra_res_calculated = total_force - acc * mass - normal_res
+
+extra_res_filtered = apply_biquad_filter(
+	extra_res_calculated,
+	BTW_FILTER_05_B0,
+	BTW_FILTER_05_B1,
+	BTW_FILTER_05_B2,
+	BTW_FILTER_05_A1,
+	BTW_FILTER_05_A2,
+)
+
 print(f"Data loaded: {len(time2)} valid samples.")
 
 # pedal rpm, wheel rpm, torque_filtered, motor current, human+motor power, acceleration, altitude, extra_res
 plt.figure(figsize=(10, 6))
 plt.plot(time2, pedal_rpm, label='Pedal RPM', linewidth=2, color='orange')
+plt.plot(time2, pedal_rpm_filtered, label='Pedal RPM (Biquad)', linewidth=2, color='orange', linestyle='dotted')
 plt.plot(time2, wheel_rpm, label='Wheel RPM', linewidth=2, color='blue')
-plt.plot(time2, np.gradient(wheel_speed, time2)*mass, label='Acc Calculated x Mass', linewidth=2, color='blue', linestyle='dashed')
+#plt.plot(time2, wheel_rpm_filtered, label='Wheel RPM (Biquad)', linewidth=2, color='navy', linestyle='dotted')
+#plt.plot(time2, np.gradient(wheel_speed, time2)*mass, label='Acc Calculated x Mass', linewidth=2, color='blue', linestyle='dashed')
+#plt.plot(time2, wheel_accel_filtered*mass, label='Acc Filtered x Mass', linewidth=2, color='blue', linestyle='dashdot')
 plt.plot(time2, pedal_torque, label='Pedal Torque', linewidth=2, color='green')
 plt.plot(time2, pedal_torque_raw, label='Pedal Torque Raw', linewidth=2, color='green', linestyle='dashed')
 plt.plot(time2, motor_current, label='Motor Current', linewidth=2, color='red')
-#plt.plot(time2, human_power, label='Human Power', linewidth=2, color='purple')
-#plt.plot(time2, motor_power, label='Motor Power', linewidth=2, color='brown')
-plt.plot(time2, (human_power+motor_power)/wheel_speed, label='Total Force', linewidth=2, color='magenta')
+plt.plot(time2, human_force, label='Human Force', linewidth=2, color='purple')
+plt.plot(time2, human_force_calculated, label='Human Force (calculated)', linewidth=2, color='purple', linestyle='dotted')
+plt.plot(time2, motor_force, label='Motor Force', linewidth=2, color='brown')
+#plt.plot(time2, motor_power/wheel_speed, label='Motor Force 2', linewidth=2, color='brown', linestyle='dashed')
+plt.plot(time2, total_force, label='Total Force', linewidth=2, color='magenta')
 plt.plot(time2, acc*mass, label='Acc x Mass', linewidth=2, color='cyan')
 plt.plot(time2, acc*mass+normal_res, label='Acc x Mass + R_norm', linewidth=2, color='cyan', linestyle='dashed')
 plt.plot(time2, (altitude-140)*10, label='Altitude', linewidth=2, color='black')
-plt.plot(time2, extra_res, label='Extra Res', linewidth=2, color='pink')
-#plt.plot(time2, astgain, label='AST Gain', linewidth=2, color='yellow')
+plt.plot(time2, -extra_res, label='-Extra Res', linewidth=2, color='pink')
+plt.plot(time2, -(extra_res_calculated), label='-Extra Res (calculated)', linewidth=2, color='pink', linestyle='dotted')
+plt.plot(time2, -extra_res_filtered, label='-Extra Res (Biquad)', linewidth=2, color='pink', linestyle='dashed')
+plt.plot(time2, astgain*100, label='AST Gain', linewidth=2, color='grey')
+
 
 plt.xlabel('Time (s)')
 plt.ylabel('Values')
