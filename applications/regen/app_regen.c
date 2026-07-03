@@ -1318,7 +1318,8 @@ static void update_pedal_speed_and_position(float set_brake_position)
 	float avg_period;
 	static uint8_t old_state = 0;
 	static float old_timestamp = 0;
-	static float old_period = 0;
+	static float old_periods[4] = {0};
+	static uint8_t index = 0;
 	static float inactivity_time = 0;
 	static float period_filtered = 0;
 	static int32_t forward_direction_counter = 0;
@@ -1388,8 +1389,10 @@ static void update_pedal_speed_and_position(float set_brake_position)
 
 		if (forward_direction_counter > 0) {
 			if (pedal_speed > config.pedal_sensor.avg_above_rpm) {
-				// average last 2 periods due to differences between the upward and downward magnet orientation
-				avg_period = 0.5 * (period + old_period);
+				// average last 4 due to poor alignment of sensors
+				old_periods[index] = period;
+				index = (index + 1) % 4;
+				avg_period = 0.25 * (old_periods[0] + old_periods[1] + old_periods[2] + old_periods[3]);
 			} else {
 				avg_period = period;
 			}
@@ -1409,7 +1412,6 @@ static void update_pedal_speed_and_position(float set_brake_position)
 			// calculate speed from rotation time
 			pedal_speed = 60.0 / period_filtered;
 
-			old_period = period;
 			backward_direction_counter = 0;
 			pedal_brake_position = 0.0;
 		}
@@ -1423,8 +1425,9 @@ static void update_pedal_speed_and_position(float set_brake_position)
 		// longer than the latest period and decrease estimated speed accordingly
 		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets * 4;
 		if (pedal_speed > config.pedal_sensor.avg_above_rpm) {
-			// average last 2 periods due to differences between the upward and downward magnet orientation
-			avg_period = 0.5 * (period + old_period);
+			// average last 4 due to poor alignment of sensors
+			old_periods[index] = period;
+			avg_period = 0.25 * (old_periods[0] + old_periods[1] + old_periods[2] + old_periods[3]);
 		} else {
 			avg_period = period;
 		}
@@ -1440,6 +1443,10 @@ static void update_pedal_speed_and_position(float set_brake_position)
 		//if no pedal activity for a given, long enough period, set RPM as zero
 		if(inactivity_time > max_pedal_period) {
 			pedal_speed = 0.0;
+			old_periods[0] = 0.0;
+			old_periods[1] = 0.0;
+			old_periods[2] = 0.0;
+			old_periods[3] = 0.0;
 		}
 	}
 
@@ -1449,6 +1456,10 @@ static void update_pedal_speed_and_position(float set_brake_position)
 		pedal_brake_position = backward_direction_counter * (360.0f / (float)(4.0 * config.pedal_sensor.magnets));
 
 		pedal_speed = 0.0;
+		old_periods[0] = 0.0;
+		old_periods[1] = 0.0;
+		old_periods[2] = 0.0;
+		old_periods[3] = 0.0;
 
 		if (pedal_brake_position < config.back_pedal_brake.start_pos) {
 			brake_inactivity_time += 1.0 / (float)config.update_rate_hz;
