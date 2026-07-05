@@ -2147,7 +2147,7 @@ static float ma_filter(float new_value, float *memory, float timeout) {
 		for (uint8_t i = 0; i < filter_size; i++) {
 			memory[i] = 0;
 		}
-		avg = 0;
+		avg = new_value;
 		inactivity_time = 0;
 	} else {
 		inactivity_time += 1.0 / config.update_rate_hz;
@@ -2156,7 +2156,7 @@ static float ma_filter(float new_value, float *memory, float timeout) {
 			for (uint8_t i = 0; i < filter_size; i++) {
 				memory[i] = 0;
 			}
-			avg = 0;
+			avg = new_value;
 		} else {
 			// no movement, keep previous filtered value
 			avg = 0;
@@ -2210,7 +2210,7 @@ static float notch_filter(float new_value, float *memory, float timeout) {
 		B = 0;
 		index = 0;
 		inactivity_time = 0;
-		filtered = 0;
+		filtered = new_value;
 	} else {
 		inactivity_time += 1.0 / config.update_rate_hz;
 		if (inactivity_time > timeout) {
@@ -2218,7 +2218,7 @@ static float notch_filter(float new_value, float *memory, float timeout) {
 			A = 0;
 			B = 0;
 			index = 0;
-			filtered = 0;
+			filtered = new_value;
 		} else {
 			// no movement, keep previous filtered value
 			filtered = last_filtered;
