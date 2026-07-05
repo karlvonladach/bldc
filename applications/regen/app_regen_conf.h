@@ -61,8 +61,8 @@
 #define PEDAL_SENSOR_MAX_MAGNETS                  24u    // maximum number of magnets supported by the code, used for array sizing
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER        0.8   // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM        0.0f  // CRPM - average last two samples above this value
-#define APP_CUSTOM_CONF_PEDAL_RPM_MIN             10.0f  // CRPM - set 0 CRPM below this value
-#define APP_CUSTOM_CONF_PEDAL_RPM_START           15.0f  // CRMP - start of boost
+#define APP_CUSTOM_CONF_PEDAL_RPM_MIN              8.0f  // CRPM - set 0 CRPM below this value
+#define APP_CUSTOM_CONF_PEDAL_RPM_START            8.0f  // CRMP - start of boost
 #define APP_CUSTOM_CONF_PEDAL_RPM_END            120.0f  // CRPM - end of boost
 #define APP_CUSTOM_CONF_PEDAL_RPM_MAX            200.0f  // CRPM - raise error above this value
 #define APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS        0.1f  // sec/fullscale (min to max)
@@ -76,7 +76,7 @@
 #define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM     100.0f  // WRPM at which to switch from poll to interrupt mode
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS       12u    // including "virtual magnets"
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER         0.0f  // [0/1] 0: disable MA filter, 1: enable MA filter
-#define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM        35.0f  // WRPM - average last two samples above this value
+#define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM       400.0f  // WRPM - average last two samples above this value
 #define APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM   0.0f  // WRPM - if > 0, use progressive averaging, adding one more sample to the average for every multiple of this RPM
 #define APP_CUSTOM_CONF_WHEEL_RPM_MIN               2.5f  // WRPM - set 0 WRPM below this value
 #define APP_CUSTOM_CONF_WHEEL_RPM_MAX            1000.0f  // WRPM - raise error above this value
