@@ -261,7 +261,7 @@ static const config_param_t config_table[] = {
      {.float_default = APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM}, NULL},
     {"whmagn", "[count] Number of wheel sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.wheel_sensor.magnets, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR, 
      {.uint32_default = APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS}, NULL},
-    {"whfilter", "[0.0-1.0] Pedal sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.filter, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR, 
+    {"whfilter", "biquad filter cutoff frequency in Hz (0.5, 1.0, 2.0, 4.0)", CONFIG_TYPE_FLOAT, &config.wheel_sensor.filter, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER}, NULL},
     {"whavgrpm", "[rpm] WRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.wheel_sensor.avg_above_rpm, APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM}, NULL},
@@ -549,7 +549,7 @@ void app_custom_pin_isr(void){
 
 void app_custom_get_rtdata(float* data) {
 	data[0] = pedal_speed;
-	data[1] = wheel_speed;
+	data[1] = wheel_speed_filtered;
 	data[2] = motor_speed;
 	data[3] = pedal_brake_position;
 	data[4] = pedal_torque * 100;
@@ -558,7 +558,7 @@ void app_custom_get_rtdata(float* data) {
 	data[7] = (float)motor_current_rel * 100;
 	data[8] = (float)torque_gain;
 	data[9] = extra_resistance;
-	data[10] = bike_accel;
+	data[10] = bike_accel_filtered;
 	data[11] = human_power_w;
 	data[12] = pedal_torque_filtered * 100;
 }
@@ -1227,7 +1227,7 @@ static void update_pedal_torque(void)
 		pedal_torque_rel = torque2_ramp;
 
 		torque2_filtered = notch_filter(pedal_torque, torque_notch_filter_memory, config.torque_sensor.timeout);
-		torque2_filtered = biquad_filter(torque2_filtered, torque_biquad2_filter_memory, 4.0f, false);
+		torque2_filtered = biquad_filter(torque2_filtered, torque_biquad2_filter_memory, config.wheel_sensor.filter, false);
 
 		if (torque2 * config.torque_sensor.nm_max < config.torque_sensor.threshold) {
 			torque_inactivity_time += 1.0 / (float)config.update_rate_hz;
@@ -1679,16 +1679,16 @@ static void update_wheel_speed(void)
 	utils_truncate_number((float*)&bike_accel, -5.0f, 5.0f);
 
 	wheel_speed_filtered = notch_filter(wheel_speed, wheel_speed_notch_filter_memory, config.acceleration_timeout);
-	wheel_speed_filtered = biquad_filter(wheel_speed_filtered, wheel_speed_bq2_filter_memory, 4.0f, false);
+	wheel_speed_filtered = biquad_filter(wheel_speed_filtered, wheel_speed_bq2_filter_memory, config.wheel_sensor.filter, false);
 
 	wheel_accel_filtered = notch_filter(wheel_accel, wheel_accel_notch_filter_memory, config.acceleration_timeout);
-	wheel_accel_filtered = biquad_filter(wheel_accel_filtered, wheel_accel_bq2_filter_memory, 4.0f, false);
+	wheel_accel_filtered = biquad_filter(wheel_accel_filtered, wheel_accel_bq2_filter_memory, config.wheel_sensor.filter, false);
 
 	bike_speed_filtered = notch_filter(bike_speed, bike_speed_notch_filter_memory, config.acceleration_timeout);
-	bike_speed_filtered = biquad_filter(bike_speed_filtered, bike_speed_bq2_filter_memory, 4.0f, false);
+	bike_speed_filtered = biquad_filter(bike_speed_filtered, bike_speed_bq2_filter_memory, config.wheel_sensor.filter, false);
 
 	bike_accel_filtered = notch_filter(bike_accel, bike_accel_notch_filter_memory, config.acceleration_timeout);
-	bike_accel_filtered = biquad_filter(bike_accel_filtered, bike_accel_bq2_filter_memory, 4.0f, false);
+	bike_accel_filtered = biquad_filter(bike_accel_filtered, bike_accel_bq2_filter_memory, config.wheel_sensor.filter, false);
 
 	// calculate relative wheel speed
 	wheel_speed_rel = utils_map(wheel_speed, config.wheel_sensor.rpm_min, config.wheel_sensor.rpm_max, 0.0, 1.0);
