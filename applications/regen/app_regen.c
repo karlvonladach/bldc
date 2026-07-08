@@ -88,6 +88,7 @@ static void update_wheel_speed(void);
 static void update_motor_speed(void);
 static void update_clutch_state(void);
 static void update_assistance_level(void);
+static void update_extra_resistance_ekf(float F_motor);
 static void update_motor_control(void);
 
 static float notch_filter(float new_value, float *memory, float timeout);
@@ -154,6 +155,17 @@ static volatile float extra_resistance = 0; // Newton
 static volatile float extra_resistance_rel = 0;
 static volatile float torque_gain = 0;
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
+
+// EKF state for extra resistance estimation (row-major 4x4 covariance)
+// State vector: x = [bike_speed (m/s), extra_resistance (N), pedal_torque (Nm), pedal_omega (rad/s)]
+static float ekf_x[4];
+static float ekf_P[16];
+static volatile float pedal_torque_estimated = 0.0f;  // [Nm]    EKF filtered pedal torque
+static volatile float pedal_speed_estimated  = 0.0f;  // [rad/s] EKF filtered pedal angular speed
+static volatile float bike_speed_estimated   = 0.0f;  // [m/s]   EKF filtered bike speed
+static volatile float extra_resistance_ekf   = 0.0f;  // [N]     EKF estimated extra resistance
+static volatile float wheel_speed_estimated  = 0.0f;  // [m/s]   derived from EKF filtered bike speed
+static volatile float bike_accel_estimated   = 0.0f;  // [m/s²]  derived from EKF filtered bike speed
 static volatile uint8_t HALL1_level = 0;
 static volatile uint8_t HALL2_level = 0;
 static volatile uint8_t HALL3_level = 0;
@@ -538,6 +550,17 @@ void app_custom_configure(app_configuration *conf) {
 		sin_lut[i] = sinf((float)i * 2.0f * M_PI / (config.pedal_sensor.magnets*2));
 	}
 
+	// Initialize EKF state and covariance
+	ekf_x[0] = 0.5f;   // bike speed [m/s]
+	ekf_x[1] = 0.0f;   // extra resistance [N]
+	ekf_x[2] = 0.0f;   // pedal torque [Nm]
+	ekf_x[3] = 0.0f;   // pedal angular speed [rad/s]
+	for (int i = 0; i < 16; i++) ekf_P[i] = 0.0f;
+	ekf_P[0*4+0] =   1.0f;
+	ekf_P[1*4+1] = 100.0f;
+	ekf_P[2*4+2] =  50.0f;
+	ekf_P[3*4+3] =   5.0f;
+
 	enable_interrupt();
 }
 
@@ -548,17 +571,17 @@ void app_custom_pin_isr(void){
 }
 
 void app_custom_get_rtdata(float* data) {
-	data[0] = pedal_speed;
-	data[1] = wheel_speed_filtered;
+	data[0] = pedal_speed_estimated;
+	data[1] = wheel_speed_estimated;
 	data[2] = motor_speed;
 	data[3] = pedal_brake_position;
-	data[4] = pedal_torque * 100;
+	data[4] = pedal_torque_estimated * 100;
 	data[5] = (float)clutch_state;
 	data[6] = normal_resistance;
 	data[7] = (float)motor_current_rel * 100;
 	data[8] = (float)torque_gain;
-	data[9] = extra_resistance;
-	data[10] = bike_accel_filtered;
+	data[9] = extra_resistance_ekf;
+	data[10] = bike_accel_estimated;
 	data[11] = human_power_w;
 	data[12] = pedal_torque_filtered * 100;
 }
@@ -612,12 +635,12 @@ static THD_FUNCTION(my_thread, arg) {
 
 		//plot_points(PLOT_TORQUE, timestamp, pedal_torque*100);
 		plot_points(PLOT_TORQUE, timestamp, pedal_torque_filtered*100);
-		plot_points(PLOT_TORQUE2, timestamp, pedal_torque*100);
+		plot_points(PLOT_TORQUE2, timestamp, pedal_torque_estimated*100);
 
 		//measure pedal forward speed or backward position
 		update_pedal_speed_and_position(-1);
 
-		plot_points(PLOT_PEDAL_RPM, timestamp, pedal_speed);
+		plot_points(PLOT_PEDAL_RPM, timestamp, pedal_speed_estimated);
         plot_points(PLOT_BRAKE_POS, timestamp, pedal_brake_position);
 
 		//get motor speed
@@ -628,9 +651,9 @@ static THD_FUNCTION(my_thread, arg) {
 		//measure wheel speed
 		update_wheel_speed();
 
-		plot_points(PLOT_WHEEL_RPM, timestamp, wheel_speed_filtered);
+		plot_points(PLOT_WHEEL_RPM, timestamp, wheel_speed_estimated);
 		plot_points(PLOT_WHEEL_PRED_RPM, timestamp, wheel_speed);
-		plot_points(PLOT_ACCEL, timestamp, bike_accel_filtered);
+		plot_points(PLOT_ACCEL, timestamp, bike_accel_estimated);
 
 		//take care of clutch state transitions
 		update_clutch_state();
@@ -1967,10 +1990,11 @@ static void update_clutch_state(void)
 static void update_assistance_level()
 {
 	float motor_current_measured;
-	float motor_force, human_force;
-	float extra_resistance_raw;
+	float motor_force;
+	//float human_force;
+	//float extra_resistance_raw;
 	static float motor_current_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
-	static float wheel_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
+	//static float wheel_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 
 	if (config.ctrl.ctrl_type != CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO) {
@@ -1984,19 +2008,23 @@ static void update_assistance_level()
 				conf->si_gear_ratio * config.ctrl.motor_gear_efficiency / 
 				(conf->si_wheel_diameter * 0.5f);
 
-	human_power_w = pedal_torque_rel * config.torque_sensor.nm_max * 
-					pedal_speed * (2.0f * M_PI / 60.0f) * 
-					config.ctrl.pedal_gear_efficiency;
+	// human_power_w = pedal_torque_rel * config.torque_sensor.nm_max * 
+	// 				pedal_speed * (2.0f * M_PI / 60.0f) * 
+	// 				config.ctrl.pedal_gear_efficiency;
 
-	human_force = human_power_w / MAX(bike_speed, 0.1f);
+	// human_force = human_power_w / MAX(bike_speed, 0.1f);
 
-	normal_resistance = config.ctrl.resistance_coeff_0 +
-						config.ctrl.resistance_coeff_1 * bike_speed +
-						config.ctrl.resistance_coeff_2 * bike_speed * bike_speed;
+	 normal_resistance = config.ctrl.resistance_coeff_0 +
+	 					config.ctrl.resistance_coeff_1 * bike_speed_estimated +
+	 					config.ctrl.resistance_coeff_2 * bike_speed_estimated * bike_speed_estimated;
 
-	extra_resistance_raw = motor_force + human_force - bike_accel * config.ctrl.effective_mass - normal_resistance;
+	// extra_resistance_raw = motor_force + human_force - bike_accel * config.ctrl.effective_mass - normal_resistance;
 
-	extra_resistance = biquad_filter(extra_resistance_raw, wheel_accel_bq_filter_memory, 0.5f, false);
+	// extra_resistance = biquad_filter(extra_resistance_raw, wheel_accel_bq_filter_memory, 0.5f, false);
+
+	// EKF-based extra resistance estimation (replaces the biquad-filtered estimate above)
+	update_extra_resistance_ekf(motor_force);
+	extra_resistance = extra_resistance_ekf;
 
 	extra_resistance_rel = extra_resistance / MAX(normal_resistance, 0.1f);
 
@@ -2005,11 +2033,188 @@ static void update_assistance_level()
 	torque_gain = config.ctrl.torque_base_gain +
 				(bike_speed < 1.0 ? 0 : config.ctrl.torque_extra_rel_gain) * extra_resistance_rel +
 				(bike_speed < 1.0 ? 0 : config.ctrl.torque_extra_abs_gain) / config.ctrl.effective_mass * extra_resistance +
-				config.ctrl.torque_acc_gain * bike_accel_filtered;
+				config.ctrl.torque_acc_gain * bike_accel_estimated;
 	
 	utils_truncate_number((float *)&torque_gain, config.ctrl.torque_min_gain, config.ctrl.torque_max_gain);
 
 	// TODO: add ramping around 0 and 25kmh
+}
+
+static void update_extra_resistance_ekf(float F_motor)
+{
+	// Extended Kalman Filter for extra resistance (terrain slope) estimation.
+	// State:        x = [bike_speed (m/s), extra_resistance (N), pedal_torque (Nm), pedal_omega (rad/s)]
+	// Dynamics:     m*dv/dt = F_human + F_motor - normal_resistance(v) - extra_resistance
+	//               where F_human = tau * omega / v
+	// Measurements: z = [bike_speed, pedal_torque_nm, pedal_omega_rads]
+
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+
+	const float dt = 1.0f / (float)config.update_rate_hz;
+	const float m  = MAX(config.ctrl.effective_mass, 1.0f);
+
+	// Convert noisy measurements to SI units
+	const float z_v     = bike_speed;
+	const float z_tau   = pedal_torque * config.torque_sensor.nm_max;
+	const float z_omega = pedal_speed * (2.0f * M_PI / 60.0f);
+
+	// Process noise (Q) diagonal - how much each state can change per step
+	const float Q_v     = 0.001f;
+	const float Q_res   = 5.0f;
+	const float Q_tau   = 5.0f;
+	const float Q_omega = 0.1f;
+
+	// Measurement noise (R) diagonal - sensor standard deviations squared
+	const float R_v     = 0.09f;   // sigma_v     = 0.3  m/s
+	const float R_tau   = 16.0f;  // sigma_tau   = 4.0  Nm
+	const float R_omega = 0.25f;  // sigma_omega = 0.5  rad/s
+
+	// --- PREDICTION STEP ---
+
+	float v_est     = ekf_x[0];
+	float res_est   = ekf_x[1];
+	float tau_est   = ekf_x[2];
+	float omega_est = ekf_x[3];
+
+	if (v_est < 0.1f) v_est = 0.1f;
+
+	const float normal_res_est = config.ctrl.resistance_coeff_0
+	                           + config.ctrl.resistance_coeff_1 * v_est
+	                           + config.ctrl.resistance_coeff_2 * v_est * v_est;
+
+	const bool omega_active = (omega_est > 0.1f);
+	const float F_human_est = omega_active ? (tau_est * omega_est / v_est) : 0.0f;
+
+	float v_next = v_est + (dt / m) * (F_human_est + F_motor - normal_res_est - res_est);
+	if (v_next < 0.0f) v_next = 0.0f;
+
+	const float x_pred[4] = {v_next, res_est, tau_est, omega_est};
+
+	// Jacobian F_jac[row*4+col] = d(x_next[row]) / d(x[col])
+	float F_jac[16] = {
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f
+	};
+	F_jac[0*4+0] = 1.0f + (dt / m) * (
+		(omega_active ? -(tau_est * omega_est) / (v_est * v_est) : 0.0f)
+		- config.ctrl.resistance_coeff_1
+		- 2.0f * config.ctrl.resistance_coeff_2 * v_est);
+	F_jac[0*4+1] = -(dt / m);
+	F_jac[0*4+2] = omega_active ? (dt / m) * (omega_est / v_est) : 0.0f;
+	F_jac[0*4+3] = omega_active ? (dt / m) * (tau_est  / v_est) : 0.0f;
+
+	// P_pred = F_jac * P * F_jac^T + Q
+	float FP[16] = {0.0f};
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 4; j++) {
+			for (int k = 0; k < 4; k++) {
+				FP[i*4+j] += F_jac[i*4+k] * ekf_P[k*4+j];
+			}
+		}
+	}
+	float P_pred[16] = {0.0f};
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 4; j++) {
+			for (int k = 0; k < 4; k++) {
+				P_pred[i*4+j] += FP[i*4+k] * F_jac[j*4+k];  // F_jac^T[k,j] = F_jac[j,k]
+			}
+		}
+	}
+	P_pred[0*4+0] += Q_v;
+	P_pred[1*4+1] += Q_res;
+	P_pred[2*4+2] += Q_tau;
+	P_pred[3*4+3] += Q_omega;
+
+	// --- CORRECTION STEP ---
+	// H = [[1,0,0,0],[0,0,1,0],[0,0,0,1]]
+	// mi[m] = state index for measurement m
+	const int mi[3] = {0, 2, 3};
+
+	// S = H*P_pred*H^T + R   (3x3)
+	float S[9];
+	for (int mr = 0; mr < 3; mr++) {
+		for (int nc = 0; nc < 3; nc++) {
+			S[mr*3+nc] = P_pred[mi[mr]*4 + mi[nc]];
+		}
+	}
+	S[0*3+0] += R_v;
+	S[1*3+1] += R_tau;
+	S[2*3+2] += R_omega;
+
+	// Invert S via Cramer's rule
+	const float det = S[0]*(S[4]*S[8] - S[5]*S[7])
+	                - S[1]*(S[3]*S[8] - S[5]*S[6])
+	                + S[2]*(S[3]*S[7] - S[4]*S[6]);
+	if (fabsf(det) < 1e-10f) return;  // singular matrix, skip update
+	const float inv_det = 1.0f / det;
+	float S_inv[9];
+	S_inv[0] =  (S[4]*S[8] - S[5]*S[7]) * inv_det;
+	S_inv[1] = -(S[1]*S[8] - S[2]*S[7]) * inv_det;
+	S_inv[2] =  (S[1]*S[5] - S[2]*S[4]) * inv_det;
+	S_inv[3] = -(S[3]*S[8] - S[5]*S[6]) * inv_det;
+	S_inv[4] =  (S[0]*S[8] - S[2]*S[6]) * inv_det;
+	S_inv[5] = -(S[0]*S[5] - S[2]*S[3]) * inv_det;
+	S_inv[6] =  (S[3]*S[7] - S[4]*S[6]) * inv_det;
+	S_inv[7] = -(S[0]*S[7] - S[1]*S[6]) * inv_det;
+	S_inv[8] =  (S[0]*S[4] - S[1]*S[3]) * inv_det;
+
+	// K = P_pred*H^T * S_inv   (4x3)
+	float K[12] = {0.0f};
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 3; j++) {
+			for (int k = 0; k < 3; k++) {
+				K[i*3+j] += P_pred[i*4 + mi[k]] * S_inv[k*3+j];
+			}
+		}
+	}
+
+	// Innovation: y = z - H*x_pred
+	const float y[3] = {
+		z_v     - x_pred[mi[0]],
+		z_tau   - x_pred[mi[1]],
+		z_omega - x_pred[mi[2]]
+	};
+
+	// State update: x = x_pred + K*y
+	float new_x[4];
+	for (int i = 0; i < 4; i++) {
+		new_x[i] = x_pred[i];
+		for (int j = 0; j < 3; j++) {
+			new_x[i] += K[i*3+j] * y[j];
+		}
+	}
+
+	// Covariance update: P = (I - K*H) * P_pred
+	float KH[16] = {0.0f};
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 3; j++) {
+			KH[i*4 + mi[j]] += K[i*3+j];
+		}
+	}
+	float new_P[16] = {0.0f};
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 4; j++) {
+			for (int k = 0; k < 4; k++) {
+				const float IKH_ik = (i == k ? 1.0f : 0.0f) - KH[i*4+k];
+				new_P[i*4+j] += IKH_ik * P_pred[k*4+j];
+			}
+		}
+	}
+
+	// Write back updated state and covariance
+	for (int i = 0; i < 4; i++) ekf_x[i] = new_x[i];
+	for (int i = 0; i < 16; i++) ekf_P[i] = new_P[i];
+
+	// Export estimated (filtered) signals
+	bike_speed_estimated   = ekf_x[0];
+	extra_resistance_ekf   = ekf_x[1];
+	pedal_torque_estimated = ekf_x[2];  // [Nm]
+	pedal_speed_estimated  = ekf_x[3];  // [rad/s]
+
+	wheel_speed_estimated  = bike_speed_estimated * 60.0f / (conf->si_wheel_diameter * M_PI);  // [rpm]
+	bike_accel_estimated   = (bike_speed_estimated - v_est) / dt;  // [m/s^2]
 }
 
 static void update_motor_control()
