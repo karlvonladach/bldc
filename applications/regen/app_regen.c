@@ -574,12 +574,12 @@ void app_custom_get_rtdata(float* data) {
 	data[0] = pedal_speed_estimated;
 	data[1] = wheel_speed_estimated;
 	data[2] = motor_speed;
-	data[3] = pedal_brake_position;
-	data[4] = pedal_torque_estimated * 100;
-	data[5] = (float)clutch_state;
-	data[6] = normal_resistance;
-	data[7] = (float)motor_current_rel * 100;
-	data[8] = (float)torque_gain;
+	data[3] = pedal_speed;
+	data[4] = pedal_torque * 100;
+	data[5] = wheel_speed;
+	data[6] = pedal_torque_estimated * 100;
+	data[7] = motor_current_rel * 100;
+	data[8] = torque_gain;
 	data[9] = extra_resistance_ekf;
 	data[10] = bike_accel_estimated;
 	data[11] = human_power_w;
@@ -2008,11 +2008,11 @@ static void update_assistance_level()
 				conf->si_gear_ratio * config.ctrl.motor_gear_efficiency / 
 				(conf->si_wheel_diameter * 0.5f);
 
-	// human_power_w = pedal_torque_rel * config.torque_sensor.nm_max * 
-	// 				pedal_speed * (2.0f * M_PI / 60.0f) * 
-	// 				config.ctrl.pedal_gear_efficiency;
+	human_power_w = pedal_torque_estimated * config.torque_sensor.nm_max * 
+					pedal_speed_estimated * (2.0f * M_PI / 60.0f) * 
+					config.ctrl.pedal_gear_efficiency;
 
-	// human_force = human_power_w / MAX(bike_speed, 0.1f);
+	//human_force = human_power_w / MAX(bike_speed_estimated, 0.1f);
 
 	 normal_resistance = config.ctrl.resistance_coeff_0 +
 	 					config.ctrl.resistance_coeff_1 * bike_speed_estimated +
@@ -2031,8 +2031,8 @@ static void update_assistance_level()
 	utils_truncate_number((float *)&extra_resistance_rel, -config.ctrl.resistance_ratio_max, config.ctrl.resistance_ratio_max);
 	
 	torque_gain = config.ctrl.torque_base_gain +
-				(bike_speed < 1.0 ? 0 : config.ctrl.torque_extra_rel_gain) * extra_resistance_rel +
-				(bike_speed < 1.0 ? 0 : config.ctrl.torque_extra_abs_gain) / config.ctrl.effective_mass * extra_resistance +
+				(bike_speed_estimated < 1.0 ? 0 : config.ctrl.torque_extra_rel_gain) * extra_resistance_rel +
+				(bike_speed_estimated < 1.0 ? 0 : config.ctrl.torque_extra_abs_gain) / config.ctrl.effective_mass * extra_resistance +
 				config.ctrl.torque_acc_gain * bike_accel_estimated;
 	
 	utils_truncate_number((float *)&torque_gain, config.ctrl.torque_min_gain, config.ctrl.torque_max_gain);
@@ -2059,15 +2059,15 @@ static void update_extra_resistance_ekf(float F_motor)
 	const float z_omega = pedal_speed * (2.0f * M_PI / 60.0f);
 
 	// Process noise (Q) diagonal - how much each state can change per step
-	const float Q_v     = 0.001f;
-	const float Q_res   = 5.0f;
-	const float Q_tau   = 5.0f;
-	const float Q_omega = 0.1f;
+	const float Q_v     = (0.01f/2.0f)*(0.01f/2.0f); // max 5m/s/1sec 				 -> 0.01/0.002sec = 2sigma
+	const float Q_res   = (0.1f/2.0f)*(0.1f/2.0f);   // max 50N/1sec 				 -> 0.1/0.002sec	 = 2sigma
+	const float Q_tau   = (1.6f/2.0f)*(1.6f/2.0f);   // max 160Nm/0.2sec  			 -> 1.6/0.002sec  = 2sigma
+ 	const float Q_omega = (0.01f/2.0f)*(0.01f/2.0f); // max 50RPM/sec -> 5rad/s/1sec -> 0.01/0.002sec = 2sigma
 
 	// Measurement noise (R) diagonal - sensor standard deviations squared
-	const float R_v     = 0.09f;   // sigma_v     = 0.3  m/s
-	const float R_tau   = 16.0f;  // sigma_tau   = 4.0  Nm
-	const float R_omega = 0.25f;  // sigma_omega = 0.5  rad/s
+	const float R_v     = 0.01f;  // sigma_v     = 3.0 RPM -> 0.1  m/s
+	const float R_tau   = 4.0f;   // sigma_tau   = 2.0 Nm
+	const float R_omega = 0.04f;  // sigma_omega = 2.0 RPM -> 0.2  rad/s
 
 	// --- PREDICTION STEP ---
 
@@ -2208,11 +2208,12 @@ static void update_extra_resistance_ekf(float F_motor)
 	for (int i = 0; i < 16; i++) ekf_P[i] = new_P[i];
 
 	// Export estimated (filtered) signals
-	bike_speed_estimated   = ekf_x[0];
-	extra_resistance_ekf   = ekf_x[1];
-	pedal_torque_estimated = ekf_x[2];  // [Nm]
-	pedal_speed_estimated  = ekf_x[3];  // [rad/s]
+	bike_speed_estimated   = ekf_x[0]; // [m/s]
+	extra_resistance_ekf   = ekf_x[1]; // [N]
+	pedal_torque_estimated = ekf_x[2] / config.torque_sensor.nm_max;  // [%]
+	pedal_speed_estimated  = ekf_x[3] * 60 / (2.0f * M_PI);           // [rpm]
 
+	// Derivative signals
 	wheel_speed_estimated  = bike_speed_estimated * 60.0f / (conf->si_wheel_diameter * M_PI);  // [rpm]
 	bike_accel_estimated   = (bike_speed_estimated - v_est) / dt;  // [m/s^2]
 }
