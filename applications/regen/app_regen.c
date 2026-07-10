@@ -583,7 +583,7 @@ void app_custom_get_rtdata(float* data) {
 	data[7] = motor_current_rel * 100;
 	data[8] = torque_gain;
 	data[9] = extra_resistance_ekf;
-	data[10] = bike_accel_estimated;
+	data[10] = bike_accel_estimated * 100;
 	data[11] = human_power_w;
 	data[12] = pedal_torque_filtered * 100;
 }
@@ -2063,10 +2063,10 @@ static void update_extra_resistance_ekf(float F_motor)
 
 	// Process noise (Q) diagonal - how much each state can change per step
 	const float Q_v     = (0.01f/2.0f)*(0.01f/2.0f); // max 5m/s/1sec 				 -> 0.01/0.002sec = 2sigma
-	const float Q_res   = (0.1f/2.0f)*(0.1f/2.0f);   // max 50N/1sec 				 -> 0.1/0.002sec	 = 2sigma
+	const float Q_res   = (0.2f/2.0f)*(0.2f/2.0f);   // max 100N/1sec 				 -> 0.2/0.002sec  = 2sigma
 	const float Q_tau   = (1.6f/2.0f)*(1.6f/2.0f);   // max 160Nm/0.2sec  			 -> 1.6/0.002sec  = 2sigma
 	const float Q_omega = (0.01f/2.0f)*(0.01f/2.0f); // max 50RPM/sec -> 5rad/s/1sec -> 0.01/0.002sec = 2sigma
-	const float Q_acc   = (0.01f/2.0f)*(0.01f/2.0f); // max 5m/sec3					 -> 0.01/0.002sec = 2sigma
+	const float Q_acc   = (0.01f/2.0f)*(0.01f/2.0f); // max 5m/sec2/1sec			 -> 0.01/0.002sec = 2sigma
 
 	// Measurement noise (R) diagonal - sensor standard deviations squared
 	const float R_v     = 0.01f;  // sigma_v     = 3.0 RPM -> 0.1  m/s
@@ -2081,14 +2081,20 @@ static void update_extra_resistance_ekf(float F_motor)
 	float omega_est = ekf_x[3];
 	float acc_est   = ekf_x[4];
 
-	if (v_est < 0.1f) v_est = 0.1f;
+	const bool v_active = (v_est > 0.1f);
 
-	const float normal_res_est = config.ctrl.resistance_coeff_0
+	const float normal_res_est = (v_active ? (config.ctrl.resistance_coeff_0
 	                           + config.ctrl.resistance_coeff_1 * v_est
-	                           + config.ctrl.resistance_coeff_2 * v_est * v_est;
+	                           + config.ctrl.resistance_coeff_2 * v_est * v_est) : 0.0f);
+
+    if (!v_active){
+		res_est = 0.0f;
+		acc_est = 0.0f;
+	}
 
 	const bool omega_active = (omega_est > 0.1f);
-	const float F_human_est = omega_active ? (tau_est * omega_est / v_est) : 0.0f;
+
+	const float F_human_est = (omega_active && v_active) ? (tau_est * omega_est / v_est) : 0.0f;
 
 	const float acc_next = (F_human_est + F_motor - normal_res_est - res_est) / m;
 	float v_next = v_est + dt * acc_est;
@@ -2105,12 +2111,12 @@ static void update_extra_resistance_ekf(float F_motor)
 		0.0f, 0.0f, 0.0f, 0.0f, 0.0f
 	};
 	F_jac[4*5+0] = (1.0f / m) * (
-		(omega_active ? -(tau_est * omega_est) / (v_est * v_est) : 0.0f)
+		((omega_active && v_active) ? -(tau_est * omega_est) / (v_est * v_est) : 0.0f)
 		- config.ctrl.resistance_coeff_1
 		- 2.0f * config.ctrl.resistance_coeff_2 * v_est);
 	F_jac[4*5+1] = -(1.0f / m);
-	F_jac[4*5+2] = omega_active ? (1.0f / m) * (omega_est / v_est) : 0.0f;
-	F_jac[4*5+3] = omega_active ? (1.0f / m) * (tau_est  / v_est) : 0.0f;
+	F_jac[4*5+2] = (omega_active && v_active) ? (1.0f / m) * (omega_est / v_est) : 0.0f;
+	F_jac[4*5+3] = (omega_active && v_active) ? (1.0f / m) * (tau_est  / v_est) : 0.0f;
 
 	// P_pred = F_jac * P * F_jac^T + Q
 	float FP[25] = {0.0f};
