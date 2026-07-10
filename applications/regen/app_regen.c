@@ -156,10 +156,10 @@ static volatile float extra_resistance_rel = 0;
 static volatile float torque_gain = 0;
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
 
-// EKF state for extra resistance estimation (row-major 4x4 covariance)
-// State vector: x = [bike_speed (m/s), extra_resistance (N), pedal_torque (Nm), pedal_omega (rad/s)]
-static float ekf_x[4];
-static float ekf_P[16];
+// EKF state for extra resistance estimation (row-major 5x5 covariance)
+// State vector: x = [bike_speed (m/s), extra_resistance (N), pedal_torque (Nm), pedal_omega (rad/s), bike_accel (m/s^2)]
+static float ekf_x[5];
+static float ekf_P[25];
 static volatile float pedal_torque_estimated = 0.0f;  // [Nm]    EKF filtered pedal torque
 static volatile float pedal_speed_estimated  = 0.0f;  // [rad/s] EKF filtered pedal angular speed
 static volatile float bike_speed_estimated   = 0.0f;  // [m/s]   EKF filtered bike speed
@@ -555,11 +555,13 @@ void app_custom_configure(app_configuration *conf) {
 	ekf_x[1] = 0.0f;   // extra resistance [N]
 	ekf_x[2] = 0.0f;   // pedal torque [Nm]
 	ekf_x[3] = 0.0f;   // pedal angular speed [rad/s]
-	for (int i = 0; i < 16; i++) ekf_P[i] = 0.0f;
-	ekf_P[0*4+0] =   1.0f;
-	ekf_P[1*4+1] = 100.0f;
-	ekf_P[2*4+2] =  50.0f;
-	ekf_P[3*4+3] =   5.0f;
+	ekf_x[4] = 0.0f;   // bike acceleration [m/s^2]
+	for (int i = 0; i < 25; i++) ekf_P[i] = 0.0f;
+	ekf_P[0*5+0] =   1.0f;
+	ekf_P[1*5+1] = 100.0f;
+	ekf_P[2*5+2] =  50.0f;
+	ekf_P[3*5+3] =   5.0f;
+	ekf_P[4*5+4] =   2.0f;
 
 	enable_interrupt();
 }
@@ -2043,8 +2045,9 @@ static void update_assistance_level()
 static void update_extra_resistance_ekf(float F_motor)
 {
 	// Extended Kalman Filter for extra resistance (terrain slope) estimation.
-	// State:        x = [bike_speed (m/s), extra_resistance (N), pedal_torque (Nm), pedal_omega (rad/s)]
-	// Dynamics:     m*dv/dt = F_human + F_motor - normal_resistance(v) - extra_resistance
+	// State:        x = [bike_speed (m/s), extra_resistance (N), pedal_torque (Nm), pedal_omega (rad/s), bike_accel (m/s^2)]
+	// Dynamics:     dv/dt = bike_accel
+	//               bike_accel = (F_human + F_motor - normal_resistance(v) - extra_resistance) / m
 	//               where F_human = tau * omega / v
 	// Measurements: z = [bike_speed, pedal_torque_nm, pedal_omega_rads]
 
@@ -2062,7 +2065,8 @@ static void update_extra_resistance_ekf(float F_motor)
 	const float Q_v     = (0.01f/2.0f)*(0.01f/2.0f); // max 5m/s/1sec 				 -> 0.01/0.002sec = 2sigma
 	const float Q_res   = (0.1f/2.0f)*(0.1f/2.0f);   // max 50N/1sec 				 -> 0.1/0.002sec	 = 2sigma
 	const float Q_tau   = (1.6f/2.0f)*(1.6f/2.0f);   // max 160Nm/0.2sec  			 -> 1.6/0.002sec  = 2sigma
- 	const float Q_omega = (0.01f/2.0f)*(0.01f/2.0f); // max 50RPM/sec -> 5rad/s/1sec -> 0.01/0.002sec = 2sigma
+	const float Q_omega = (0.01f/2.0f)*(0.01f/2.0f); // max 50RPM/sec -> 5rad/s/1sec -> 0.01/0.002sec = 2sigma
+	const float Q_acc   = (0.01f/2.0f)*(0.01f/2.0f); // max 5m/sec3					 -> 0.01/0.002sec = 2sigma
 
 	// Measurement noise (R) diagonal - sensor standard deviations squared
 	const float R_v     = 0.01f;  // sigma_v     = 3.0 RPM -> 0.1  m/s
@@ -2075,6 +2079,7 @@ static void update_extra_resistance_ekf(float F_motor)
 	float res_est   = ekf_x[1];
 	float tau_est   = ekf_x[2];
 	float omega_est = ekf_x[3];
+	float acc_est   = ekf_x[4];
 
 	if (v_est < 0.1f) v_est = 0.1f;
 
@@ -2085,47 +2090,50 @@ static void update_extra_resistance_ekf(float F_motor)
 	const bool omega_active = (omega_est > 0.1f);
 	const float F_human_est = omega_active ? (tau_est * omega_est / v_est) : 0.0f;
 
-	float v_next = v_est + (dt / m) * (F_human_est + F_motor - normal_res_est - res_est);
+	const float acc_next = (F_human_est + F_motor - normal_res_est - res_est) / m;
+	float v_next = v_est + dt * acc_est;
 	if (v_next < 0.0f) v_next = 0.0f;
 
-	const float x_pred[4] = {v_next, res_est, tau_est, omega_est};
+	const float x_pred[5] = {v_next, res_est, tau_est, omega_est, acc_next};
 
-	// Jacobian F_jac[row*4+col] = d(x_next[row]) / d(x[col])
-	float F_jac[16] = {
-		1.0f, 0.0f, 0.0f, 0.0f,
-		0.0f, 1.0f, 0.0f, 0.0f,
-		0.0f, 0.0f, 1.0f, 0.0f,
-		0.0f, 0.0f, 0.0f, 1.0f
+	// Jacobian F_jac[row*5+col] = d(x_next[row]) / d(x[col])
+	float F_jac[25] = {
+		1.0f, 0.0f, 0.0f, 0.0f, dt,
+		0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 0.0f, 0.0f
 	};
-	F_jac[0*4+0] = 1.0f + (dt / m) * (
+	F_jac[4*5+0] = (1.0f / m) * (
 		(omega_active ? -(tau_est * omega_est) / (v_est * v_est) : 0.0f)
 		- config.ctrl.resistance_coeff_1
 		- 2.0f * config.ctrl.resistance_coeff_2 * v_est);
-	F_jac[0*4+1] = -(dt / m);
-	F_jac[0*4+2] = omega_active ? (dt / m) * (omega_est / v_est) : 0.0f;
-	F_jac[0*4+3] = omega_active ? (dt / m) * (tau_est  / v_est) : 0.0f;
+	F_jac[4*5+1] = -(1.0f / m);
+	F_jac[4*5+2] = omega_active ? (1.0f / m) * (omega_est / v_est) : 0.0f;
+	F_jac[4*5+3] = omega_active ? (1.0f / m) * (tau_est  / v_est) : 0.0f;
 
 	// P_pred = F_jac * P * F_jac^T + Q
-	float FP[16] = {0.0f};
-	for (int i = 0; i < 4; i++) {
-		for (int j = 0; j < 4; j++) {
-			for (int k = 0; k < 4; k++) {
-				FP[i*4+j] += F_jac[i*4+k] * ekf_P[k*4+j];
+	float FP[25] = {0.0f};
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			for (int k = 0; k < 5; k++) {
+				FP[i*5+j] += F_jac[i*5+k] * ekf_P[k*5+j];
 			}
 		}
 	}
-	float P_pred[16] = {0.0f};
-	for (int i = 0; i < 4; i++) {
-		for (int j = 0; j < 4; j++) {
-			for (int k = 0; k < 4; k++) {
-				P_pred[i*4+j] += FP[i*4+k] * F_jac[j*4+k];  // F_jac^T[k,j] = F_jac[j,k]
+	float P_pred[25] = {0.0f};
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			for (int k = 0; k < 5; k++) {
+				P_pred[i*5+j] += FP[i*5+k] * F_jac[j*5+k];  // F_jac^T[k,j] = F_jac[j,k]
 			}
 		}
 	}
-	P_pred[0*4+0] += Q_v;
-	P_pred[1*4+1] += Q_res;
-	P_pred[2*4+2] += Q_tau;
-	P_pred[3*4+3] += Q_omega;
+	P_pred[0*5+0] += Q_v;
+	P_pred[1*5+1] += Q_res;
+	P_pred[2*5+2] += Q_tau;
+	P_pred[3*5+3] += Q_omega;
+	P_pred[4*5+4] += Q_acc;
 
 	// --- CORRECTION STEP ---
 	// H = [[1,0,0,0],[0,0,1,0],[0,0,0,1]]
@@ -2136,7 +2144,7 @@ static void update_extra_resistance_ekf(float F_motor)
 	float S[9];
 	for (int mr = 0; mr < 3; mr++) {
 		for (int nc = 0; nc < 3; nc++) {
-			S[mr*3+nc] = P_pred[mi[mr]*4 + mi[nc]];
+			S[mr*3+nc] = P_pred[mi[mr]*5 + mi[nc]];
 		}
 	}
 	S[0*3+0] += R_v;
@@ -2160,12 +2168,12 @@ static void update_extra_resistance_ekf(float F_motor)
 	S_inv[7] = -(S[0]*S[7] - S[1]*S[6]) * inv_det;
 	S_inv[8] =  (S[0]*S[4] - S[1]*S[3]) * inv_det;
 
-	// K = P_pred*H^T * S_inv   (4x3)
-	float K[12] = {0.0f};
-	for (int i = 0; i < 4; i++) {
+	// K = P_pred*H^T * S_inv   (5x3)
+	float K[15] = {0.0f};
+	for (int i = 0; i < 5; i++) {
 		for (int j = 0; j < 3; j++) {
 			for (int k = 0; k < 3; k++) {
-				K[i*3+j] += P_pred[i*4 + mi[k]] * S_inv[k*3+j];
+				K[i*3+j] += P_pred[i*5 + mi[k]] * S_inv[k*3+j];
 			}
 		}
 	}
@@ -2178,8 +2186,8 @@ static void update_extra_resistance_ekf(float F_motor)
 	};
 
 	// State update: x = x_pred + K*y
-	float new_x[4];
-	for (int i = 0; i < 4; i++) {
+	float new_x[5];
+	for (int i = 0; i < 5; i++) {
 		new_x[i] = x_pred[i];
 		for (int j = 0; j < 3; j++) {
 			new_x[i] += K[i*3+j] * y[j];
@@ -2187,35 +2195,35 @@ static void update_extra_resistance_ekf(float F_motor)
 	}
 
 	// Covariance update: P = (I - K*H) * P_pred
-	float KH[16] = {0.0f};
-	for (int i = 0; i < 4; i++) {
+	float KH[25] = {0.0f};
+	for (int i = 0; i < 5; i++) {
 		for (int j = 0; j < 3; j++) {
-			KH[i*4 + mi[j]] += K[i*3+j];
+			KH[i*5 + mi[j]] += K[i*3+j];
 		}
 	}
-	float new_P[16] = {0.0f};
-	for (int i = 0; i < 4; i++) {
-		for (int j = 0; j < 4; j++) {
-			for (int k = 0; k < 4; k++) {
-				const float IKH_ik = (i == k ? 1.0f : 0.0f) - KH[i*4+k];
-				new_P[i*4+j] += IKH_ik * P_pred[k*4+j];
+	float new_P[25] = {0.0f};
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			for (int k = 0; k < 5; k++) {
+				const float IKH_ik = (i == k ? 1.0f : 0.0f) - KH[i*5+k];
+				new_P[i*5+j] += IKH_ik * P_pred[k*5+j];
 			}
 		}
 	}
 
 	// Write back updated state and covariance
-	for (int i = 0; i < 4; i++) ekf_x[i] = new_x[i];
-	for (int i = 0; i < 16; i++) ekf_P[i] = new_P[i];
+	for (int i = 0; i < 5; i++) ekf_x[i] = new_x[i];
+	for (int i = 0; i < 25; i++) ekf_P[i] = new_P[i];
 
 	// Export estimated (filtered) signals
 	bike_speed_estimated   = ekf_x[0]; // [m/s]
 	extra_resistance_ekf   = ekf_x[1]; // [N]
 	pedal_torque_estimated = ekf_x[2] / config.torque_sensor.nm_max;  // [%]
 	pedal_speed_estimated  = ekf_x[3] * 60 / (2.0f * M_PI);           // [rpm]
+	bike_accel_estimated   = ekf_x[4]; // [m/s^2]
 
 	// Derivative signals
 	wheel_speed_estimated  = bike_speed_estimated * 60.0f / (conf->si_wheel_diameter * M_PI);  // [rpm]
-	bike_accel_estimated   = (bike_speed_estimated - v_est) / dt;  // [m/s^2]
 }
 
 static void update_motor_control()
