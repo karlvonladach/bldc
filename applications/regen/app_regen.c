@@ -1228,7 +1228,6 @@ static void update_pedal_torque(void)
 	} else
 	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_PEDAL) {
 		static float torque_inactivity_time = 0;
-		static float torque_biquad_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
 		static float torque_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
 		static float torque_biquad2_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
 		float torque2 = ADC_VOLTS(ADC_IND_EXT2);
@@ -1240,8 +1239,6 @@ static void update_pedal_torque(void)
 		// Optionally apply a low pass filter to reduce noise. 
 		// 1.0 means no filtering, 0.0 means infinitely strong filtering.
 		//UTILS_LP_FAST(torque2_filtered, torque2, config.torque_sensor.filter);
-
-		torque2 = biquad_filter(torque2, torque_biquad_filter_memory, 4.0f, false);
 
 		// Apply ramping
 		static systime_t last_time2 = 0;
@@ -1502,16 +1499,6 @@ static void update_wheel_speed(void)
 	static float old_period = 0;
 	static float old_periods[MAX_PERIODS_TO_AVG-1] = {0.0f};
 	static float wheel_speed_raw = 0;
-	static float wheel_speed_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE];
-	static float wheel_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE];
-	static float wheel_accel_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
-	static float wheel_speed_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
-	static float bike_speed_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
-	static float bike_accel_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
-	static float wheel_accel_bq2_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
-	static float wheel_speed_bq2_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
-	static float bike_speed_bq2_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
-	static float bike_accel_bq2_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
 
 	static float inactivity_time = 0;
 	static uint8_t HALL3_level_old =  1;
@@ -1687,39 +1674,21 @@ static void update_wheel_speed(void)
 			}
 		}
 	}
-
-	// apply 2nd order low pass filter on wheel speed with 4Hz cutoff frequency
-	wheel_speed = biquad_filter(wheel_speed_raw, wheel_speed_bq_filter_memory, 4.0f, false);
-
-	// apply 2nd order lowpass + derivator filter on wheel speed with 4Hz cutoff frequency to calculate acceleration
-	wheel_accel = biquad_filter(wheel_speed_raw, wheel_accel_bq_filter_memory, 4.0f, true);
 	
+	// apply simple low pass filtering.
+	//UTILS_LP_FAST(wheel_speed, wheel_speed_raw, config.wheel_sensor.filter);
+	wheel_speed = wheel_speed_raw;
+
 	if (wheel_speed < config.wheel_sensor.rpm_min) {
 		wheel_speed = 0.0;
 	}
 
 	// calculate bike speed and acceleration from wheel speed
 	bike_speed = wheel_speed * wheel_circumference / 60.0;
-	bike_accel = wheel_accel * wheel_circumference / 60.0;
-	utils_truncate_number((float*)&bike_accel, -5.0f, 5.0f);
-
-	wheel_speed_filtered = notch_filter(wheel_speed, wheel_speed_notch_filter_memory, config.acceleration_timeout);
-	wheel_speed_filtered = biquad_filter(wheel_speed_filtered, wheel_speed_bq2_filter_memory, config.wheel_sensor.filter, false);
-
-	wheel_accel_filtered = notch_filter(wheel_accel, wheel_accel_notch_filter_memory, config.acceleration_timeout);
-	wheel_accel_filtered = biquad_filter(wheel_accel_filtered, wheel_accel_bq2_filter_memory, config.wheel_sensor.filter, false);
-
-	bike_speed_filtered = notch_filter(bike_speed, bike_speed_notch_filter_memory, config.acceleration_timeout);
-	bike_speed_filtered = biquad_filter(bike_speed_filtered, bike_speed_bq2_filter_memory, config.wheel_sensor.filter, false);
-
-	bike_accel_filtered = notch_filter(bike_accel, bike_accel_notch_filter_memory, config.acceleration_timeout);
-	bike_accel_filtered = biquad_filter(bike_accel_filtered, bike_accel_bq2_filter_memory, config.wheel_sensor.filter, false);
 
 	// calculate relative wheel speed
 	wheel_speed_rel = utils_map(wheel_speed, config.wheel_sensor.rpm_min, config.wheel_sensor.rpm_max, 0.0, 1.0);
 	utils_truncate_number((float*)&wheel_speed_rel, 0.0, 1.0);
-	wheel_speed_filtered_rel = utils_map(wheel_speed_filtered, config.wheel_sensor.rpm_min, config.wheel_sensor.rpm_max, 0.0, 1.0);
-	utils_truncate_number((float*)&wheel_speed_filtered_rel, 0.0, 1.0);
 
 	// Switch between polling and interrupt mode based on the current wheel speed
 	if (new_timestamp != 0 && config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT) {
@@ -1995,7 +1964,6 @@ static void update_assistance_level()
 	float motor_force;
 	//float human_force;
 	//float extra_resistance_raw;
-	static float motor_current_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
 	//static float wheel_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 
@@ -2004,7 +1972,6 @@ static void update_assistance_level()
 	}
 
 	motor_current_measured = mc_interface_get_tot_current_directional_filtered();
-	motor_current_measured = biquad_filter(motor_current_measured, motor_current_bq_filter_memory, 4.0f, false);
 
 	motor_force = motor_current_measured * config.ctrl.motor_torque_constant * 
 				conf->si_gear_ratio * config.ctrl.motor_gear_efficiency / 

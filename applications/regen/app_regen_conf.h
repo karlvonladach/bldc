@@ -59,7 +59,7 @@
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2        HW_HALL_ENC_PIN2
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS      18u    // including "virtual magnets"
 #define PEDAL_SENSOR_MAX_MAGNETS                  24u    // maximum number of magnets supported by the code, used for array sizing
-#define APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER        0.8   // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
+#define APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER        1.0   // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM        0.0f  // CRPM - average last two samples above this value
 #define APP_CUSTOM_CONF_PEDAL_RPM_MIN              8.0f  // CRPM - set 0 CRPM below this value
 #define APP_CUSTOM_CONF_PEDAL_RPM_START            8.0f  // CRMP - start of boost
