@@ -1230,6 +1230,7 @@ static void update_pedal_torque(void)
 		static float torque_inactivity_time = 0;
 		static float torque_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
 		static float torque_biquad2_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
+		static float torque2_lp_filtered = 0;
 		float torque2 = ADC_VOLTS(ADC_IND_EXT2);
 		float torque2_filtered = torque2;
 
@@ -1238,7 +1239,8 @@ static void update_pedal_torque(void)
 
 		// Optionally apply a low pass filter to reduce noise. 
 		// 1.0 means no filtering, 0.0 means infinitely strong filtering.
-		//UTILS_LP_FAST(torque2_filtered, torque2, config.torque_sensor.filter);
+		UTILS_LP_FAST(torque2_lp_filtered, torque2, config.torque_sensor.filter);
+		torque2 = torque2_lp_filtered;
 
 		// Apply ramping
 		static systime_t last_time2 = 0;
