@@ -1968,6 +1968,7 @@ static void update_assistance_level()
 	//float extra_resistance_raw;
 	//static float wheel_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
 	static float bike_accel_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
+	static float bike_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 
 	if (config.ctrl.ctrl_type != CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO) {
@@ -2002,6 +2003,7 @@ static void update_assistance_level()
 	extra_resistance_rel = extra_resistance / MAX(normal_resistance, 0.1f);
 
 	bike_accel_filtered = notch_filter(bike_accel_estimated, bike_accel_notch_filter_memory, config.acceleration_timeout);
+	bike_accel_filtered = biquad_filter(bike_accel_filtered, bike_accel_bq_filter_memory, config.wheel_sensor.filter, false);
 
 	utils_truncate_number((float *)&extra_resistance_rel, -config.ctrl.resistance_ratio_max, config.ctrl.resistance_ratio_max);
 	
