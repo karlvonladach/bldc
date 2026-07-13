@@ -580,7 +580,7 @@ void app_custom_get_rtdata(float* data) {
 	data[4] = pedal_torque * 100;
 	data[5] = wheel_speed;
 	data[6] = pedal_torque_estimated * 100;
-	data[7] = motor_current_rel * 100;
+	data[7] = bike_accel_filtered * 100;
 	data[8] = torque_gain;
 	data[9] = extra_resistance_ekf;
 	data[10] = bike_accel_estimated * 100;
@@ -1965,6 +1965,7 @@ static void update_assistance_level()
 	//float human_force;
 	//float extra_resistance_raw;
 	//static float wheel_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
+	static float bike_accel_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 
 	if (config.ctrl.ctrl_type != CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO) {
@@ -1983,7 +1984,7 @@ static void update_assistance_level()
 
 	//human_force = human_power_w / MAX(bike_speed_estimated, 0.1f);
 
-	 normal_resistance = config.ctrl.resistance_coeff_0 +
+	normal_resistance = config.ctrl.resistance_coeff_0 +
 	 					config.ctrl.resistance_coeff_1 * bike_speed_estimated +
 	 					config.ctrl.resistance_coeff_2 * bike_speed_estimated * bike_speed_estimated;
 
@@ -1993,16 +1994,19 @@ static void update_assistance_level()
 
 	// EKF-based extra resistance estimation (replaces the biquad-filtered estimate above)
 	update_extra_resistance_ekf(motor_force);
+
 	extra_resistance = extra_resistance_ekf;
 
 	extra_resistance_rel = extra_resistance / MAX(normal_resistance, 0.1f);
+
+	bike_accel_filtered = notch_filter(bike_accel_estimated, bike_accel_notch_filter_memory, config.acceleration_timeout);
 
 	utils_truncate_number((float *)&extra_resistance_rel, -config.ctrl.resistance_ratio_max, config.ctrl.resistance_ratio_max);
 	
 	torque_gain = config.ctrl.torque_base_gain +
 				(bike_speed_estimated < 1.0 ? 0 : config.ctrl.torque_extra_rel_gain) * extra_resistance_rel +
-				(bike_speed_estimated < 1.0 ? 0 : config.ctrl.torque_extra_abs_gain) / config.ctrl.effective_mass * extra_resistance +
-				config.ctrl.torque_acc_gain * bike_accel_estimated;
+				(bike_speed_estimated < 1.0 ? 0 : config.ctrl.torque_extra_abs_gain) * extra_resistance / config.ctrl.effective_mass +
+				config.ctrl.torque_acc_gain * bike_accel_filtered;
 	
 	utils_truncate_number((float *)&torque_gain, config.ctrl.torque_min_gain, config.ctrl.torque_max_gain);
 
