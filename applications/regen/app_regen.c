@@ -1724,7 +1724,7 @@ static void update_clutch_state(void)
 	bool diff_large_enough = (abs(wheel_speed - motor_speed) > config.clutch.open_check_rpm_diff);
 	bool diff_too_small    = (abs(wheel_speed - motor_speed) < config.clutch.open_check_rpm_diff) && (wheel_speed > config.clutch.open_check_rpm_diff);
 	bool diff_too_large    = (abs(wheel_speed - motor_speed) > config.clutch.closed_check_rpm_diff);
-	bool pedaling          = (pedal_speed > 0 && pedal_torque > 0);
+	bool pedaling          = (pedal_speed > 0 && pedal_torque > 0 && torque_gain > 0);
 	bool braking           = (pedal_brake_position > config.back_pedal_brake.start_pos); // or (pedal_brake_position_rel > 0);
 	bool brake_tentative   = (pedal_brake_position > config.back_pedal_brake.sync_start_pos);
 	bool manual_mode       = (config.clutch.mode == CLUTCH_MODE_MANUAL);
