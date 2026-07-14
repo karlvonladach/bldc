@@ -52,7 +52,7 @@
 #define DIFF_THRESHOLD_TO_APPLY_COMPENSATION    0.1f
 #define MAX_PERIODS_TO_AVG					    8u
 #define BIQUAD_FILTER_MEMORY_SIZE               4u
-#define NOTCH_FILTER_MEMORY_SIZE				5u
+#define NOTCH_FILTER_MEMORY_SIZE				7u
 
 // Macros
 #define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
@@ -193,7 +193,7 @@ static volatile uint32_t calibration_step = 0;
 //static volatile float    last_wheel_speeds[WHEEL_SENSOR_CALIBRATION_VALUES_COUNT] = {0};
 static volatile uint8_t  wheel_sensor_magnet_cntr = 0;
 static volatile bool     compensation_active = false;
-static volatile float    sin_lut[PEDAL_SENSOR_MAX_MAGNETS * 2] = {0};
+static volatile float    sin_lut[PEDAL_SENSOR_MAX_MAGNETS * 4] = {0};
 
 // Config table - add new parameters here
 static const config_param_t config_table[] = {
@@ -546,8 +546,8 @@ void app_custom_configure(app_configuration *conf) {
 	// if wheel spins at max rpm, assume its beyond limits
 	min_wheel_period = 1.0 / ((config.wheel_sensor.rpm_max / 60.0) * config.wheel_sensor.magnets);
 
-	for (uint8_t i=0; i < config.pedal_sensor.magnets*2; i++) {
-		sin_lut[i] = sinf((float)i * 2.0f * M_PI / (config.pedal_sensor.magnets*2));
+	for (uint8_t i=0; i < config.pedal_sensor.magnets*4; i++) {
+		sin_lut[i] = sinf((float)i * 2.0f * M_PI / (config.pedal_sensor.magnets*4));
 	}
 
 	// Initialize EKF state and covariance
@@ -2308,24 +2308,41 @@ static float notch_filter(float new_value, float *memory, float timeout) {
 	int   index = (int)memory[2];
 	float inactivity_time = memory[3];
 	float last_filtered = memory[4];
-	uint8_t filter_size = config.pedal_sensor.magnets * 2;
-	const float mu = 0.15;
+	float C = memory[5];
+	float D = memory[6];
+	uint8_t filter_size = config.pedal_sensor.magnets * 4;
+	const float mu = 0.1;
+	const float mu2 = 0.005;
 	float filtered = 0;
+	float filtered_tmp = 0;
+	float y_estimated = 0;
 
 	if (pedal_current_direction == 1) {
-		float x1 = sin_lut[index % filter_size];
-    	float x2 = sin_lut[(index + filter_size / 4) % filter_size];
+		float x1 = sin_lut[(index * 2) % filter_size];
+		float x2 = sin_lut[(filter_size / 4 + index * 2) % filter_size];
+		float x3 = sin_lut[index % filter_size];
+    	float x4 = sin_lut[(filter_size / 4 + index) % filter_size];
 
 		// Estimate next sample
-		float y_estimated = (A * x1) + (B * x2);
+		y_estimated = (A * x1) + (B * x2);
 
 		// Calculate error.
 		// This is also the filtered value (periodic component removed from raw value)
-		filtered = new_value - y_estimated;
+		filtered_tmp = new_value - y_estimated;
 
 		// Update estimator params
-		A = A + (mu * filtered * x1);
-    	B = B + (mu * filtered * x2);
+		A = A + (mu * filtered_tmp * x1);
+    	B = B + (mu * filtered_tmp * x2);
+
+		// Estimate next sample
+		y_estimated = (C * x3) + (D * x4);
+
+		// Calculate error.
+		filtered = filtered_tmp - y_estimated;
+
+		// Update estimator params
+		C = C + (mu2 * filtered * x3);
+		D = D + (mu2 * filtered * x4);
 
 		// Advance phase
 		index++;
@@ -2335,11 +2352,13 @@ static float notch_filter(float new_value, float *memory, float timeout) {
 		inactivity_time = 0;
 
 		// Compensate overshooting
-		filtered *= 0.926;
+		filtered *= 0.947;
 	} else if (pedal_current_direction == -1) {
 		// reset samples when changing direction to avoid applying average of one direction to the other direction
 		A = 0;
 		B = 0;
+		C = 0;
+		D = 0;
 		index = 0;
 		inactivity_time = 0;
 		filtered = new_value;
@@ -2349,6 +2368,8 @@ static float notch_filter(float new_value, float *memory, float timeout) {
 			inactivity_time = timeout;
 			A = 0;
 			B = 0;
+			C = 0;
+			D = 0;
 			index = 0;
 			filtered = new_value;
 		} else {
@@ -2362,6 +2383,8 @@ static float notch_filter(float new_value, float *memory, float timeout) {
 	memory[2] = index;
 	memory[3] = inactivity_time;
 	memory[4] = filtered;
+	memory[5] = C;
+	memory[6] = D;
 	return filtered;
 }
 
