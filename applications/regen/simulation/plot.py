@@ -189,4 +189,41 @@ plt.ylabel('Values')
 plt.title(filename)
 plt.legend()
 plt.grid(True)
+
+# Figure 2: signals with their gradients + gradient histograms
+pedal_rpm_grad = np.gradient(pedal_rpm, time2)
+speed_grad = np.gradient(speed, time2)
+pedal_torque_raw_grad = np.gradient(pedal_torque_raw, time2)
+acc_grad = np.gradient(acc, time2)
+
+fig2, axes = plt.subplots(4, 2, figsize=(14, 16), sharex='col')
+
+signal_rows = [
+	('Pedal RPM', pedal_rpm, pedal_rpm_grad),
+	('Speed', speed, speed_grad),
+	('Pedal Torque Raw', pedal_torque_raw, pedal_torque_raw_grad),
+	('Acceleration', acc, acc_grad),
+]
+
+for row, (name, signal, grad) in enumerate(signal_rows):
+	ax_sig = axes[row, 0]
+	ax_hist = axes[row, 1]
+
+	ax_sig.plot(time2, signal, label=name, linewidth=2)
+	ax_sig.plot(time2, grad, label=f'{name} Gradient', linewidth=1.5, linestyle='dashed')
+	ax_sig.set_ylabel(name)
+	ax_sig.grid(True)
+	ax_sig.legend()
+
+	grad_finite = grad[np.isfinite(grad)]
+	ax_hist.hist(grad_finite, bins=50, alpha=0.8)
+	ax_hist.set_title(f'{name} Gradient Histogram')
+	ax_hist.set_ylabel('Count')
+	ax_hist.grid(True)
+
+axes[-1, 0].set_xlabel('Time (s)')
+axes[-1, 1].set_xlabel('Gradient Value')
+fig2.suptitle(f'{filename} - Signals and Gradients', fontsize=14)
+fig2.tight_layout(rect=[0, 0.03, 1, 0.98])
+
 plt.show()
