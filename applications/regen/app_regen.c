@@ -582,7 +582,7 @@ void app_custom_get_rtdata(float* data) {
 	data[3] = pedal_brake_position;
 	data[4] = pedal_torque * 100;
 	data[5] = clutch_state;
-	data[6] = clutch_close_error_counter;
+	data[6] = wheel_speed;
 #elif defined(HW60_IS_MK1)
 	data[3] = pedal_speed;
 	data[4] = pedal_torque * 100;
@@ -1992,7 +1992,7 @@ static void update_assistance_level()
 	torque_gain = config.ctrl.torque_base_gain +
 				(bike_speed_estimated < 1.0 ? 0 : config.ctrl.torque_extra_rel_gain) * extra_resistance_rel +
 				(bike_speed_estimated < 1.0 ? 0 : config.ctrl.torque_extra_abs_gain) * extra_resistance / config.ctrl.effective_mass +
-				config.ctrl.torque_acc_gain * bike_accel_filtered;
+				config.ctrl.torque_acc_gain * ((bike_accel_filtered > 0) ? bike_accel_filtered : 0);
 	
 	utils_truncate_number((float *)&torque_gain, config.ctrl.torque_min_gain, config.ctrl.torque_max_gain);
 
