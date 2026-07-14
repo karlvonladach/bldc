@@ -21,10 +21,15 @@
 #define APP_REGEN_CONF_H_
 
 #include "app_regen_types.h"
+#include "hw.h"
 
 //#define DEBUG_PLOT
 
 #define APP_CUSTOM_TO_USE				"regen/app_regen.c"
+
+#if !defined(HW60_IS_MK1) && !defined(HW_UBOX_SINGLE_80)
+#pragma error "Unsupported hardware for regen app (expected HW_UBOX_SINGLE_80 or HW60_IS_MK1)"
+#endif
 
 //uncomment to use custom app by default, regardless of settings:
 //#define APPCONF_APP_TO_USE				APP_CUSTOM
@@ -40,9 +45,17 @@
 #define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT       0.9f  // nonlinearity coeff for torque control, where 1.0 is linear, < 1.0 gives more torque at low pedal inputs, and > 1.0 gives more torque at high pedal inputs
 #define APP_CUSTOM_CONF_CTRL_RAMP_UP              (7.2f/3.6f) // m/s - ramp up speed interval for torque control
 #define APP_CUSTOM_CONF_CTRL_RAMP_DOWN            (7.2f/3.6f) // m/s - ramp down speed interval for torque control
+#if defined(HW_UBOX_SINGLE_80)
 #define APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED        (27.0f/3.6f) // m/s - speed above which torque control is disabled
+#elif defined(HW60_IS_MK1)
+#define APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED        (80.0f/3.6f) // m/s - speed above which torque control is disabled
+#endif
 
+#if defined(HW_UBOX_SINGLE_80)
 #define APP_CUSTOM_CONF_MOTOR_TORQUE_CONSTANT      0.029f// Nm/A - motor torque constant, used for calculating assist level in human watts
+#elif defined(HW60_IS_MK1)
+#define APP_CUSTOM_CONF_MOTOR_TORQUE_CONSTANT      0.014f// Nm/A - motor torque constant, used for calculating assist level in human watts
+#endif
 #define APP_CUSTOM_CONF_MOTOR_GEAR_EFFICIENCY      0.90f // range 0.0 to 1.0 - gear efficiency between motor and wheel
 #define APP_CUSTOM_CONF_PEDAL_GEAR_EFFICIENCY      0.95f // range 0.0 to 1.0 - gear efficiency between pedal and wheel
 #define APP_CUSTOM_CONF_EFFECTIVE_MASS           105.0f  // kg - effective mass of the rider and bike
@@ -61,7 +74,11 @@
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PIN1        HW_HALL_ENC_PIN1
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PORT2       HW_HALL_ENC_GPIO2
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_PIN2        HW_HALL_ENC_PIN2
+#if defined(HW_UBOX_SINGLE_80)
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS      24u    // including "virtual magnets"
+#elif defined(HW60_IS_MK1)
+#define APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS      18u    // including "virtual magnets"
+#endif
 #define PEDAL_SENSOR_MAX_MAGNETS                  24u    // maximum number of magnets supported by the code, used for array sizing
 #define APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER        1.0   // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM        0.0f  // CRPM - average last two samples above this value
@@ -74,11 +91,19 @@
 #define APP_CUSTOM_CONF_PEDAL_INVERT_DIR           0     // 1/0 = invert/no invert
 #define APP_CUSTOM_CONF_PEDAL_GEAR_EFFICIENCY      0.95f // gear efficiency, used for calculating assist level in human watts
 
+#if defined(HW_UBOX_SINGLE_80)
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE        SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT
+#elif defined(HW60_IS_MK1)
+#define APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE        SPEED_SENSOR_TYPE_SINGLE_POLL
+#endif
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PORT1       HW_HALL_ENC_GPIO3
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_PIN1        HW_HALL_ENC_PIN3
 #define APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM     100.0f  // WRPM at which to switch from poll to interrupt mode
+#if defined(HW_UBOX_SINGLE_80)
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS       12u    // including "virtual magnets"
+#elif defined(HW60_IS_MK1)
+#define APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS       12u    // including "virtual magnets"
+#endif
 #define APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER         4.0f  // Biquad filter cutoff frequency in Hz, used for filtering wheel speed
 #define APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM       400.0f  // WRPM - average last two samples above this value
 #define APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM   0.0f  // WRPM - if > 0, use progressive averaging, adding one more sample to the average for every multiple of this RPM
@@ -97,7 +122,11 @@
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PORT2      HW_ADC_EXT2_GPIO
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PIN2       HW_ADC_EXT2_PIN
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER         0.1f   // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
+#if defined(HW_UBOX_SINGLE_80)
 #define APP_CUSTOM_CONF_TORQUE_NM_MAX               80.0f   // Maximum torque in Nm corresponding to max sensor value
+#elif defined(HW60_IS_MK1)
+#define APP_CUSTOM_CONF_TORQUE_NM_MAX               88.0f   // Maximum torque in Nm corresponding to max sensor value
+#endif
 #define APP_CUSTOM_CONF_TORQUE_THRESHOLD             3.0f   // Nm - threshold for detecting if torque is being applied
 #define APP_CUSTOM_CONF_TORQUE_TIMEOUT               0.25f  // seconds - timeout for torque sensor
 
@@ -109,7 +138,11 @@
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME    0.2f  // sec/fullscale (min to max)
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RESET_POS_PERCENT    0.8f  // percent of (end_pos-start_pos)
 
+#if defined(HW_UBOX_SINGLE_80)
 #define APP_CUSTOM_CONF_CLUTCH_MODE                  CLUTCH_MODE_FULL_MANUAL
+#elif defined(HW60_IS_MK1)
+#define APP_CUSTOM_CONF_CLUTCH_MODE                  CLUTCH_MODE_CLOSED
+#endif
 #define APP_CUSTOM_CONF_CLUTCH_CTRL_PORT1            HW_UART_RX_PORT
 #define APP_CUSTOM_CONF_CLUTCH_CTRL_PIN1             HW_UART_RX_PIN
 #define APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN        0.5f  // seconds
@@ -119,8 +152,13 @@
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT            2.0f  // seconds
 #define APP_CUSTOM_CONF_CLUTCH_CLOSED_FIRST_CHECK_TIME 0.5f  // seconds
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF           1.0f  // WRPM
+#if defined(HW_UBOX_SINGLE_80)
 #define APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF    8.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF  40.0f  // WRPM
+#elif defined(HW60_IS_MK1)
+#define APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF   1001.0f  // WRPM
+#define APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF  1001.0f  // WRPM
+#endif
 #define APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF     5.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN           55.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MIN_RPM_CLOSE          45.0f  // WRPM
@@ -132,7 +170,11 @@
 #define APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD           10.0f  // seconds - period for counting clutch errors
 #define APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME             0.3f  // seconds - time for the motor to slow down after opening
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_TIME               0.02f // seconds - time for ensuring stable sync
+#if defined(HW_UBOX_SINGLE_80)
 #define APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING      1     // 1/0 = enable/disable motor to wheel sync while clutch is closing
+#elif defined(HW60_IS_MK1)
+#define APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING      0     // 1/0 = enable/disable motor to wheel sync while clutch is closing
+#endif
 #define APP_CUSTOM_CONF_CLUTCH_CURRENT_LIMIT_CLOSING   0.01f // relative current limit when clutch is closing (0.0 to 1.0)
 
 #define APP_CUSTOM_CONF_UPDATE_RATE_HZ               500     // Hz - sensor signal processing and clutch control

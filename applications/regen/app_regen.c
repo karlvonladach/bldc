@@ -578,10 +578,17 @@ void app_custom_get_rtdata(float* data) {
 	data[0] = pedal_speed_estimated;
 	data[1] = wheel_speed_estimated;
 	data[2] = motor_speed;
+#if defined(HW_UBOX_SINGLE_80)
 	data[3] = pedal_brake_position;
 	data[4] = pedal_torque * 100;
 	data[5] = clutch_state;
 	data[6] = clutch_close_error_counter;
+#elif defined(HW60_IS_MK1)
+	data[3] = pedal_speed;
+	data[4] = pedal_torque * 100;
+	data[5] = wheel_speed;
+	data[6] = pedal_torque_estimated * 100;
+#endif
 	data[7] = bike_accel_filtered * 100;
 	data[8] = torque_gain;
 	data[9] = extra_resistance_ekf;
