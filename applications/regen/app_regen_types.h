@@ -115,6 +115,9 @@ typedef struct {
     float resistance_coeff_1;
     float resistance_coeff_2;
     float resistance_ratio_max;
+    float ramp_up_speed_interval;
+    float ramp_down_speed_interval;
+    float cutoff_speed;
 } motor_control_config_type;
 
 typedef struct {

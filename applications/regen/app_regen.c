@@ -232,6 +232,12 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_RESISTANCE_COEFF_2}, NULL},
 	{"asresratmax", "[float] Maximum ratio of extra resistance to normal resistance", CONFIG_TYPE_FLOAT, &config.ctrl.resistance_ratio_max, APP_CUSTOM_CONF_RESISTANCE_RATIO_MAX_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_RESISTANCE_RATIO_MAX}, NULL},
+	{"assoftsta", "[m/s] Soft start speed interval for gradually increasing assist", CONFIG_TYPE_FLOAT, &config.ctrl.ramp_up_speed_interval, APP_CUSTOM_CONF_CTRL_RAMP_UP_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_CTRL_RAMP_UP}, NULL},
+	{"ascutint", "[m/s] Soft limit speed interval for gradually decreasing assist", CONFIG_TYPE_FLOAT, &config.ctrl.ramp_down_speed_interval, APP_CUSTOM_CONF_CTRL_RAMP_DOWN_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_CTRL_RAMP_DOWN}, NULL},
+	{"ascutend", "[m/s] Speed above which assist is disabled", CONFIG_TYPE_FLOAT, &config.ctrl.cutoff_speed, APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED}, NULL},
 
     {"velsrate", "[Hz] Velocity sampling rate", CONFIG_TYPE_UINT32, &config.velocity_sampling_rate, APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE_ADDR,
 	 {.uint32_default = APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE}, NULL},
@@ -297,10 +303,6 @@ static const config_param_t config_table[] = {
 	// Torque sensor config
 	{"tqstype", "Torque sensor type", CONFIG_TYPE_ENUM, &config.torque_sensor.sensor_type, APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE_ADDR, 
 	 {.enum_default = APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE}, "none,throttle,pedal"},
-	{"tqcutrpm", "[rpm] WRPM threshold for torque cutoff - set torque to 0 above this value", CONFIG_TYPE_FLOAT, &config.torque_sensor.cutoff_rpm, APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_ADDR,	
-	 {.float_default = APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM}, NULL},
-	{"tqcutint", "[rpm] WRPM interval before cutoff where torque (non-linearly) decreases", CONFIG_TYPE_FLOAT, &config.torque_sensor.decrease_interval, APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR,	
-	 {.float_default = APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL}, NULL},
 	{"tqfilter", "[0.0-1.0] Torque sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.torque_sensor.filter, APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER}, NULL},
 	{"tqmaxnm", "[Nm] Maximum torque in Nm corresponding to max sensor value", CONFIG_TYPE_FLOAT, &config.torque_sensor.nm_max, APP_CUSTOM_CONF_TORQUE_NM_MAX_ADDR,
@@ -1265,33 +1267,6 @@ static void update_pedal_torque(void)
 		pedal_torque_filtered = torque2_filtered;
 		pedal_torque_filtered_rel = torque2_filtered;
 	}
-
-	// Apply cutoff above regulatory limit with linear decrease before cutoff.
-	float correction_value = 0.0f;
-	float speed;
-	if (clutch_state == CLUTCH_STATE_CLOSED_BRAKE || clutch_state == CLUTCH_STATE_CLOSED_ASSIST 
-		|| clutch_state == CLUTCH_STATE_CLOSED_FLOAT || clutch_state == CLUTCH_STATE_CLOSED_ERROR) {
-		speed = motor_speed;
-	} else {
-		speed = wheel_speed;
-	}
-	if (config.torque_sensor.decrease_interval > 0.0f) {
-		if (speed >= config.torque_sensor.cutoff_rpm) {
-			correction_value = 0.0f;
-		} else if (speed <= config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval) {
-			correction_value = 1.0f;
-		} else {
-			float cutoff_start_rpm = config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval;
-			correction_value = (cosf(utils_map(speed, cutoff_start_rpm, config.torque_sensor.cutoff_rpm, 0.0, M_PI)) + 1.0f) / 2.0f;
-		}
-	} else {
-		correction_value = speed < config.torque_sensor.cutoff_rpm ? 1.0f : 0.0f;
-	}
-	utils_truncate_number(&correction_value, 0.0, 1.0);
-	pedal_torque *= correction_value;
-	pedal_torque_rel *= correction_value;
-	pedal_torque_filtered *= correction_value;
-	pedal_torque_filtered_rel *= correction_value;
 }
 
 /* Check pedal speed using quadrature encoder.
@@ -2014,7 +1989,14 @@ static void update_assistance_level()
 	
 	utils_truncate_number((float *)&torque_gain, config.ctrl.torque_min_gain, config.ctrl.torque_max_gain);
 
-	// TODO: add ramping around 0 and 25kmh
+	// Ramp up around 0 speed and ramp down at regulatory speed limit
+	if (bike_speed_estimated >= 0 &&bike_speed_estimated < config.ctrl.ramp_up_speed_interval) {
+		torque_gain *= bike_speed_estimated / config.ctrl.ramp_up_speed_interval;
+	} else if (bike_speed_estimated >= (config.ctrl.cutoff_speed - config.ctrl.ramp_down_speed_interval) && bike_speed_estimated < config.ctrl.cutoff_speed) {
+		torque_gain *= 1.0 - (bike_speed_estimated - (config.ctrl.cutoff_speed - config.ctrl.ramp_down_speed_interval)) / (config.ctrl.ramp_down_speed_interval);
+	} else if (bike_speed_estimated >= config.ctrl.cutoff_speed) {
+		torque_gain = 0.0;
+	}
 }
 
 static void update_extra_resistance_ekf(float F_motor)

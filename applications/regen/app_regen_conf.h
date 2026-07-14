@@ -38,6 +38,10 @@
 #define APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN       4.0f  // maximum total torque gain to prevent excessive torque
 #define APP_CUSTOM_CONF_CTRL_TORQUE_MIN_GAIN       0.5f  // minimum total torque gain
 #define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT       0.9f  // nonlinearity coeff for torque control, where 1.0 is linear, < 1.0 gives more torque at low pedal inputs, and > 1.0 gives more torque at high pedal inputs
+#define APP_CUSTOM_CONF_CTRL_RAMP_UP              (5.0f/3.6f) // m/s - ramp up speed interval for torque control
+#define APP_CUSTOM_CONF_CTRL_RAMP_DOWN            (5.0f/3.6f) // m/s - ramp down speed interval for torque control
+#define APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED        (80.0f/3.6f) // m/s - speed above which torque control is disabled
+
 #define APP_CUSTOM_CONF_MOTOR_TORQUE_CONSTANT      0.014f// Nm/A - motor torque constant, used for calculating assist level in human watts
 #define APP_CUSTOM_CONF_MOTOR_GEAR_EFFICIENCY      0.90f // range 0.0 to 1.0 - gear efficiency between motor and wheel
 #define APP_CUSTOM_CONF_PEDAL_GEAR_EFFICIENCY      0.95f // range 0.0 to 1.0 - gear efficiency between pedal and wheel
@@ -92,8 +96,6 @@
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PIN1       HW_ADC_EXT_PIN
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PORT2      HW_ADC_EXT2_GPIO
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PIN2       HW_ADC_EXT2_PIN
-#define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM          600.0f // WRPM - set torque to 0 above this value
-#define APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL    20.0f // WRPM - start decreasing torque before cutoff RPM by this interval
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER         0.1f   // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
 #define APP_CUSTOM_CONF_TORQUE_NM_MAX               88.0f   // Maximum torque in Nm corresponding to max sensor value
 #define APP_CUSTOM_CONF_TORQUE_THRESHOLD             3.0f   // Nm - threshold for detecting if torque is being applied
@@ -194,8 +196,8 @@
 #define APP_CUSTOM_CONF_CLUTCH_CLOSED_FIRST_CHECK_TIME_ADDR  56
 #define APP_CUSTOM_CONF_WHEEL_CALIBRATION_RPM_ADDR           57
 #define APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM_ADDR       58
-#define APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR        59
-#define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_ADDR               60
+//#define APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR        59
+//#define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_ADDR               60
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR            61
 #define APP_CUSTOM_CONF_CTRL_CADENCE_GAIN_ADDR               62
 #define APP_CUSTOM_CONF_CTRL_TORQUE_BASE_GAIN_ADDR           63
@@ -220,5 +222,8 @@
 #define APP_CUSTOM_CONF_RESISTANCE_RATIO_MAX_ADDR            82
 #define APP_CUSTOM_CONF_ACCELERATION_TIMEOUT_ADDR            83
 #define APP_CUSTOM_CONF_CTRL_TORQUE_MIN_GAIN_ADDR            84
+#define APP_CUSTOM_CONF_CTRL_RAMP_UP_ADDR                    85
+#define APP_CUSTOM_CONF_CTRL_RAMP_DOWN_ADDR                  86
+#define APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED_ADDR               87
 
 #endif /* APP_REGEN_CONF_H_ */
