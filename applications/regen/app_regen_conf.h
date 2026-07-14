@@ -94,10 +94,10 @@
 #define APP_CUSTOM_CONF_TORQUE_SENSOR_PIN2       HW_ADC_EXT2_PIN
 #define APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM          600.0f // WRPM - set torque to 0 above this value
 #define APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL    20.0f // WRPM - start decreasing torque before cutoff RPM by this interval
-#define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER         0.2f // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
-#define APP_CUSTOM_CONF_TORQUE_NM_MAX               88.0f // Maximum torque in Nm corresponding to max sensor value
-#define APP_CUSTOM_CONF_TORQUE_THRESHOLD             8.0f // Nm - threshold for detecting if torque is being applied
-#define APP_CUSTOM_CONF_TORQUE_TIMEOUT               0.2f // seconds - timeout for torque sensor
+#define APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER         0.1f   // Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
+#define APP_CUSTOM_CONF_TORQUE_NM_MAX               88.0f   // Maximum torque in Nm corresponding to max sensor value
+#define APP_CUSTOM_CONF_TORQUE_THRESHOLD             3.0f   // Nm - threshold for detecting if torque is being applied
+#define APP_CUSTOM_CONF_TORQUE_TIMEOUT               0.25f  // seconds - timeout for torque sensor
 
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS           45.0f  // degree mechanical
 #define APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS             80.0f  // degree mechanical
