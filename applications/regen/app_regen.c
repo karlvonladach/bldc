@@ -91,7 +91,7 @@ static void update_assistance_level(void);
 static void update_extra_resistance_ekf(float F_motor);
 static void update_motor_control(void);
 
-static float notch_filter(float new_value, float *memory, float timeout);
+static float notch_filter(float new_value, float *memory, float timeout, bool dual_mode);
 static float biquad_filter(float new_value, float *memory, float cutoff_freq, bool derivator);
 //static void  calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
 //static float compensate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
@@ -1250,7 +1250,7 @@ static void update_pedal_torque(void)
 		pedal_torque = torque2_ramp;
 		pedal_torque_rel = torque2_ramp;
 
-		torque2_filtered = notch_filter(pedal_torque, torque_notch_filter_memory, config.torque_sensor.timeout);
+		torque2_filtered = notch_filter(pedal_torque, torque_notch_filter_memory, config.torque_sensor.timeout, true);
 		torque2_filtered = biquad_filter(torque2_filtered, torque_biquad2_filter_memory, config.wheel_sensor.filter, false);
 
 		if (torque2 * config.torque_sensor.nm_max < config.torque_sensor.threshold) {
@@ -2002,7 +2002,7 @@ static void update_assistance_level()
 
 	extra_resistance_rel = extra_resistance / MAX(normal_resistance, 0.1f);
 
-	bike_accel_filtered = notch_filter(bike_accel_estimated, bike_accel_notch_filter_memory, config.acceleration_timeout);
+	bike_accel_filtered = notch_filter(bike_accel_estimated, bike_accel_notch_filter_memory, config.acceleration_timeout, false);
 	bike_accel_filtered = biquad_filter(bike_accel_filtered, bike_accel_bq_filter_memory, config.wheel_sensor.filter, false);
 
 	utils_truncate_number((float *)&extra_resistance_rel, -config.ctrl.resistance_ratio_max, config.ctrl.resistance_ratio_max);
@@ -2301,7 +2301,7 @@ static void update_motor_control()
 	}
 }
 
-static float notch_filter(float new_value, float *memory, float timeout) {
+static float notch_filter(float new_value, float *memory, float timeout, bool dual_mode) {
 	//Filtering cyclic variations - caused by pedal physics - by removing estimated periodic component
 	float A = memory[0];
 	float B = memory[1];
@@ -2334,15 +2334,19 @@ static float notch_filter(float new_value, float *memory, float timeout) {
 		A = A + (mu * filtered_tmp * x1);
     	B = B + (mu * filtered_tmp * x2);
 
-		// Estimate next sample
-		y_estimated = (C * x3) + (D * x4);
+		if (dual_mode) {
+			// Estimate next sample
+			y_estimated = (C * x3) + (D * x4);
 
-		// Calculate error.
-		filtered = filtered_tmp - y_estimated;
+			// Calculate error.
+			filtered = filtered_tmp - y_estimated;
 
-		// Update estimator params
-		C = C + (mu2 * filtered * x3);
-		D = D + (mu2 * filtered * x4);
+			// Update estimator params
+			C = C + (mu2 * filtered * x3);
+			D = D + (mu2 * filtered * x4);
+		} else {
+			filtered = filtered_tmp;
+		}
 
 		// Advance phase
 		index++;
