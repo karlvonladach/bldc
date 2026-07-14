@@ -520,14 +520,16 @@ static void sendRtData(CanardInstance *ins) {
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 	const app_configuration *appconf = app_get_configuration();
 
+	app_custom_get_rtdata(app_data);
+
 	data.volt_in = mc_interface_get_input_voltage_filtered();
 	data.volt_d = mcpwm_foc_get_vd();
 	data.volt_q = mcpwm_foc_get_vq();
 
 	data.temp_mos_max = mc_interface_temp_fet_filtered();
-	data.temp_mos_1 = NTC_TEMP_MOS1();
-	data.temp_mos_2 = NTC_TEMP_MOS2();
-	data.temp_mos_3 = NTC_TEMP_MOS3();
+	data.temp_mos_1 = app_data[9];  // NTC_TEMP_MOS1();
+	data.temp_mos_2 = app_data[10]; // NTC_TEMP_MOS2();
+	data.temp_mos_3 = app_data[11]; // NTC_TEMP_MOS3();
 	data.temp_motor_max = mc_interface_temp_motor_filtered();
 	data.temp_motor_1 = TEMP_MOTOR_1(conf->m_ntc_motor_beta);
 	data.temp_motor_2 = TEMP_MOTOR_2(conf->m_ntc_motor_beta);
@@ -541,7 +543,6 @@ static void sendRtData(CanardInstance *ins) {
 	imu_get_rpy(rpy);
 	imu_get_accel(acc);
 	imu_get_gyro(gyro);
-	app_custom_get_rtdata(app_data);
 
 	data.roll = app_data[6];
 	data.pitch = app_data[7];

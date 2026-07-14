@@ -386,6 +386,8 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 		int32_t ind = 0;
 		uint8_t *send_buffer = mempools_get_packet_buffer();
 		send_buffer[ind++] = packet_id;
+		float app_data[APP_RTDATA_COUNT];
+		app_custom_get_rtdata(app_data);
 
 		uint32_t mask = 0xFFFFFFFF;
 		if (packet_id == COMM_GET_VALUES_SELECTIVE) {
@@ -443,7 +445,8 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 			send_buffer[ind++] = mc_interface_get_fault();
 		}
 		if (mask & ((uint32_t)1 << 16)) {
-			buffer_append_float32(send_buffer, mc_interface_get_pid_pos_now(), 1e6, &ind);
+			//buffer_append_float32(send_buffer, mc_interface_get_pid_pos_now(), 1e6, &ind);
+			buffer_append_float32(send_buffer, app_data[12], 1e6, &ind);
 		}
 		if (mask & ((uint32_t)1 << 17)) {
 			uint8_t current_controller_id = app_get_configuration()->controller_id;
@@ -460,9 +463,9 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 				buffer_append_float16(send_buffer, NTC_TEMP_MOS2_M2(), 1e1, &ind);
 				buffer_append_float16(send_buffer, NTC_TEMP_MOS3_M2(), 1e1, &ind);
 			} else {
-				buffer_append_float16(send_buffer, NTC_TEMP_MOS1(), 1e1, &ind);
-				buffer_append_float16(send_buffer, NTC_TEMP_MOS2(), 1e1, &ind);
-				buffer_append_float16(send_buffer, NTC_TEMP_MOS3(), 1e1, &ind);
+				buffer_append_float16(send_buffer, app_data[9]/*NTC_TEMP_MOS1()*/, 1e1, &ind);
+				buffer_append_float16(send_buffer, app_data[10]/*NTC_TEMP_MOS2()*/, 1e1, &ind);
+				buffer_append_float16(send_buffer, app_data[11]/*NTC_TEMP_MOS3()*/, 1e1, &ind);
 			}
 		}
 		if (mask & ((uint32_t)1 << 19)) {

@@ -40,6 +40,10 @@ typedef enum {
     PLOT_CLUTCH_STATE,
     PLOT_WHEEL_PRED_RPM,
     PLOT_TORQUE,
+    PLOT_TORQUE2,
+    PLOT_MOTOR_CURRENT,
+    PLOT_ASSIST_LEVEL,
+    PLOT_ACCEL,
     PLOT_COUNT // This should always be the last element
 } plot_index_t;
 
@@ -49,7 +53,8 @@ typedef enum {
 	CUSTOM_CTRL_TYPE_PID,
 	CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED,
     CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE,
-    CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE
+    CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE, //alias cadence and torque
+    CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO,
 } custom_control_type;
 
 typedef enum {
@@ -82,13 +87,38 @@ typedef enum {
     SPEED_SENSOR_TYPE_SINGLE_INTERRUPT,
 	SPEED_SENSOR_TYPE_QUADRATURE_POLL,
     SPEED_SENSOR_TYPE_QUADRATURE_INTERRUPT,
-    SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT
+    SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT,
+    SPEED_SENSOR_TYPE_NONE
 } speed_sensor_type;
 
 typedef enum {
     TORQUE_SENSOR_TYPE_NONE = 0,
-    TORQUE_SENSOR_TYPE_ADC
+    TORQUE_SENSOR_TYPE_ADC_THROTTLE,
+    TORQUE_SENSOR_TYPE_ADC_PEDAL
 } torque_sensor_type;
+
+typedef struct {
+	custom_control_type ctrl_type;
+    float torque_base_gain;
+    float torque_extra_rel_gain;
+    float torque_extra_abs_gain;
+    float torque_acc_gain;
+    float torque_max_gain;
+    float torque_min_gain;
+    float torque_exponent;
+    float cadence_gain;
+    float motor_torque_constant;
+    float motor_gear_efficiency;
+    float pedal_gear_efficiency;
+    float effective_mass;
+    float resistance_coeff_0;
+    float resistance_coeff_1;
+    float resistance_coeff_2;
+    float resistance_ratio_max;
+    float ramp_up_speed_interval;
+    float ramp_down_speed_interval;
+    float cutoff_speed;
+} motor_control_config_type;
 
 typedef struct {
     speed_sensor_type sensor_type;
@@ -113,6 +143,10 @@ typedef struct {
 	bool use_filter;
     float cutoff_rpm;
     float decrease_interval;
+    float filter;
+    float nm_max;
+    float threshold;
+    float timeout;
 } torque_sensor_config_type;
 
 typedef struct {
@@ -151,14 +185,17 @@ typedef struct {
 } clutch_config_type;
 
 typedef struct {
-	custom_control_type ctrl_type;
-    speed_sensor_config_type pedal_sensor;
-    speed_sensor_config_type wheel_sensor;
+    motor_control_config_type ctrl;
+    speed_sensor_config_type  pedal_sensor;
+    speed_sensor_config_type  wheel_sensor;
     torque_sensor_config_type torque_sensor;
-    brake_config_type back_pedal_brake;
-    clutch_config_type clutch;
-	//float current_scaling;
-	uint32_t update_rate_hz;
+    brake_config_type         back_pedal_brake;
+    clutch_config_type        clutch;
+    uint32_t    velocity_sampling_rate;
+    float       extra_resistance_filter;
+    float       acceleration_filter;
+    float       acceleration_timeout;
+	uint32_t    update_rate_hz;
 } custom_config_type;
 
 // Config parameter types

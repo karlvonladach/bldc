@@ -49,8 +49,10 @@
 // App settings
 #define FILTER_SAMPLES				            5u
 #define CALIBRATION_ROUNDS			           10u
-#define DIFF_THRESHOLD_TO_APPLY_COMPENSATION  0.1f
-#define MAX_PERIODS_TO_AVG						8u
+#define DIFF_THRESHOLD_TO_APPLY_COMPENSATION    0.1f
+#define MAX_PERIODS_TO_AVG					    8u
+#define BIQUAD_FILTER_MEMORY_SIZE               4u
+#define NOTCH_FILTER_MEMORY_SIZE				7u
 
 // Macros
 #define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
@@ -85,10 +87,14 @@ static void update_pedal_speed_and_position(float set_brake_position);
 static void update_wheel_speed(void);
 static void update_motor_speed(void);
 static void update_clutch_state(void);
+static void update_assistance_level(void);
+static void update_extra_resistance_ekf(float F_motor);
 static void update_motor_control(void);
 
-static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
-static float compensate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
+static float notch_filter(float new_value, float *memory, float timeout, bool dual_mode);
+static float biquad_filter(float new_value, float *memory, float cutoff_freq, bool derivator);
+//static void  calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
+//static float compensate_wheel_sensor(float last_wheel_speed, float last_motor_speed);
 
 static void record_clutch_operation(void);
 static void open_clutch(void);
@@ -123,15 +129,43 @@ static volatile bool stop_now = true;
 static volatile bool is_running = false;
 static volatile float pedal_torque = 0;
 static volatile float pedal_torque_rel = 0;
-static volatile float pedal_speed  = 0;    //CRPM
-static volatile float pedal_speed_rel = 0; 
+static volatile float pedal_torque_filtered = 0;
+static volatile float pedal_torque_filtered_rel = 0;
+static volatile float pedal_speed  = 0;     //CRPM
+static volatile float pedal_speed_rel = 0;
 static volatile float pedal_brake_position = 0;
 static volatile float pedal_brake_position_rel = 0;
-static volatile float wheel_speed  = 0;    //WRPM
+static volatile float pedal_current_direction = 0;
+static volatile float wheel_speed  = 0;     //WRPM
 static volatile float wheel_speed_rel = 0;
+static volatile float wheel_speed_filtered = 0;
+static volatile float wheel_speed_filtered_rel = 0;
+static volatile float wheel_accel  = 0;     //WRPM/s
+static volatile float wheel_accel_filtered = 0;
 static volatile float wheel_speed_pred = 0;
-static volatile float motor_speed  = 0;    //MWRPM
+static volatile float motor_speed  = 0;     //MWRPM
+static volatile float motor_current_rel = 0;
+static volatile float bike_speed = 0;       // m/s
+static volatile float bike_speed_filtered = 0;   // m/s
+static volatile float bike_accel = 0;	    // m/s²
+static volatile float bike_accel_filtered = 0;   // m/s²
+static volatile float human_power_w = 0;    // Watts
+static volatile float normal_resistance = 0;
+static volatile float extra_resistance = 0; // Newton
+static volatile float extra_resistance_rel = 0;
+static volatile float torque_gain = 0;
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
+
+// EKF state for extra resistance estimation (row-major 5x5 covariance)
+// State vector: x = [bike_speed (m/s), extra_resistance (N), pedal_torque (Nm), pedal_omega (rad/s), bike_accel (m/s^2)]
+static float ekf_x[5];
+static float ekf_P[25];
+static volatile float pedal_torque_estimated = 0.0f;  // [Nm]    EKF filtered pedal torque
+static volatile float pedal_speed_estimated  = 0.0f;  // [rad/s] EKF filtered pedal angular speed
+static volatile float bike_speed_estimated   = 0.0f;  // [m/s]   EKF filtered bike speed
+static volatile float extra_resistance_ekf   = 0.0f;  // [N]     EKF estimated extra resistance
+static volatile float wheel_speed_estimated  = 0.0f;  // [m/s]   derived from EKF filtered bike speed
+static volatile float bike_accel_estimated   = 0.0f;  // [m/s²]  derived from EKF filtered bike speed
 static volatile uint8_t HALL1_level = 0;
 static volatile uint8_t HALL2_level = 0;
 static volatile uint8_t HALL3_level = 0;
@@ -154,142 +188,194 @@ static volatile uint32_t HALL3_int_cntr_rt = 0;
 static volatile float    last_close_time = 0;
 static volatile bool     calibration_active = false;
 static volatile uint32_t calibration_step = 0;
-static volatile float    wheel_sensor_calibration_values[WHEEL_SENSOR_CALIBRATION_VALUES_COUNT] = {0};
-static volatile float    last_motor_speeds[WHEEL_SENSOR_CALIBRATION_VALUES_COUNT] = {0};
-static volatile float    last_wheel_speeds[WHEEL_SENSOR_CALIBRATION_VALUES_COUNT] = {0};
+//static volatile float    wheel_sensor_calibration_values[WHEEL_SENSOR_CALIBRATION_VALUES_COUNT] = {0};
+//static volatile float    last_motor_speeds[WHEEL_SENSOR_CALIBRATION_VALUES_COUNT] = {0};
+//static volatile float    last_wheel_speeds[WHEEL_SENSOR_CALIBRATION_VALUES_COUNT] = {0};
 static volatile uint8_t  wheel_sensor_magnet_cntr = 0;
 static volatile bool     compensation_active = false;
+static volatile float    sin_lut[PEDAL_SENSOR_MAX_MAGNETS * 4] = {0};
 
 // Config table - add new parameters here
 static const config_param_t config_table[] = {
     // Control type
-    {"ctrl-type", "Motor control strategy", CONFIG_TYPE_ENUM, &config.ctrl_type, APP_CUSTOM_CONF_CTRL_TYPE_ADDR, 
-     {.enum_default = APP_CUSTOM_CONF_CTRL_TYPE}, "none,pid,speed,torque,torque_speed"},
-    
+    {"astype", "Motor control strategy", CONFIG_TYPE_ENUM, &config.ctrl.ctrl_type, APP_CUSTOM_CONF_CTRL_TYPE_ADDR, 
+     {.enum_default = APP_CUSTOM_CONF_CTRL_TYPE}, "none,pid,cadence,torque,cadence_torque,auto"},
+    {"astbasegain", "[float] Base torque gain", CONFIG_TYPE_FLOAT, &config.ctrl.torque_base_gain, APP_CUSTOM_CONF_CTRL_TORQUE_BASE_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_BASE_GAIN}, NULL},
+    {"astexrelgain", "[float] Coefficient of additional torque gain based on (extra_resistance / normal_resistance)", CONFIG_TYPE_FLOAT, &config.ctrl.torque_extra_rel_gain, APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_REL_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_REL_GAIN}, NULL},
+    {"astexabsgain", "[float] Coefficient of additional torque gain based on extra resistance", CONFIG_TYPE_FLOAT, &config.ctrl.torque_extra_abs_gain, APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_ABS_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_ABS_GAIN}, NULL},
+    {"astaccgain", "[float] Coefficient of additional torque gain based on acceleration", CONFIG_TYPE_FLOAT, &config.ctrl.torque_acc_gain, APP_CUSTOM_CONF_CTRL_TORQUE_ACC_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_ACC_GAIN}, NULL},
+    {"astmaxgain", "[float] Maximum allowed torque gain", CONFIG_TYPE_FLOAT, &config.ctrl.torque_max_gain, APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN}, NULL},
+    {"astmingain", "[float] Minimum allowed torque gain", CONFIG_TYPE_FLOAT, &config.ctrl.torque_min_gain, APP_CUSTOM_CONF_CTRL_TORQUE_MIN_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_MIN_GAIN}, NULL},
+    {"astexp", "[float] Torque control exponent (1.0 is linear, < 1.0 gives more torque at low pedal inputs)", CONFIG_TYPE_FLOAT, &config.ctrl.torque_exponent, APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT}, NULL},
+    {"ascgain", "[float] Cadence control gain", CONFIG_TYPE_FLOAT, &config.ctrl.cadence_gain, APP_CUSTOM_CONF_CTRL_CADENCE_GAIN_ADDR,
+     {.float_default = APP_CUSTOM_CONF_CTRL_CADENCE_GAIN}, NULL},
+	{"asmotconst", "[float] Motor torque constant in Nm/A, used for calculating motor power", CONFIG_TYPE_FLOAT, &config.ctrl.motor_torque_constant, APP_CUSTOM_CONF_MOTOR_TORQUE_CONSTANT_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_MOTOR_TORQUE_CONSTANT}, NULL},
+	{"asmotgeff", "[float] Motor-to-wheel gear efficiency", CONFIG_TYPE_FLOAT, &config.ctrl.motor_gear_efficiency, APP_CUSTOM_CONF_MOTOR_GEAR_EFFICIENCY_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_MOTOR_GEAR_EFFICIENCY}, NULL},
+	{"aspedgeff", "[float] Pedal-to-wheel gear efficiency", CONFIG_TYPE_FLOAT, &config.ctrl.pedal_gear_efficiency, APP_CUSTOM_CONF_PEDAL_GEAR_EFFICIENCY_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_PEDAL_GEAR_EFFICIENCY}, NULL},
+	{"asmeff", "[kg] Effective rider+bike mass", CONFIG_TYPE_FLOAT, &config.ctrl.effective_mass, APP_CUSTOM_CONF_EFFECTIVE_MASS_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_EFFECTIVE_MASS}, NULL},
+	{"asresc0", "[N] 0th-order resistance coefficient", CONFIG_TYPE_FLOAT, &config.ctrl.resistance_coeff_0, APP_CUSTOM_CONF_RESISTANCE_COEFF_0_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_RESISTANCE_COEFF_0}, NULL},
+	{"asresc1", "[N*s/m] 1st-order resistance coefficient", CONFIG_TYPE_FLOAT, &config.ctrl.resistance_coeff_1, APP_CUSTOM_CONF_RESISTANCE_COEFF_1_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_RESISTANCE_COEFF_1}, NULL},
+	{"asresc2", "[N*s^2/m^2] 2nd-order resistance coefficient", CONFIG_TYPE_FLOAT, &config.ctrl.resistance_coeff_2, APP_CUSTOM_CONF_RESISTANCE_COEFF_2_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_RESISTANCE_COEFF_2}, NULL},
+	{"asresratmax", "[float] Maximum ratio of extra resistance to normal resistance", CONFIG_TYPE_FLOAT, &config.ctrl.resistance_ratio_max, APP_CUSTOM_CONF_RESISTANCE_RATIO_MAX_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_RESISTANCE_RATIO_MAX}, NULL},
+	{"assoftsta", "[m/s] Soft start speed interval for gradually increasing assist", CONFIG_TYPE_FLOAT, &config.ctrl.ramp_up_speed_interval, APP_CUSTOM_CONF_CTRL_RAMP_UP_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_CTRL_RAMP_UP}, NULL},
+	{"ascutint", "[m/s] Soft limit speed interval for gradually decreasing assist", CONFIG_TYPE_FLOAT, &config.ctrl.ramp_down_speed_interval, APP_CUSTOM_CONF_CTRL_RAMP_DOWN_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_CTRL_RAMP_DOWN}, NULL},
+	{"ascutend", "[m/s] Speed above which assist is disabled", CONFIG_TYPE_FLOAT, &config.ctrl.cutoff_speed, APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED}, NULL},
+
+    {"velsrate", "[Hz] Velocity sampling rate", CONFIG_TYPE_UINT32, &config.velocity_sampling_rate, APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE_ADDR,
+	 {.uint32_default = APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE}, NULL},
+	{"xresfilt", "[0.0-1.0] Extra resistance filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.extra_resistance_filter, APP_CUSTOM_CONF_EXTRA_RESISTANCE_FILTER_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_EXTRA_RESISTANCE_FILTER}, NULL},
+	{"accfilt", "[0.0-1.0] Acceleration filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.acceleration_filter, APP_CUSTOM_CONF_ACCELERATION_FILTER_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_ACCELERATION_FILTER}, NULL},
+	{"acctout", "[sec] Time of pedal inactivity before zeroing acceleration", CONFIG_TYPE_FLOAT, &config.acceleration_timeout, APP_CUSTOM_CONF_ACCELERATION_TIMEOUT_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_ACCELERATION_TIMEOUT}, NULL},
+
     // Pedal sensor config
-    {"pedal_sensor_type", "Pedal sensor encoding type", CONFIG_TYPE_ENUM, &config.pedal_sensor.sensor_type, APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE_ADDR, 
+    {"pedstype", "Pedal sensor encoding type", CONFIG_TYPE_ENUM, &config.pedal_sensor.sensor_type, APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE_ADDR, 
      {.enum_default = APP_CUSTOM_CONF_PEDAL_SENSOR_TYPE}, "single_poll,single_int,quad_poll,quad_int"},
-    {"pedal_magnets", "[count] Number of pedal sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.pedal_sensor.magnets, APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS_ADDR, 
+    {"pedmagn", "[count] Number of pedal sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.pedal_sensor.magnets, APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS_ADDR, 
      {.uint32_default = APP_CUSTOM_CONF_PEDAL_SENSOR_MAGNETS}, NULL},
-    {"pedal_filter", "[0.0-1.0] Pedal sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.pedal_sensor.filter, APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER_ADDR, 
+    {"pedfilt", "[0.0-1.0] Pedal sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.pedal_sensor.filter, APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_SENSOR_FILTER}, NULL},
-    {"pedal_avg_above_rpm", "[rpm] CRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.pedal_sensor.avg_above_rpm, APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM_ADDR, 
+    {"pedavgrpm", "[rpm] CRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.pedal_sensor.avg_above_rpm, APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_AVG_ABOVE_RPM}, NULL},
-    {"pedal_rpm_start", "[rpm] CRPM start of boost range", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_start, APP_CUSTOM_CONF_PEDAL_RPM_START_ADDR, 
+    {"pedstrpm", "[rpm] CRPM start of boost range", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_start, APP_CUSTOM_CONF_PEDAL_RPM_START_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_RPM_START}, NULL},
-    {"pedal_rpm_end", "[rpm] CRPM end of boost range", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_end, APP_CUSTOM_CONF_PEDAL_RPM_END_ADDR, 
+    {"pedendrpm", "[rpm] CRPM end of boost range", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_end, APP_CUSTOM_CONF_PEDAL_RPM_END_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_RPM_END}, NULL},
-    {"pedal_rpm_min", "[rpm] CRPM minimum threshold - set 0 CRPM below this value", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_min, APP_CUSTOM_CONF_PEDAL_RPM_MIN_ADDR, 
+    {"pedminrpm", "[rpm] CRPM minimum threshold - set 0 CRPM below this value", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_min, APP_CUSTOM_CONF_PEDAL_RPM_MIN_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_RPM_MIN}, NULL},
-    {"pedal_rpm_max", "[rpm] CRPM maximum threshold - raise error above this value", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_max, APP_CUSTOM_CONF_PEDAL_RPM_MAX_ADDR, 
+    {"pedmaxrpm", "[rpm] CRPM maximum threshold - raise error above this value", CONFIG_TYPE_FLOAT, &config.pedal_sensor.rpm_max, APP_CUSTOM_CONF_PEDAL_RPM_MAX_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_RPM_MAX}, NULL},
-    {"pedal_ramp_time_pos", "[sec] Pedal positive ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.pedal_sensor.ramp_time_pos, APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS_ADDR, 
+    {"pedramppos", "[sec] Pedal positive ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.pedal_sensor.ramp_time_pos, APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_RAMP_TIME_POS}, NULL},
-    {"pedal_ramp_time_neg", "[sec] Pedal negative ramp time in sec/fullscale from max to min", CONFIG_TYPE_FLOAT, &config.pedal_sensor.ramp_time_neg, APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG_ADDR, 
+    {"pedrampneg", "[sec] Pedal negative ramp time in sec/fullscale from max to min", CONFIG_TYPE_FLOAT, &config.pedal_sensor.ramp_time_neg, APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG_ADDR, 
      {.float_default = APP_CUSTOM_CONF_PEDAL_RAMP_TIME_NEG}, NULL},
-    {"pedal_invert", "[0/1] Invert pedal sensor direction: 1=invert, 0=no invert", CONFIG_TYPE_BOOL, &config.pedal_sensor.invert_direction, APP_CUSTOM_CONF_PEDAL_INVERT_DIR_ADDR, 
+    {"pedinv", "[0/1] Invert pedal sensor direction: 1=invert, 0=no invert", CONFIG_TYPE_BOOL, &config.pedal_sensor.invert_direction, APP_CUSTOM_CONF_PEDAL_INVERT_DIR_ADDR, 
      {.bool_default = APP_CUSTOM_CONF_PEDAL_INVERT_DIR}, NULL},
     
     // Wheel sensor config
-    {"wheel_sensor_type", "Wheel sensor encoding type", CONFIG_TYPE_ENUM, &config.wheel_sensor.sensor_type, APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE_ADDR, 
-     {.enum_default = APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE}, "single_poll,single_int,quad_poll,quad_int,single_poll_single_int"},
-    {"wheel_poll_to_int_rpm", "[rpm] WRPM threshold at which to switch from polling to interrupt mode", CONFIG_TYPE_FLOAT, &config.wheel_sensor.poll_to_int_rpm, APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM_ADDR, 
+    {"whstype", "Wheel sensor encoding type", CONFIG_TYPE_ENUM, &config.wheel_sensor.sensor_type, APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE_ADDR, 
+     {.enum_default = APP_CUSTOM_CONF_WHEEL_SENSOR_TYPE}, "single_poll,single_int,quad_poll,quad_int,single_poll_single_int,none"},
+    {"whpollintrpm", "[rpm] WRPM threshold at which to switch from polling to interrupt mode", CONFIG_TYPE_FLOAT, &config.wheel_sensor.poll_to_int_rpm, APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_POLL_TO_INT_RPM}, NULL},
-    {"wheel_magnets", "[count] Number of wheel sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.wheel_sensor.magnets, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR, 
+    {"whmagn", "[count] Number of wheel sensor magnets including 'virtual' magnets", CONFIG_TYPE_UINT32, &config.wheel_sensor.magnets, APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS_ADDR, 
      {.uint32_default = APP_CUSTOM_CONF_WHEEL_SENSOR_MAGNETS}, NULL},
-    {"wheel_filter", "[0.0-1.0] Wheel sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.filter, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR, 
+    {"whfilter", "biquad filter cutoff frequency in Hz (0.5, 1.0, 2.0, 4.0)", CONFIG_TYPE_FLOAT, &config.wheel_sensor.filter, APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_SENSOR_FILTER}, NULL},
-    {"wheel_avg_above_rpm", "[rpm] WRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.wheel_sensor.avg_above_rpm, APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR, 
+    {"whavgrpm", "[rpm] WRPM threshold above which to average last two samples", CONFIG_TYPE_FLOAT, &config.wheel_sensor.avg_above_rpm, APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_AVG_ABOVE_RPM}, NULL},
-	{"wheel_progressive_avg_rpm", "[rpm] if > 0, use progressive averaging, adding one more sample to the average for every multiple of this RPM", CONFIG_TYPE_FLOAT, &config.wheel_sensor.progressive_avg_rpm, APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM_ADDR,
+	{"whprogavgrpm", "[rpm] if > 0, use progressive averaging, adding one more sample to the average for every multiple of this RPM", CONFIG_TYPE_FLOAT, &config.wheel_sensor.progressive_avg_rpm, APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_WHEEL_PROGRESSIVE_AVG_RPM}, NULL},
-    {"wheel_rpm_min", "[rpm] WRPM minimum threshold - set 0 WRPM below this value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.rpm_min, APP_CUSTOM_CONF_WHEEL_RPM_MIN_ADDR, 
+    {"whminrpm", "[rpm] WRPM minimum threshold - set 0 WRPM below this value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.rpm_min, APP_CUSTOM_CONF_WHEEL_RPM_MIN_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_RPM_MIN}, NULL},
-    {"wheel_rpm_max", "[rpm] WRPM maximum threshold - raise error above this value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.rpm_max, APP_CUSTOM_CONF_WHEEL_RPM_MAX_ADDR, 
+    {"whmaxrpm", "[rpm] WRPM maximum threshold - raise error above this value", CONFIG_TYPE_FLOAT, &config.wheel_sensor.rpm_max, APP_CUSTOM_CONF_WHEEL_RPM_MAX_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_RPM_MAX}, NULL},
-    {"wheel_ramp_time_pos", "[sec] Wheel positive ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.wheel_sensor.ramp_time_pos, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS_ADDR, 
+    {"whramppos", "[sec] Wheel positive ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.wheel_sensor.ramp_time_pos, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_POS}, NULL},
-    {"wheel_ramp_time_neg", "[sec] Wheel negative ramp time in sec/fullscale from max to min", CONFIG_TYPE_FLOAT, &config.wheel_sensor.ramp_time_neg, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG_ADDR, 
+    {"whrampneg", "[sec] Wheel negative ramp time in sec/fullscale from max to min", CONFIG_TYPE_FLOAT, &config.wheel_sensor.ramp_time_neg, APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_RAMP_TIME_NEG}, NULL},
-    {"wheel_invert", "[0/1] Invert wheel sensor direction: 1=invert, 0=no invert", CONFIG_TYPE_BOOL, &config.wheel_sensor.invert_direction, APP_CUSTOM_CONF_WHEEL_INVERT_DIR_ADDR, 
+    {"whinv", "[0/1] Invert wheel sensor direction: 1=invert, 0=no invert", CONFIG_TYPE_BOOL, &config.wheel_sensor.invert_direction, APP_CUSTOM_CONF_WHEEL_INVERT_DIR_ADDR, 
      {.bool_default = APP_CUSTOM_CONF_WHEEL_INVERT_DIR}, NULL},
-    {"wheel_skip_threshold", "[1.0-3.0] Wheel sensor skipped magnet threshold ratio: skipped period / normal period", CONFIG_TYPE_FLOAT, &config.wheel_sensor.skipped_magnet_threshold, APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR_ADDR, 
+    {"whskipthr", "[1.0-3.0] Wheel sensor skipped magnet threshold ratio: skipped period / normal period", CONFIG_TYPE_FLOAT, &config.wheel_sensor.skipped_magnet_threshold, APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR_ADDR, 
      {.float_default = APP_CUSTOM_CONF_WHEEL_SKIPPED_MAGNET_THR}, NULL},
-	{"wheel_calibration_rpm", "[rpm] Wheel calibration RPM", CONFIG_TYPE_FLOAT, &config.wheel_sensor.calibration_rpm, APP_CUSTOM_CONF_WHEEL_CALIBRATION_RPM_ADDR,
+	{"whcalrpm", "[rpm] Wheel calibration RPM", CONFIG_TYPE_FLOAT, &config.wheel_sensor.calibration_rpm, APP_CUSTOM_CONF_WHEEL_CALIBRATION_RPM_ADDR,
      {.float_default = APP_CUSTOM_CONF_WHEEL_CALIBRATION_RPM}, NULL},
     
 	// Torque sensor config
-	{"torque_sensor_type", "Torque sensor type", CONFIG_TYPE_ENUM, &config.torque_sensor.sensor_type, APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE_ADDR, 
-	 {.enum_default = APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE}, "none,adc"},
-	{"torque_cutoff_rpm", "[rpm] WRPM threshold for torque cutoff - set torque to 0 above this value", CONFIG_TYPE_FLOAT, &config.torque_sensor.cutoff_rpm, APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM_ADDR,	
-	 {.float_default = APP_CUSTOM_CONF_TORQUE_CUTOFF_RPM}, NULL},
-	{"torque_decrease_interval", "[rpm] WRPM interval before cutoff where torque (non-linearly) decreases", CONFIG_TYPE_FLOAT, &config.torque_sensor.decrease_interval, APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL_ADDR,	
-	 {.float_default = APP_CUSTOM_CONF_TORQUE_DECREASE_INTERVAL}, NULL},
+	{"tqstype", "Torque sensor type", CONFIG_TYPE_ENUM, &config.torque_sensor.sensor_type, APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE_ADDR, 
+	 {.enum_default = APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE}, "none,throttle,pedal"},
+	{"tqfilter", "[0.0-1.0] Torque sensor filter: 0.0 to 1.0 where 1.0 gives unfiltered value", CONFIG_TYPE_FLOAT, &config.torque_sensor.filter, APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_TORQUE_SENSOR_FILTER}, NULL},
+	{"tqmaxnm", "[Nm] Maximum torque in Nm corresponding to max sensor value", CONFIG_TYPE_FLOAT, &config.torque_sensor.nm_max, APP_CUSTOM_CONF_TORQUE_NM_MAX_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_TORQUE_NM_MAX}, NULL},
+	{"tqthresh", "[Nm] Threshold for detecting if torque is being applied", CONFIG_TYPE_FLOAT, &config.torque_sensor.threshold, APP_CUSTOM_CONF_TORQUE_THRESHOLD_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_TORQUE_THRESHOLD}, NULL},
+	{"tqto", "[sec] Timeout for torque sensor in seconds", CONFIG_TYPE_FLOAT, &config.torque_sensor.timeout, APP_CUSTOM_CONF_TORQUE_TIMEOUT_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_TORQUE_TIMEOUT}, NULL},
 
     // Back pedal brake config
-    {"brake_start_pos", "[deg] Back pedal brake start position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR, 
+    {"brstpos", "[deg] Back pedal brake start position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_START_POS}, NULL},
-    {"brake_end_pos", "[deg] Back pedal brake end position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.end_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS_ADDR, 
+    {"brendpos", "[deg] Back pedal brake end position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.end_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_END_POS}, NULL},
-    {"brake_wait_release", "[sec] Back pedal brake wait time before release in seconds", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.wait_before_release, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE_ADDR, 
+    {"brwaitrls", "[sec] Back pedal brake wait time before release in seconds", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.wait_before_release, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_WAIT_BEFORE_RELEASE}, NULL},
-    {"brake_release_rpm", "[rpm] WRPM below which back pedal brake release is started", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.release_rpm, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM_ADDR, 
+    {"brrlsrpm", "[rpm] WRPM below which back pedal brake release is started", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.release_rpm, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RELEASE_RPM}, NULL},
-    {"brake_sync_start_pos", "[deg] Back pedal brake sync start position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.sync_start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS_ADDR, 
+    {"brsyncstpos", "[deg] Back pedal brake sync start position in degrees mechanical", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.sync_start_pos, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_SYNC_START_POS}, NULL},
-    {"brake_current_ramp_time", "[sec] Back pedal brake current ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.current_ramp_time, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME_ADDR, 
+    {"brramp", "[sec] Back pedal brake current ramp time in sec/fullscale from min to max", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.current_ramp_time, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME_ADDR, 
      {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_CURRENT_RAMP_TIME}, NULL},
-	{"brake_reset_pos_percent", "[0.0-1.0] Percentage of brake position set just after closing", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.reset_pos_percent, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RESET_POS_PERCENT_ADDR,
+	{"brrstpos", "[0.0-1.0] Percentage of brake position set just after closing", CONFIG_TYPE_FLOAT, &config.back_pedal_brake.reset_pos_percent, APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RESET_POS_PERCENT_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_BACK_PEDAL_BRAKE_RESET_POS_PERCENT}, NULL},
 	 
     // Clutch config
-    {"clutch_open_wait", "[sec] Clutch wait time before opening in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_open, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN_ADDR, 
+    {"clopenwait", "[sec] Clutch wait time before opening in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_open, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_OPEN}, NULL},
-    {"clutch_sync_assist_wait", "[sec] Clutch wait time before sync in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_ADDR, 
+    {"clsyncwait", "[sec] Clutch wait time before sync in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC}, NULL},
-    {"clutch_check_wait", "[sec] Clutch wait time before check in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_check, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK_ADDR, 
+    {"clcheckwait", "[sec] Clutch wait time before check in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_check, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_CHECK}, NULL},
-    {"clutch_error_wait", "[sec] Clutch wait time before sync loss in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync_loss, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR, 
+    {"clerrorwait", "[sec] Clutch wait time before sync loss in seconds", CONFIG_TYPE_FLOAT, &config.clutch.wait_before_sync_loss, APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_WAIT_BEFORE_SYNC_LOSS}, NULL},
-    {"clutch_sync_time", "[sec] Time for ensuring stable sync in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_time, APP_CUSTOM_CONF_CLUTCH_SYNC_TIME_ADDR, 
+    {"clsynctime", "[sec] Time for ensuring stable sync in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_time, APP_CUSTOM_CONF_CLUTCH_SYNC_TIME_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_TIME}, NULL},
-	{"clutch_desync_time", "[sec] Time for motor to slow down after clutch is opened in seconds", CONFIG_TYPE_FLOAT, &config.clutch.desync_time, APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME_ADDR, 
+	{"cldesynctime", "[sec] Time for motor to slow down after clutch is opened in seconds", CONFIG_TYPE_FLOAT, &config.clutch.desync_time, APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_DESYNC_TIME}, NULL},
-	{"clutch_sync_brake_timeout", "[sec] Clutch sync timeout in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_timeout, APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT_ADDR, 
+	{"clsyncbraketo", "[sec] Clutch sync timeout in seconds", CONFIG_TYPE_FLOAT, &config.clutch.sync_timeout, APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_TIMEOUT}, NULL},
-	{"clutch_closed_first_check_time", "[sec] sync_check_rpm_diff is checked for this long in closed state", CONFIG_TYPE_FLOAT, &config.clutch.closed_first_check_time, APP_CUSTOM_CONF_CLUTCH_CLOSED_FIRST_CHECK_TIME_ADDR, 
+	{"clclosedfcheck", "[sec] sync_check_rpm_diff is checked for this long in closed state", CONFIG_TYPE_FLOAT, &config.clutch.closed_first_check_time, APP_CUSTOM_CONF_CLUTCH_CLOSED_FIRST_CHECK_TIME_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_CLOSED_FIRST_CHECK_TIME}, NULL},
-    {"clutch_sync_diff", "[rpm] Clutch sync target WRPM difference", CONFIG_TYPE_FLOAT, &config.clutch.sync_rpm_diff, APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF_ADDR, 
+    {"clsyncdiff", "[rpm] Clutch sync target WRPM difference", CONFIG_TYPE_FLOAT, &config.clutch.sync_rpm_diff, APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_SYNC_RPM_DIFF}, NULL},
-    {"clutch_closed_check_diff", "[rpm] Clutch closed check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.closed_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF_ADDR, 
+    {"clclosedcheckdiff", "[rpm] Clutch closed check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.closed_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_CLOSED_CHECK_RPM_DIFF}, NULL},
-	{"clutch_open_check_diff", "[rpm] Clutch open check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.open_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF_ADDR, 
+	{"clopencheckdiff", "[rpm] Clutch open check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.open_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_OPEN_CHECK_RPM_DIFF}, NULL},
-    {"clutch_sync_check_diff", "[rpm] Clutch sync check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.first_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF_ADDR, 
+    {"clsynccheckdiff", "[rpm] Clutch sync check WRPM difference threshold", CONFIG_TYPE_FLOAT, &config.clutch.first_check_rpm_diff, APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_FIRST_CHECK_RPM_DIFF}, NULL},
-	{"clutch_min_rpm_open", "[rpm] WRPM above which clutch can be opened", CONFIG_TYPE_FLOAT, &config.clutch.min_rpm_open, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN_ADDR, 
+	{"clminrpmopen", "[rpm] WRPM above which clutch can be opened", CONFIG_TYPE_FLOAT, &config.clutch.min_rpm_open, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_MIN_RPM_OPEN}, NULL},
-	{"clutch_min_rpm_close", "[rpm] WRPM below which clutch must be closed", CONFIG_TYPE_FLOAT, &config.clutch.min_rpm_close, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_CLOSE_ADDR, 
+	{"clminrpmclose", "[rpm] WRPM below which clutch must be closed", CONFIG_TYPE_FLOAT, &config.clutch.min_rpm_close, APP_CUSTOM_CONF_CLUTCH_MIN_RPM_CLOSE_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_MIN_RPM_CLOSE}, NULL},
-    {"clutch_max_rpm_open", "[rpm] WRPM above which clutch must be opened", CONFIG_TYPE_FLOAT, &config.clutch.max_rpm_open, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN_ADDR, 
+    {"clmaxrpmopen", "[rpm] WRPM above which clutch must be opened", CONFIG_TYPE_FLOAT, &config.clutch.max_rpm_open, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN}, NULL},
-    {"clutch_max_rpm_close", "[rpm] WRPM below which clutch can be closed", CONFIG_TYPE_FLOAT, &config.clutch.max_rpm_close, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE_ADDR, 
+    {"clmaxrpmclose", "[rpm] WRPM below which clutch can be closed", CONFIG_TYPE_FLOAT, &config.clutch.max_rpm_close, APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE_ADDR, 
      {.float_default = APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE}, NULL},
-    {"clutch_mode", "Clutch operation mode", CONFIG_TYPE_ENUM, &config.clutch.mode, APP_CUSTOM_CONF_CLUTCH_MODE_ADDR, 
+    {"clmode", "Clutch operation mode", CONFIG_TYPE_ENUM, &config.clutch.mode, APP_CUSTOM_CONF_CLUTCH_MODE_ADDR, 
      {.enum_default = APP_CUSTOM_CONF_CLUTCH_MODE}, "closed,open,auto,manual,fullmanual"},
-    {"clutch_invert", "Invert clutch direction: 1=invert, 0=no invert", CONFIG_TYPE_BOOL, &config.clutch.invert_direction, APP_CUSTOM_CONF_CLUTCH_INVERT_DIR_ADDR, 
+    {"clinv", "Invert clutch direction: 1=invert, 0=no invert", CONFIG_TYPE_BOOL, &config.clutch.invert_direction, APP_CUSTOM_CONF_CLUTCH_INVERT_DIR_ADDR, 
      {.bool_default = APP_CUSTOM_CONF_CLUTCH_INVERT_DIR}, NULL},
-	{"clutch_error_limit", "[count] Maximum number of clutch errors in defined period before disabling clutch", CONFIG_TYPE_UINT32, &config.clutch.error_limit, APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT_ADDR, 
+	{"clerrorlimit", "[count] Maximum number of clutch errors in defined period before disabling clutch", CONFIG_TYPE_UINT32, &config.clutch.error_limit, APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT_ADDR, 
 	 {.uint32_default = APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT}, NULL},
-	{"clutch_error_period", "[sec] Clutch error counting period in seconds", CONFIG_TYPE_FLOAT, &config.clutch.error_period, APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD_ADDR, 
+	{"clerrorperiod", "[sec] Clutch error counting period in seconds", CONFIG_TYPE_FLOAT, &config.clutch.error_period, APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD_ADDR, 
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD}, NULL},
-	{"clutch_sync_while_closing", "[0/1] Enable/disable sync while clutch is closing: 1=enable, 0=disable", CONFIG_TYPE_BOOL, &config.clutch.sync_while_closing, APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING_ADDR, 
+	{"clsyncwhileclosing", "[0/1] Enable/disable sync while clutch is closing: 1=enable, 0=disable", CONFIG_TYPE_BOOL, &config.clutch.sync_while_closing, APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING_ADDR, 
 	 {.bool_default = APP_CUSTOM_CONF_CLUTCH_SYNC_WHILE_CLOSING}, NULL},
-	{"clutch_current_limit_closing", "[0.0-1.0] Relative current limit when clutch is closing (0.0 to 1.0)", CONFIG_TYPE_FLOAT, &config.clutch.current_limit_closing, APP_CUSTOM_CONF_CLUTCH_CURRENT_LIMIT_CLOSING_ADDR,
+	{"clclimitclosing", "[0.0-1.0] Relative current limit when clutch is closing (0.0 to 1.0)", CONFIG_TYPE_FLOAT, &config.clutch.current_limit_closing, APP_CUSTOM_CONF_CLUTCH_CURRENT_LIMIT_CLOSING_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_CLUTCH_CURRENT_LIMIT_CLOSING}, NULL},
 
     // Other config
-    {"update_rate", "[Hz] Sensor signal processing and clutch control rate in Hz", CONFIG_TYPE_UINT32, &config.update_rate_hz, APP_CUSTOM_CONF_UPDATE_RATE_HZ_ADDR, 
+    {"updrate", "[Hz] Sensor signal processing and clutch control rate in Hz", CONFIG_TYPE_UINT32, &config.update_rate_hz, APP_CUSTOM_CONF_UPDATE_RATE_HZ_ADDR, 
      {.uint32_default = APP_CUSTOM_CONF_UPDATE_RATE_HZ}, NULL}
 };
 
@@ -314,14 +400,19 @@ void app_custom_start(void) {
 #endif
 
 #ifdef APP_CUSTOM_CONF_TORQUE_SENSOR_PORT1
-    if (APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC) {
+    if (APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC_THROTTLE || APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC_PEDAL) {
 	    palSetPadMode(APP_CUSTOM_CONF_TORQUE_SENSOR_PORT1, APP_CUSTOM_CONF_TORQUE_SENSOR_PIN1, PAL_MODE_INPUT_ANALOG);
+	}
+#endif
+
+#ifdef APP_CUSTOM_CONF_TORQUE_SENSOR_PORT2
+    if (APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC_THROTTLE || APP_CUSTOM_CONF_TORQUE_SENSOR_TYPE == TORQUE_SENSOR_TYPE_ADC_PEDAL) {
+	    palSetPadMode(APP_CUSTOM_CONF_TORQUE_SENSOR_PORT2, APP_CUSTOM_CONF_TORQUE_SENSOR_PIN2, PAL_MODE_INPUT_ANALOG);
 	}
 #endif
 
 	palSetPadMode(HW_UART_TX_PORT, HW_UART_TX_PIN, PAL_MODE_OUTPUT_PUSHPULL);
 	palSetPadMode(HW_UART_RX_PORT, HW_UART_RX_PIN, PAL_MODE_OUTPUT_PUSHPULL);
-	palSetPadMode(HW_ADC_EXT2_GPIO, HW_ADC_EXT2_PIN, PAL_MODE_OUTPUT_PUSHPULL);
 
 	stop_now = false;
 	chThdCreateStatic(my_thread_wa, sizeof(my_thread_wa),
@@ -427,9 +518,9 @@ bool app_custom_is_running(void) {
 void app_custom_configure(app_configuration *conf) {
 	eeprom_var v;
 
-    for (uint8_t i=0; i < WHEEL_SENSOR_CALIBRATION_VALUES_COUNT; i++) {
-		wheel_sensor_calibration_values[i] = 0;
-	}
+//    for (uint8_t i=0; i < WHEEL_SENSOR_CALIBRATION_VALUES_COUNT; i++) {
+//		wheel_sensor_calibration_values[i] = 0;
+//	}
 
 	load_config_defaults();
 
@@ -439,7 +530,7 @@ void app_custom_configure(app_configuration *conf) {
 		plots_enabled = v.as_u32;
 	}
 
-	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC) {
+	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_THROTTLE || config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_PEDAL) {
 		config_adc = conf->app_adc_conf;
 	}
 
@@ -457,6 +548,23 @@ void app_custom_configure(app_configuration *conf) {
 	// if wheel spins at max rpm, assume its beyond limits
 	min_wheel_period = 1.0 / ((config.wheel_sensor.rpm_max / 60.0) * config.wheel_sensor.magnets);
 
+	for (uint8_t i=0; i < config.pedal_sensor.magnets*4; i++) {
+		sin_lut[i] = sinf((float)i * 2.0f * M_PI / (config.pedal_sensor.magnets*4));
+	}
+
+	// Initialize EKF state and covariance
+	ekf_x[0] = 0.5f;   // bike speed [m/s]
+	ekf_x[1] = 0.0f;   // extra resistance [N]
+	ekf_x[2] = 0.0f;   // pedal torque [Nm]
+	ekf_x[3] = 0.0f;   // pedal angular speed [rad/s]
+	ekf_x[4] = 0.0f;   // bike acceleration [m/s^2]
+	for (int i = 0; i < 25; i++) ekf_P[i] = 0.0f;
+	ekf_P[0*5+0] =   1.0f;
+	ekf_P[1*5+1] = 100.0f;
+	ekf_P[2*5+2] =  50.0f;
+	ekf_P[3*5+3] =   5.0f;
+	ekf_P[4*5+4] =   2.0f;
+
 	enable_interrupt();
 }
 
@@ -467,15 +575,19 @@ void app_custom_pin_isr(void){
 }
 
 void app_custom_get_rtdata(float* data) {
-	data[0] = pedal_speed;
-	data[1] = wheel_speed;
+	data[0] = pedal_speed_estimated;
+	data[1] = wheel_speed_estimated;
 	data[2] = motor_speed;
-	data[3] = pedal_brake_position;
-	data[4] = pedal_torque;
-	data[5] = (float)clutch_state;
-	data[6] = (float)clutch_close_error_counter;
-	data[7] = APP_NOW_SEC - last_close_time;
-	data[8] = (float)clutch_open_error_counter;
+	data[3] = pedal_speed;
+	data[4] = pedal_torque * 100;
+	data[5] = wheel_speed;
+	data[6] = pedal_torque_estimated * 100;
+	data[7] = bike_accel_filtered * 100;
+	data[8] = torque_gain;
+	data[9] = extra_resistance_ekf;
+	data[10] = bike_accel_estimated * 100;
+	data[11] = human_power_w;
+	data[12] = pedal_torque_filtered * 100;
 }
 
 static THD_FUNCTION(my_thread, arg) {
@@ -525,12 +637,14 @@ static THD_FUNCTION(my_thread, arg) {
 		//measure torque
 		update_pedal_torque();
 
-		plot_points(PLOT_TORQUE, timestamp, pedal_torque*100);
+		//plot_points(PLOT_TORQUE, timestamp, pedal_torque*100);
+		plot_points(PLOT_TORQUE, timestamp, pedal_torque_filtered*100);
+		plot_points(PLOT_TORQUE2, timestamp, pedal_torque_estimated*100);
 
 		//measure pedal forward speed or backward position
 		update_pedal_speed_and_position(-1);
 
-		plot_points(PLOT_PEDAL_RPM, timestamp, pedal_speed);
+		plot_points(PLOT_PEDAL_RPM, timestamp, pedal_speed_estimated);
         plot_points(PLOT_BRAKE_POS, timestamp, pedal_brake_position);
 
 		//get motor speed
@@ -541,13 +655,18 @@ static THD_FUNCTION(my_thread, arg) {
 		//measure wheel speed
 		update_wheel_speed();
 
-		plot_points(PLOT_WHEEL_RPM, timestamp, wheel_speed);
-		plot_points(PLOT_WHEEL_PRED_RPM, timestamp, wheel_speed_pred);
+		plot_points(PLOT_WHEEL_RPM, timestamp, wheel_speed_estimated);
+		plot_points(PLOT_WHEEL_PRED_RPM, timestamp, wheel_speed);
+		plot_points(PLOT_ACCEL, timestamp, bike_accel_estimated);
 
 		//take care of clutch state transitions
 		update_clutch_state();
 
 		plot_points(PLOT_CLUTCH_STATE, timestamp, clutch_state);
+
+		// take care of auto-assist level changes
+		update_assistance_level();
+		plot_points(PLOT_ASSIST_LEVEL, timestamp, torque_gain);
 
 		//control motor speed/current according to the current state variables
 		update_motor_control();
@@ -743,9 +862,9 @@ static void terminal_calibrate(int argc, const char **argv) {
 static void terminal_reset_calib(int argc, const char **argv) {
 	(void)argc;
 	(void)argv;
-	for (uint8_t i=0; i < WHEEL_SENSOR_CALIBRATION_VALUES_COUNT; i++) {
-		wheel_sensor_calibration_values[i] = 0;
-	}
+	// for (uint8_t i=0; i < WHEEL_SENSOR_CALIBRATION_VALUES_COUNT; i++) {
+	// 	wheel_sensor_calibration_values[i] = 0;
+	// }
 	calibration_active = false;
 	compensation_active = false;
 	wheel_sensor_magnet_cntr = 0;
@@ -881,19 +1000,34 @@ static void terminal_cmd_enable_plot(int argc, const char **argv) {
 		} else if (strcmp(argv[1], "torque") == 0) {
 			plots_enabled |= (1 << PLOT_TORQUE);
 			commands_printf("Torque plot enabled");
+		} else if (strcmp(argv[1], "torque2") == 0) {
+			plots_enabled |= (1 << PLOT_TORQUE2);
+			commands_printf("Torque2 plot enabled");
+		} else if (strcmp(argv[1], "motor_current") == 0) {
+			plots_enabled |= (1 << PLOT_MOTOR_CURRENT);
+			commands_printf("Motor current plot enabled");
+		} else if (strcmp(argv[1], "assist_level") == 0) {
+			plots_enabled |= (1 << PLOT_ASSIST_LEVEL);
+			commands_printf("Assist level plot enabled");
+		} else if (strcmp(argv[1], "accel") == 0) {
+			plots_enabled |= (1 << PLOT_ACCEL);
+			commands_printf("Acceleration plot enabled");
 		} else if (strcmp(argv[1], "main") == 0) {
 			plots_enabled |= (1 << PLOT_PEDAL_RPM);
 			plots_enabled |= (1 << PLOT_BRAKE_POS);
 			plots_enabled |= (1 << PLOT_WHEEL_RPM);
 			plots_enabled |= (1 << PLOT_MOTOR_RPM);
-			plots_enabled |= (1 << PLOT_CLUTCH_STATE);
-			plots_enabled |= (1 << PLOT_HALL3);
-			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, clutch, hall3) enabled");
+			plots_enabled |= (1 << PLOT_TORQUE);
+			plots_enabled |= (1 << PLOT_TORQUE2);
+			plots_enabled |= (1 << PLOT_MOTOR_CURRENT);
+			plots_enabled |= (1 << PLOT_ASSIST_LEVEL);
+			plots_enabled |= (1 << PLOT_ACCEL);
+			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2, motor_current, assist_level, accel) enabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0xFFFFFFFF;
 			commands_printf("All plots enabled");
         } else {
-            commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  main\r\n  all\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  torque2\r\n  motor_current\r\n  assist_level\r\n  accel\r\n  main\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -936,19 +1070,34 @@ static void terminal_cmd_disable_plot(int argc, const char **argv) {
 		} else if (strcmp(argv[1], "torque") == 0) {
 			plots_enabled &= ~(1 << PLOT_TORQUE);
 			commands_printf("Torque plot disabled");
+		} else if (strcmp(argv[1], "torque2") == 0) {
+			plots_enabled &= ~(1 << PLOT_TORQUE2);
+			commands_printf("Torque2 plot disabled");
+		} else if (strcmp(argv[1], "motor_current") == 0) {
+			plots_enabled &= ~(1 << PLOT_MOTOR_CURRENT);
+			commands_printf("Motor current plot disabled");
+		} else if (strcmp(argv[1], "assist_level") == 0) {
+			plots_enabled &= ~(1 << PLOT_ASSIST_LEVEL);
+			commands_printf("Assist level plot disabled");
+		} else if (strcmp(argv[1], "accel") == 0) {
+			plots_enabled &= ~(1 << PLOT_ACCEL);
+			commands_printf("Acceleration plot disabled");
 		} else if (strcmp(argv[1], "main") == 0) {
 			plots_enabled &= ~(1 << PLOT_PEDAL_RPM);
 			plots_enabled &= ~(1 << PLOT_BRAKE_POS);
 			plots_enabled &= ~(1 << PLOT_WHEEL_RPM);
 			plots_enabled &= ~(1 << PLOT_MOTOR_RPM);
-			plots_enabled &= ~(1 << PLOT_CLUTCH_STATE);
-			plots_enabled &= ~(1 << PLOT_HALL3);
-			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, clutch, hall3) disabled");
+			plots_enabled &= ~(1 << PLOT_TORQUE);
+			plots_enabled &= ~(1 << PLOT_TORQUE2);
+			plots_enabled &= ~(1 << PLOT_MOTOR_CURRENT);
+			plots_enabled &= ~(1 << PLOT_ASSIST_LEVEL);
+			plots_enabled &= ~(1 << PLOT_ACCEL);
+			commands_printf("Main plots (crpm, brake, wrpm, mwrpm, torque, torque2, motor_current, assist_level, accel) disabled");
 		} else if (strcmp(argv[1], "all") == 0) {
 			plots_enabled = 0;
 			commands_printf("All plots disabled");
         } else {
-			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  main\r\n  all\r\n");
+			commands_printf("Invalid value.\r\nValid values:\r\n  crmp\r\n  brake\r\n  wrpm\r\n  hall1\r\n  hall2\r\n  hall3\r\n  mwrpm\r\n  clutch_state\r\n  wrpm_pred\r\n  torque\r\n  torque2\r\n  motor_current\r\n  assist_level\r\n  accel\r\n  main\r\n  all\r\n");
         }
 		v.as_u32 = plots_enabled;
 		conf_general_store_eeprom_var_custom(&v, APP_CUSTOM_PLOTS_ENABLED_ADDR);
@@ -985,12 +1134,12 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("  log [log_group] [0/1] - Enable/disable logging. Logs are grouped by functionality. Groups can be enabled/disabled separately.");
 	commands_printf("    Log groups: sensor, motor, clutch, error");
 	commands_printf("  enable_plot [plot_name] - Enable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, main, all");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, torque2, motor_current, assist_level, accel, main, all");
 	commands_printf("  disable_plot [plot_name] - Disable a plot");
-	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, main, all");
+	commands_printf("    Plot names: crpm, brake, wrpm, hall1, hall2, hall3, mwrpm, clutch_state, wrpm_pred, torque, torque2, motor_current, assist_level, accel, main, all");
 	commands_printf("  getconfig - Get the current configuration settings");
 	commands_printf("  setpin [pin] [value] - Set a pin value");
-	commands_printf("    Pins: tx, rx, adc2");
+	commands_printf("    Pins: tx, rx");
 	commands_printf("    Values: 0, 1");
 	commands_printf("  calibrate - Calibrate wheel sensor to compensate magnet misalignments");
 	commands_printf("  reset-calib - Reset wheel sensor calibration values");
@@ -1028,25 +1177,18 @@ static void terminal_set_pin(int argc, const char **argv) {
 			} else {
 				palWritePad(HW_UART_RX_PORT, HW_UART_RX_PIN, 0);
 			}
-		} else
-		if (strcmp(argv[1],"adc2") == 0){
-			if (en) {
-				palWritePad(HW_ADC_EXT2_GPIO, HW_ADC_EXT2_PIN, 1);
-			} else {
-				palWritePad(HW_ADC_EXT2_GPIO, HW_ADC_EXT2_PIN, 0);
-			}
 		} else {
 			commands_printf("Unknown pin.\r\nValid pins:\r\n  tx\r\n  rx\r\n  adc2\r\n");
 		}
 	} else {
 		commands_printf("This command requires two arguments. Usage:\r\n  set_pin [pin] [0/1]");
-		commands_printf("Valid pins:\r\n  tx\r\n  rx\r\n  adc2\r\n");
+		commands_printf("Valid pins:\r\n  tx\r\n  rx\r\n");
 	}
 }
 
 static void update_pedal_torque(void)
 {
-    if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC) {
+	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_THROTTLE) {
 		// Read the external ADC pin voltage
 		float torque = ADC_VOLTS(ADC_IND_EXT);
 
@@ -1080,33 +1222,51 @@ static void update_pedal_torque(void)
 		apply_ramping(&torque_rel_ramp, &last_time, torque_rel, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
 		torque_rel = torque_rel_ramp;
 
-		// Apply cutoff above regulatory limit with linear decrease before cutoff.
-		float correction_value = 0.0f;
-		float speed;
-		if (clutch_state == CLUTCH_STATE_CLOSED_BRAKE || clutch_state == CLUTCH_STATE_CLOSED_ASSIST 
-			|| clutch_state == CLUTCH_STATE_CLOSED_FLOAT || clutch_state == CLUTCH_STATE_CLOSED_ERROR) {
-			speed = motor_speed;
-		} else {
-			speed = wheel_speed;
-		}
-		if (config.torque_sensor.decrease_interval > 0.0f) {
-			if (speed >= config.torque_sensor.cutoff_rpm) {
-				correction_value = 0.0f;
-			} else if (speed <= config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval) {
-				correction_value = 1.0f;
-			} else {
-				float cutoff_start_rpm = config.torque_sensor.cutoff_rpm - config.torque_sensor.decrease_interval;
-				correction_value = (cosf(utils_map(speed, cutoff_start_rpm, config.torque_sensor.cutoff_rpm, 0.0, M_PI)) + 1.0f) / 2.0f;
-			}
-		} else {
-			correction_value = speed < config.torque_sensor.cutoff_rpm ? 1.0f : 0.0f;
-		}
-		utils_truncate_number(&correction_value, 0.0, 1.0);
-		torque_rel *= correction_value;
-
 		pedal_torque = torque_rel;
 		pedal_torque_rel = torque_rel;
-    }
+		pedal_torque_filtered = torque_rel;
+		pedal_torque_filtered_rel = torque_rel;
+
+	} else
+	if (config.torque_sensor.sensor_type == TORQUE_SENSOR_TYPE_ADC_PEDAL) {
+		static float torque_inactivity_time = 0;
+		static float torque_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
+		static float torque_biquad2_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
+		static float torque2_lp_filtered = 0;
+		float torque2 = ADC_VOLTS(ADC_IND_EXT2);
+		float torque2_filtered = torque2;
+
+		// Map the read voltage to 0-1 range based on config values
+		torque2 = utils_map(torque2, config_adc.voltage2_start, config_adc.voltage2_end, 0.0, 1.0);
+
+		// Optionally apply a low pass filter to reduce noise. 
+		// 1.0 means no filtering, 0.0 means infinitely strong filtering.
+		UTILS_LP_FAST(torque2_lp_filtered, torque2, config.torque_sensor.filter);
+		torque2 = torque2_lp_filtered;
+
+		// Apply ramping
+		static systime_t last_time2 = 0;
+		static float torque2_ramp = 0.0;
+		apply_ramping(&torque2_ramp, &last_time2, torque2, config_adc.ramp_time_pos, config_adc.ramp_time_neg);
+		
+		pedal_torque = torque2_ramp;
+		pedal_torque_rel = torque2_ramp;
+
+		torque2_filtered = notch_filter(pedal_torque, torque_notch_filter_memory, config.torque_sensor.timeout, true);
+		torque2_filtered = biquad_filter(torque2_filtered, torque_biquad2_filter_memory, config.wheel_sensor.filter, false);
+
+		if (torque2 * config.torque_sensor.nm_max < config.torque_sensor.threshold) {
+			torque_inactivity_time += 1.0 / (float)config.update_rate_hz;
+			if (torque_inactivity_time >= config.torque_sensor.timeout) {
+				torque2_filtered = 0;
+			}
+		} else {
+			torque_inactivity_time = 0;
+		}
+
+		pedal_torque_filtered = torque2_filtered;
+		pedal_torque_filtered_rel = torque2_filtered;
+	}
 }
 
 /* Check pedal speed using quadrature encoder.
@@ -1123,11 +1283,13 @@ static void update_pedal_speed_and_position(float set_brake_position)
 						    2,  1, -1,  0};
 	int8_t direction;
 	int32_t max_backward_counter;
+	int32_t brake_start_backward_counter;
 	uint8_t new_state;
 	float avg_period;
 	static uint8_t old_state = 0;
 	static float old_timestamp = 0;
-	static float old_period = 0;
+	static float old_periods[4] = {0};
+	static uint8_t index = 0;
 	static float inactivity_time = 0;
 	static float period_filtered = 0;
 	static int32_t forward_direction_counter = 0;
@@ -1147,16 +1309,24 @@ static void update_pedal_speed_and_position(float set_brake_position)
         direction *= -1;
 	}
 
+	pedal_current_direction = direction;
+
     max_backward_counter = ceil((float)(config.back_pedal_brake.end_pos) / (360.0f / (float)(4.0 * config.pedal_sensor.magnets)));
+	brake_start_backward_counter = ceil((float)(config.back_pedal_brake.start_pos) / (360.0f / (float)(4.0 * config.pedal_sensor.magnets)));
 
 	// count the number of consecutive forward/backward phase changes
-	// - backward counter is limited based on the back padal brake config
+	// - backward counter is limited based on the back pedal brake config
 	// - to filter glitches, there should be always a 0 direction between 
 	//      two state changes, meaning that we stay at least for 2 samples 
 	//      in the same state
 	if (direction == 1) {
 		if (backward_direction_counter > 0){
+			if (backward_direction_counter < brake_start_backward_counter) {
+				backward_direction_counter = 0;
+				forward_direction_counter++;
+			} else {
 			backward_direction_counter--;
+			}
 		} else {
 			forward_direction_counter++;
 		}
@@ -1183,17 +1353,16 @@ static void update_pedal_speed_and_position(float set_brake_position)
     plot_points(PLOT_HALL2, timestamp, HALL2_level * 20);
 
 	// calculate forward speed (for assistance)
-	// sensors are poorly placed, so use only one rising edge as reference.
-	if( (new_state == 3) &&  (direction == 1)) {
+	if(direction == 1) {
 		// calculate the time of one full rotation from the time difference
-		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets;
+		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets * 4;
 
-		// quadrature encoder has 4 states, so we should observe 4 phase changes 
-		// in the same direction before we reach a specific state again. 
-		if (forward_direction_counter == 4) {
+		if (forward_direction_counter > 0) {
 			if (pedal_speed > config.pedal_sensor.avg_above_rpm) {
-				// average last 2 periods due to differences between the upward and downward magnet orientation
-				avg_period = 0.5 * (period + old_period);
+				// average last 4 due to poor alignment of sensors
+				old_periods[index] = period;
+				index = (index + 1) % 4;
+				avg_period = 0.25 * (old_periods[0] + old_periods[1] + old_periods[2] + old_periods[3]);
 			} else {
 				avg_period = period;
 			}
@@ -1213,7 +1382,6 @@ static void update_pedal_speed_and_position(float set_brake_position)
 			// calculate speed from rotation time
 			pedal_speed = 60.0 / period_filtered;
 
-			old_period = period;
 			backward_direction_counter = 0;
 			pedal_brake_position = 0.0;
 		}
@@ -1225,10 +1393,11 @@ static void update_pedal_speed_and_position(float set_brake_position)
 	else {
 		// if there was no measurement, check if the silent period is
 		// longer than the latest period and decrease estimated speed accordingly
-		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets;
+		float period = (timestamp - old_timestamp) * (float)config.pedal_sensor.magnets * 4;
 		if (pedal_speed > config.pedal_sensor.avg_above_rpm) {
-			// average last 2 periods due to differences between the upward and downward magnet orientation
-			avg_period = 0.5 * (period + old_period);
+			// average last 4 due to poor alignment of sensors
+			old_periods[index] = period;
+			avg_period = 0.25 * (old_periods[0] + old_periods[1] + old_periods[2] + old_periods[3]);
 		} else {
 			avg_period = period;
 		}
@@ -1244,6 +1413,10 @@ static void update_pedal_speed_and_position(float set_brake_position)
 		//if no pedal activity for a given, long enough period, set RPM as zero
 		if(inactivity_time > max_pedal_period) {
 			pedal_speed = 0.0;
+			old_periods[0] = 0.0;
+			old_periods[1] = 0.0;
+			old_periods[2] = 0.0;
+			old_periods[3] = 0.0;
 		}
 	}
 
@@ -1253,6 +1426,10 @@ static void update_pedal_speed_and_position(float set_brake_position)
 		pedal_brake_position = backward_direction_counter * (360.0f / (float)(4.0 * config.pedal_sensor.magnets));
 
 		pedal_speed = 0.0;
+		old_periods[0] = 0.0;
+		old_periods[1] = 0.0;
+		old_periods[2] = 0.0;
+		old_periods[3] = 0.0;
 
 		if (pedal_brake_position < config.back_pedal_brake.start_pos) {
 			brake_inactivity_time += 1.0 / (float)config.update_rate_hz;
@@ -1298,7 +1475,8 @@ static void update_wheel_speed(void)
 {
 	static float old_period = 0;
 	static float old_periods[MAX_PERIODS_TO_AVG-1] = {0.0f};
-	static float wheel_speed_filtered = 0;
+	static float wheel_speed_raw = 0;
+
 	static float inactivity_time = 0;
 	static uint8_t HALL3_level_old =  1;
 	static float old_timestamp = 0;
@@ -1307,6 +1485,8 @@ static void update_wheel_speed(void)
 	float period, avg_period;
 	float current_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 	uint8_t num_events = 0;
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+	const float wheel_circumference = M_PI * conf->si_wheel_diameter;
 
 	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_INTERRUPT ||
 	    (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT && interrupt_mode == true)) {
@@ -1350,6 +1530,10 @@ static void update_wheel_speed(void)
 		wheel_sensor_timestamp = 0;
 		HALL3_int_cntr_xp = 0;
 		num_events = 1;
+	} else 
+	if (config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_NONE) {
+		wheel_speed_raw = motor_speed;
+		return;
 	}
 
 	HALL3_level_old = HALL3_level;
@@ -1375,13 +1559,13 @@ static void update_wheel_speed(void)
 		//}		
 
 		// If calibration is active, use the new measurement to calibrate the sensor
-		if (calibration_active) {
-			calibrate_wheel_sensor(60.0 / period, motor_speed);
-		} else 
+		//if (calibration_active) {
+		//	calibrate_wheel_sensor(60.0 / period, motor_speed);
+		//} else 
 		// if calibration is not active but we have calibration values, apply them to the new measurement
-		if (wheel_sensor_calibration_values[0] != 0) {
-			period = 60.0 / compensate_wheel_sensor(60.0 / period, motor_speed);
-		}
+		// if (wheel_sensor_calibration_values[0] != 0) {
+		// 	period = 60.0 / compensate_wheel_sensor(60.0 / period, motor_speed);
+		// }
 
 		// average last 2 periods due to differences between the upward and downward magnet orientation
 		if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
@@ -1407,86 +1591,81 @@ static void update_wheel_speed(void)
 			avg_period = period;
 		}
 
-		// skip if the measured period is too short, probably a glitch
-		if(avg_period < min_wheel_period) {
-			return;
+		// if the measured period is too short, probably a glitch
+		if(avg_period >= min_wheel_period) {
+			// calculate speed from rotation time
+			wheel_speed_raw = 60.0 / avg_period;
+
+			// apply simple low pass filtering.
+			//UTILS_LP_FAST(wheel_speed_filtered, wheel_speed_raw, config.wheel_sensor.filter);
+			//wheel_speed = wheel_speed_filtered;
+
+			// predict wheel speed for the next sample - experimental
+			wheel_speed_pred = (60.0 / old_period) + ((60.0 / avg_period) - (60.0 / old_period)) * 1.5;
+			if (wheel_speed_pred < 0) {
+				wheel_speed_pred = 0.0;
+			}
+
+			for (uint8_t i = MAX_PERIODS_TO_AVG - 2; i > 0; i--) {
+				old_periods[i] = old_periods[i-1];
+			}
+			old_periods[0] = period;
+			old_period = period;
+			old_timestamp = new_timestamp;
+			inactivity_time = 0.0;
 		}
 
-		// calculate speed from rotation time
-		wheel_speed = 60.0 / avg_period;
-
-		// apply simple low pass filtering.
-		UTILS_LP_FAST(wheel_speed_filtered, wheel_speed, config.wheel_sensor.filter);
-		wheel_speed = wheel_speed_filtered;
-		if (wheel_speed < 0) {
-			wheel_speed = 0.0;
-		}
-
-		// predict wheel speed for the next sample - experimental
-		wheel_speed_pred = (60.0 / old_period) + ((60.0 / avg_period) - (60.0 / old_period)) * 1.5;
-		if (wheel_speed_pred < 0) {
-			wheel_speed_pred = 0.0;
-		}
-
-		for (uint8_t i = MAX_PERIODS_TO_AVG - 2; i > 0; i--) {
-			old_periods[i] = old_periods[i-1];
-		}
-		old_periods[0] = period;
-		old_period = period;
-		old_timestamp = new_timestamp;
-		inactivity_time = 0.0;
 	} else {
 		// if there was no measurement, check if the silent period is
 		// longer than the latest period and decrease estimated speed accordingly
 		period = (current_timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
 		
-		if (period < min_wheel_period) { //can't be that short, abort
-			return;
-		}
+		if (period >= min_wheel_period) {
+			if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
+				avg_period = 0.5 * (period + old_period);
+			} else {
+				avg_period = period;
+			}
 
-		if (wheel_speed > config.wheel_sensor.avg_above_rpm) {
-			avg_period = 0.5 * (period + old_period);
-		} else {
-			avg_period = period;
-		}
+			if ((60.0 / avg_period) < wheel_speed) {
+				wheel_speed_raw = 60.0 / avg_period;
+			}
 
-		if ((60.0 / avg_period) < wheel_speed) {
-			wheel_speed = 60.0 / avg_period;
-		}
+			if ((60.0 / avg_period) < wheel_speed_pred) {
+				wheel_speed_pred = 60.0 / avg_period;
+			}
 
-		if ((60.0 / avg_period) < wheel_speed_pred) {
-			wheel_speed_pred = 60.0 / avg_period;
-		}
+			// increase inactivity time whenever we are between two measurements
+			// does not necessarily mean that the wheel is not rotating, we just
+			// don't know when the next measurement will happen
+			inactivity_time += 1.0 / (float)config.update_rate_hz;
 
-		// increase inactivity time whenever we are between two measurements
-		// does not necessarily mean that the wheel is not rotating, we just
-		// don't know when the next measurement will happen
-		inactivity_time += 1.0 / (float)config.update_rate_hz;
-
-		//if no wheel measurement for a given, long enough period, set RPM as zero
-		if(inactivity_time > max_wheel_period) {
-			wheel_speed = 0.0;
-			wheel_speed_pred = 0.0;
-			for (uint8_t i = 0; i < MAX_PERIODS_TO_AVG - 1; i++) {
-				old_periods[i] = 0;
+			//if no wheel measurement for a given, long enough period, set RPM as zero
+			if(inactivity_time > max_wheel_period) {
+				wheel_speed = 0.0;
+				wheel_speed_pred = 0.0;
+				wheel_speed_raw = 0.0;
+				for (uint8_t i = 0; i < MAX_PERIODS_TO_AVG - 1; i++) {
+					old_periods[i] = 0;
+				}
 			}
 		}
 	}
+	
+	// apply simple low pass filtering.
+	//UTILS_LP_FAST(wheel_speed, wheel_speed_raw, config.wheel_sensor.filter);
+	wheel_speed = wheel_speed_raw;
+
+	if (wheel_speed < config.wheel_sensor.rpm_min) {
+		wheel_speed = 0.0;
+	}
+
+	// calculate bike speed and acceleration from wheel speed
+	bike_speed = wheel_speed * wheel_circumference / 60.0;
 
 	// calculate relative wheel speed
 	wheel_speed_rel = utils_map(wheel_speed, config.wheel_sensor.rpm_min, config.wheel_sensor.rpm_max, 0.0, 1.0);
 	utils_truncate_number((float*)&wheel_speed_rel, 0.0, 1.0);
-
-	// Apply ramping on wheel speed
-	static systime_t last_time = 0;
-	static float wheel_speed_ramp = 0.0;
-	static float wheel_speed_rel_ramp = 0.0;
-	if (wheel_speed > 0.0) {
-		apply_ramping(&wheel_speed_ramp, &last_time, wheel_speed, config.wheel_sensor.ramp_time_pos / (config.wheel_sensor.rpm_max - config.wheel_sensor.rpm_min), config.wheel_sensor.ramp_time_neg / (config.wheel_sensor.rpm_max - config.wheel_sensor.rpm_min));
-		apply_ramping(&wheel_speed_rel_ramp, &last_time, wheel_speed_rel, config.wheel_sensor.ramp_time_pos / 1.0, config.wheel_sensor.ramp_time_neg / 1.0);
-		wheel_speed = wheel_speed_ramp;
-		wheel_speed_rel = wheel_speed_rel_ramp;
-	}
 
 	// Switch between polling and interrupt mode based on the current wheel speed
 	if (new_timestamp != 0 && config.wheel_sensor.sensor_type == SPEED_SENSOR_TYPE_SINGLE_POLL_SINGLE_INTERRUPT) {
@@ -1756,10 +1935,265 @@ static void update_clutch_state(void)
 	}
 }
 
+static void update_assistance_level()
+{
+	float motor_current_measured;
+	float motor_force;
+	//float human_force;
+	//float extra_resistance_raw;
+	//static float wheel_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
+	static float bike_accel_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
+	static float bike_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+
+	if (config.ctrl.ctrl_type != CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO) {
+		return;
+	}
+
+	motor_current_measured = mc_interface_get_tot_current_directional_filtered();
+
+	motor_force = motor_current_measured * config.ctrl.motor_torque_constant * 
+				conf->si_gear_ratio * config.ctrl.motor_gear_efficiency / 
+				(conf->si_wheel_diameter * 0.5f);
+
+	human_power_w = pedal_torque_estimated * config.torque_sensor.nm_max * 
+					pedal_speed_estimated * (2.0f * M_PI / 60.0f) * 
+					config.ctrl.pedal_gear_efficiency;
+
+	//human_force = human_power_w / MAX(bike_speed_estimated, 0.1f);
+
+	normal_resistance = config.ctrl.resistance_coeff_0 +
+	 					config.ctrl.resistance_coeff_1 * bike_speed_estimated +
+	 					config.ctrl.resistance_coeff_2 * bike_speed_estimated * bike_speed_estimated;
+
+	// extra_resistance_raw = motor_force + human_force - bike_accel * config.ctrl.effective_mass - normal_resistance;
+
+	// extra_resistance = biquad_filter(extra_resistance_raw, wheel_accel_bq_filter_memory, 0.5f, false);
+
+	// EKF-based extra resistance estimation (replaces the biquad-filtered estimate above)
+	update_extra_resistance_ekf(motor_force);
+
+	extra_resistance = extra_resistance_ekf;
+
+	extra_resistance_rel = extra_resistance / MAX(normal_resistance, 0.1f);
+
+	bike_accel_filtered = notch_filter(bike_accel_estimated, bike_accel_notch_filter_memory, config.acceleration_timeout, false);
+	bike_accel_filtered = biquad_filter(bike_accel_filtered, bike_accel_bq_filter_memory, config.wheel_sensor.filter, false);
+
+	utils_truncate_number((float *)&extra_resistance_rel, -config.ctrl.resistance_ratio_max, config.ctrl.resistance_ratio_max);
+	
+	torque_gain = config.ctrl.torque_base_gain +
+				(bike_speed_estimated < 1.0 ? 0 : config.ctrl.torque_extra_rel_gain) * extra_resistance_rel +
+				(bike_speed_estimated < 1.0 ? 0 : config.ctrl.torque_extra_abs_gain) * extra_resistance / config.ctrl.effective_mass +
+				config.ctrl.torque_acc_gain * bike_accel_filtered;
+	
+	utils_truncate_number((float *)&torque_gain, config.ctrl.torque_min_gain, config.ctrl.torque_max_gain);
+
+	// Ramp up around 0 speed and ramp down at regulatory speed limit
+	if (bike_speed_estimated >= 0 &&bike_speed_estimated < config.ctrl.ramp_up_speed_interval) {
+		torque_gain *= bike_speed_estimated / config.ctrl.ramp_up_speed_interval;
+	} else if (bike_speed_estimated >= (config.ctrl.cutoff_speed - config.ctrl.ramp_down_speed_interval) && bike_speed_estimated < config.ctrl.cutoff_speed) {
+		torque_gain *= 1.0 - (bike_speed_estimated - (config.ctrl.cutoff_speed - config.ctrl.ramp_down_speed_interval)) / (config.ctrl.ramp_down_speed_interval);
+	} else if (bike_speed_estimated >= config.ctrl.cutoff_speed) {
+		torque_gain = 0.0;
+	}
+}
+
+static void update_extra_resistance_ekf(float F_motor)
+{
+	// Extended Kalman Filter for extra resistance (terrain slope) estimation.
+	// State:        x = [bike_speed (m/s), extra_resistance (N), pedal_torque (Nm), pedal_omega (rad/s), bike_accel (m/s^2)]
+	// Dynamics:     dv/dt = bike_accel
+	//               bike_accel = (F_human + F_motor - normal_resistance(v) - extra_resistance) / m
+	//               where F_human = tau * omega / v
+	// Measurements: z = [bike_speed, pedal_torque_nm, pedal_omega_rads]
+
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+
+	const float dt = 1.0f / (float)config.update_rate_hz;
+	const float m  = MAX(config.ctrl.effective_mass, 1.0f);
+
+	// Convert noisy measurements to SI units
+	const float z_v     = bike_speed;
+	const float z_tau   = pedal_torque * config.torque_sensor.nm_max;
+	const float z_omega = pedal_speed * (2.0f * M_PI / 60.0f);
+
+	// Process noise (Q) diagonal - how much each state can change per step
+	const float Q_v     = (0.01f/2.0f)*(0.01f/2.0f); // max 5m/s/1sec 				 -> 0.01/0.002sec = 2sigma
+	const float Q_res   = (0.2f/2.0f)*(0.2f/2.0f);   // max 100N/1sec 				 -> 0.2/0.002sec  = 2sigma
+	const float Q_tau   = (1.6f/2.0f)*(1.6f/2.0f);   // max 160Nm/0.2sec  			 -> 1.6/0.002sec  = 2sigma
+	const float Q_omega = (0.01f/2.0f)*(0.01f/2.0f); // max 50RPM/sec -> 5rad/s/1sec -> 0.01/0.002sec = 2sigma
+	const float Q_acc   = (0.01f/2.0f)*(0.01f/2.0f); // max 5m/sec2/1sec			 -> 0.01/0.002sec = 2sigma
+
+	// Measurement noise (R) diagonal - sensor standard deviations squared
+	const float R_v     = 0.01f;  // sigma_v     = 3.0 RPM -> 0.1  m/s
+	const float R_tau   = 4.0f;   // sigma_tau   = 2.0 Nm
+	const float R_omega = 0.04f;  // sigma_omega = 2.0 RPM -> 0.2  rad/s
+
+	// --- PREDICTION STEP ---
+
+	float v_est     = ekf_x[0];
+	float res_est   = ekf_x[1];
+	float tau_est   = ekf_x[2];
+	float omega_est = ekf_x[3];
+	float acc_est   = ekf_x[4];
+
+	const bool v_active = (v_est > 0.1f);
+
+	const float normal_res_est = (v_active ? (config.ctrl.resistance_coeff_0
+	                           + config.ctrl.resistance_coeff_1 * v_est
+	                           + config.ctrl.resistance_coeff_2 * v_est * v_est) : 0.0f);
+
+    if (!v_active){
+		res_est = 0.0f;
+		acc_est = 0.0f;
+	}
+
+	const bool omega_active = (omega_est > 0.1f);
+
+	const float F_human_est = (omega_active && v_active) ? (tau_est * omega_est / v_est) : 0.0f;
+
+	const float acc_next = (F_human_est + F_motor - normal_res_est - res_est) / m;
+	float v_next = v_est + dt * acc_est;
+	if (v_next < 0.0f) v_next = 0.0f;
+
+	const float x_pred[5] = {v_next, res_est, tau_est, omega_est, acc_next};
+
+	// Jacobian F_jac[row*5+col] = d(x_next[row]) / d(x[col])
+	float F_jac[25] = {
+		1.0f, 0.0f, 0.0f, 0.0f, dt,
+		0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 0.0f, 0.0f
+	};
+	F_jac[4*5+0] = (1.0f / m) * (
+		((omega_active && v_active) ? -(tau_est * omega_est) / (v_est * v_est) : 0.0f)
+		- config.ctrl.resistance_coeff_1
+		- 2.0f * config.ctrl.resistance_coeff_2 * v_est);
+	F_jac[4*5+1] = -(1.0f / m);
+	F_jac[4*5+2] = (omega_active && v_active) ? (1.0f / m) * (omega_est / v_est) : 0.0f;
+	F_jac[4*5+3] = (omega_active && v_active) ? (1.0f / m) * (tau_est  / v_est) : 0.0f;
+
+	// P_pred = F_jac * P * F_jac^T + Q
+	float FP[25] = {0.0f};
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			for (int k = 0; k < 5; k++) {
+				FP[i*5+j] += F_jac[i*5+k] * ekf_P[k*5+j];
+			}
+		}
+	}
+	float P_pred[25] = {0.0f};
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			for (int k = 0; k < 5; k++) {
+				P_pred[i*5+j] += FP[i*5+k] * F_jac[j*5+k];  // F_jac^T[k,j] = F_jac[j,k]
+			}
+		}
+	}
+	P_pred[0*5+0] += Q_v;
+	P_pred[1*5+1] += Q_res;
+	P_pred[2*5+2] += Q_tau;
+	P_pred[3*5+3] += Q_omega;
+	P_pred[4*5+4] += Q_acc;
+
+	// --- CORRECTION STEP ---
+	// H = [[1,0,0,0],[0,0,1,0],[0,0,0,1]]
+	// mi[m] = state index for measurement m
+	const int mi[3] = {0, 2, 3};
+
+	// S = H*P_pred*H^T + R   (3x3)
+	float S[9];
+	for (int mr = 0; mr < 3; mr++) {
+		for (int nc = 0; nc < 3; nc++) {
+			S[mr*3+nc] = P_pred[mi[mr]*5 + mi[nc]];
+		}
+	}
+	S[0*3+0] += R_v;
+	S[1*3+1] += R_tau;
+	S[2*3+2] += R_omega;
+
+	// Invert S via Cramer's rule
+	const float det = S[0]*(S[4]*S[8] - S[5]*S[7])
+	                - S[1]*(S[3]*S[8] - S[5]*S[6])
+	                + S[2]*(S[3]*S[7] - S[4]*S[6]);
+	if (fabsf(det) < 1e-10f) return;  // singular matrix, skip update
+	const float inv_det = 1.0f / det;
+	float S_inv[9];
+	S_inv[0] =  (S[4]*S[8] - S[5]*S[7]) * inv_det;
+	S_inv[1] = -(S[1]*S[8] - S[2]*S[7]) * inv_det;
+	S_inv[2] =  (S[1]*S[5] - S[2]*S[4]) * inv_det;
+	S_inv[3] = -(S[3]*S[8] - S[5]*S[6]) * inv_det;
+	S_inv[4] =  (S[0]*S[8] - S[2]*S[6]) * inv_det;
+	S_inv[5] = -(S[0]*S[5] - S[2]*S[3]) * inv_det;
+	S_inv[6] =  (S[3]*S[7] - S[4]*S[6]) * inv_det;
+	S_inv[7] = -(S[0]*S[7] - S[1]*S[6]) * inv_det;
+	S_inv[8] =  (S[0]*S[4] - S[1]*S[3]) * inv_det;
+
+	// K = P_pred*H^T * S_inv   (5x3)
+	float K[15] = {0.0f};
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 3; j++) {
+			for (int k = 0; k < 3; k++) {
+				K[i*3+j] += P_pred[i*5 + mi[k]] * S_inv[k*3+j];
+			}
+		}
+	}
+
+	// Innovation: y = z - H*x_pred
+	const float y[3] = {
+		z_v     - x_pred[mi[0]],
+		z_tau   - x_pred[mi[1]],
+		z_omega - x_pred[mi[2]]
+	};
+
+	// State update: x = x_pred + K*y
+	float new_x[5];
+	for (int i = 0; i < 5; i++) {
+		new_x[i] = x_pred[i];
+		for (int j = 0; j < 3; j++) {
+			new_x[i] += K[i*3+j] * y[j];
+		}
+	}
+
+	// Covariance update: P = (I - K*H) * P_pred
+	float KH[25] = {0.0f};
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 3; j++) {
+			KH[i*5 + mi[j]] += K[i*3+j];
+		}
+	}
+	float new_P[25] = {0.0f};
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			for (int k = 0; k < 5; k++) {
+				const float IKH_ik = (i == k ? 1.0f : 0.0f) - KH[i*5+k];
+				new_P[i*5+j] += IKH_ik * P_pred[k*5+j];
+			}
+		}
+	}
+
+	// Write back updated state and covariance
+	for (int i = 0; i < 5; i++) ekf_x[i] = new_x[i];
+	for (int i = 0; i < 25; i++) ekf_P[i] = new_P[i];
+
+	// Export estimated (filtered) signals
+	bike_speed_estimated   = ekf_x[0]; // [m/s]
+	extra_resistance_ekf   = ekf_x[1]; // [N]
+	pedal_torque_estimated = ekf_x[2] / config.torque_sensor.nm_max;  // [%]
+	pedal_speed_estimated  = ekf_x[3] * 60 / (2.0f * M_PI);           // [rpm]
+	bike_accel_estimated   = ekf_x[4]; // [m/s^2]
+
+	// Derivative signals
+	wheel_speed_estimated  = bike_speed_estimated * 60.0f / (conf->si_wheel_diameter * M_PI);  // [rpm]
+}
+
 static void update_motor_control()
 {
 	char log_text[64];
 	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	float torque_boosted;
 	static uint32_t cnt = 0;
 
 	if (command_line_speed >= 0){
@@ -1789,7 +2223,7 @@ static void update_motor_control()
 		sprintf(log_text, "break current set to %d%%", (int)floor(brake_current*100));
 	} 
 	else if (clutch_state == CLUTCH_STATE_CLOSED_ASSIST) {
-		switch (config.ctrl_type){
+		switch (config.ctrl.ctrl_type){
 			case CUSTOM_CTRL_TYPE_NONE:
 				break;
 			case CUSTOM_CTRL_TYPE_PID:
@@ -1800,13 +2234,41 @@ static void update_motor_control()
 				mc_interface_set_current_rel(pedal_speed_rel);
 				sprintf(log_text, "current set to %d%%", (int)(pedal_speed_rel*100));
 				break;
-			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE: 
-				mc_interface_set_current_rel((pedal_speed >= config.pedal_sensor.rpm_start) ? pedal_torque_rel : 0);
-				sprintf(log_text, "current set to %d%%", (int)(pedal_torque_rel*100));
+			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_TORQUE:
+				if (config.ctrl.torque_exponent == 1.0f) {
+					torque_boosted = pedal_torque_filtered_rel;
+				} else {
+					torque_boosted = pedal_torque_filtered_rel > 0 ? expf(config.ctrl.torque_exponent * logf(pedal_torque_filtered_rel)) : 0;
+					// TODO: speed up with look-up table
+				}
+	    		motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_filtered_rel > 0) ? (config.ctrl.torque_base_gain * torque_boosted) : 0;
+				utils_truncate_number((float*)&motor_current_rel, 0.0, 1.0);
+				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel*100);
+				mc_interface_set_current_rel(motor_current_rel);
 				break;
 			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE:
-				mc_interface_set_current_rel(pedal_speed_rel * pedal_torque_rel);
-				sprintf(log_text, "current set to %d%%", (int)(pedal_speed_rel * pedal_torque_rel * 100));
+				if (config.ctrl.torque_exponent == 1.0f) {
+					torque_boosted = pedal_torque_filtered_rel;
+				} else {
+					torque_boosted = pedal_torque_filtered_rel > 0 ? expf(config.ctrl.torque_exponent * logf(pedal_torque_filtered_rel)) : 0;
+					// TODO: speed up with look-up table
+				}
+				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_filtered_rel > 0) ? (config.ctrl.torque_base_gain * (torque_boosted + config.ctrl.cadence_gain * pedal_speed_rel * torque_boosted)/2) : 0;
+				utils_truncate_number((float*)&motor_current_rel, 0.0, 1.0);
+				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel*100);
+				mc_interface_set_current_rel(motor_current_rel);
+				break;
+			case CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO:
+				if (config.ctrl.torque_exponent == 1.0f) {
+					torque_boosted = pedal_torque_filtered_rel;
+				} else {
+					torque_boosted = pedal_torque_filtered_rel > 0 ? expf(config.ctrl.torque_exponent * logf(pedal_torque_filtered_rel)) : 0;
+					// TODO: speed up with look-up table
+				}
+				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_filtered_rel > 0) ? (torque_gain * (torque_boosted + config.ctrl.cadence_gain * pedal_speed_rel * torque_boosted)/2) : 0;
+				utils_truncate_number((float*)&motor_current_rel, 0.0, 1.0);
+				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel*100);
+				mc_interface_set_current_rel(motor_current_rel);
 				break;
 			default: 
 				break;
@@ -1821,93 +2283,250 @@ static void update_motor_control()
 	}
 }
 
-static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed) {
-	// wait until motor is spinning up to start calibration
-	if (calibration_active && calibration_step == 0 && abs(last_wheel_speed - config.wheel_sensor.calibration_rpm) < 1.0) {
-		for (uint8_t i = 0; i < config.wheel_sensor.magnets; i++) {
-			wheel_sensor_calibration_values[i] = 0;
+static float notch_filter(float new_value, float *memory, float timeout, bool dual_mode) {
+	//Filtering cyclic variations - caused by pedal physics - by removing estimated periodic component
+	float A = memory[0];
+	float B = memory[1];
+	int   index = (int)memory[2];
+	float inactivity_time = memory[3];
+	float last_filtered = memory[4];
+	float C = memory[5];
+	float D = memory[6];
+	uint8_t filter_size = config.pedal_sensor.magnets * 4;
+	const float mu = 0.1;
+	const float mu2 = 0.005;
+	float filtered = 0;
+	float filtered_tmp = 0;
+	float y_estimated = 0;
+
+	if (pedal_current_direction == 1) {
+		float x1 = sin_lut[(index * 2) % filter_size];
+		float x2 = sin_lut[(filter_size / 4 + index * 2) % filter_size];
+		float x3 = sin_lut[index % filter_size];
+    	float x4 = sin_lut[(filter_size / 4 + index) % filter_size];
+
+		// Estimate next sample
+		y_estimated = (A * x1) + (B * x2);
+
+		// Calculate error.
+		// This is also the filtered value (periodic component removed from raw value)
+		filtered_tmp = new_value - y_estimated;
+
+		// Update estimator params
+		A = A + (mu * filtered_tmp * x1);
+    	B = B + (mu * filtered_tmp * x2);
+
+		if (dual_mode) {
+			// Estimate next sample
+			y_estimated = (C * x3) + (D * x4);
+
+			// Calculate error.
+			filtered = filtered_tmp - y_estimated;
+
+			// Update estimator params
+			C = C + (mu2 * filtered * x3);
+			D = D + (mu2 * filtered * x4);
+		} else {
+			filtered = filtered_tmp;
 		}
-		wheel_sensor_calibration_values[0] += last_motor_speed / last_wheel_speed / CALIBRATION_ROUNDS;
-		calibration_step = 1;
-	}
-	else
-	// collect calibration values for each magnet (multiple rounds if configured) and average them
-	if (calibration_active && calibration_step > 0 && calibration_step < CALIBRATION_ROUNDS * config.wheel_sensor.magnets) {
-		wheel_sensor_calibration_values[calibration_step % config.wheel_sensor.magnets] += last_motor_speed / last_wheel_speed / CALIBRATION_ROUNDS;
-		calibration_step++;
+
+		// Advance phase
+		index++;
+		if (index >= filter_size) {
+			index = 0;
+		}
+		inactivity_time = 0;
+
+		// Compensate overshooting
+		filtered *= 0.947;
+	} else if (pedal_current_direction == -1) {
+		// reset samples when changing direction to avoid applying average of one direction to the other direction
+		A = 0;
+		B = 0;
+		C = 0;
+		D = 0;
+		index = 0;
+		inactivity_time = 0;
+		filtered = new_value;
+	} else {
+		inactivity_time += 1.0 / config.update_rate_hz;
+		if (inactivity_time > timeout) {
+			inactivity_time = timeout;
+			A = 0;
+			B = 0;
+			C = 0;
+			D = 0;
+			index = 0;
+			filtered = new_value;
+		} else {
+			// no movement, keep previous filtered value
+			filtered = last_filtered;
+		}
 	}
 
-	if (calibration_active && calibration_step >= CALIBRATION_ROUNDS * config.wheel_sensor.magnets) {
-		calibration_active = false;
-		command_line_speed = -1;
-		printf("Wheel sensor calibration completed\n");
-		for (uint8_t i = 0; i < config.wheel_sensor.magnets; i++) {
-			print_log(LOG_GROUP_SENSOR,"Calibration value for magnet %d: %4.2f\n", i, (double)wheel_sensor_calibration_values[i]);
-		}
-	}
+	memory[0] = A;
+	memory[1] = B;
+	memory[2] = index;
+	memory[3] = inactivity_time;
+	memory[4] = filtered;
+	memory[5] = C;
+	memory[6] = D;
+	return filtered;
 }
 
-static float compensate_wheel_sensor(float last_wheel_speed, float last_motor_speed) {
-	float diff;
-	float min_diff = 10;
-	uint8_t new_magnet_cntr = 0;
+static float biquad_filter(float new_value, float *memory, float cutoff_freq, bool derivator)
+{
+	// Matrix Columns: {b0, b1, b2, a1, a2}
+	const float lpf_matrix[4][5] = {
+		{0.000009825917, 0.000019651834, 0.000009825917, -1.991114292202, 0.991153595869}, // 0.5 Hz
+		{0.000039130205, 0.000078260411, 0.000039130205, -1.982228929793, 0.982385450614}, // 1.0 Hz
+		{0.000155148422, 0.000310296845, 0.000155148422, -1.964460580205, 0.965081173895}, // 2.0 Hz
+		{0.000609854721, 0.001219709442, 0.000609854721, -1.928942259604, 0.931381678488}  // 4.0 Hz
+	};
+	// Matrix Columns: {b0, b1, b2, a1, a2}
+	// Note: b1 is mathematically 0.0 and b2 is exactly -b0
+	const float lpf_derivator_matrix[4][5] = {
+		{0.009825916820, 0.0, -0.009825916820, -1.991114292202, 0.991153595869}, // 0.5 Hz
+		{0.039130205399, 0.0, -0.039130205399, -1.982228929793, 0.982385450614}, // 1.0 Hz
+		{0.155148422340, 0.0, -0.155148422340, -1.964460580205, 0.965081173895}, // 2.0 Hz
+		{0.609854721182, 0.0, -0.609854721182, -1.928942259604, 0.931381678488}  // 4.0 Hz
+	};
+	float y;
+	float b0, b1, b2;
+	float a1, a2;
+	int row = 0;
 
-	// store the last speeds for each magnet to be able to detect the pattern
-	for (uint8_t i = 0; i < config.wheel_sensor.magnets - 1; i++) {
-		last_wheel_speeds[i] = last_wheel_speeds[i+1];
-		last_motor_speeds[i] = last_motor_speeds[i+1];
+	if (cutoff_freq == 0.5f){
+		row = 0;
 	}
-	last_wheel_speeds[config.wheel_sensor.magnets - 1] = last_wheel_speed; // store the uncompensated speed
-	last_motor_speeds[config.wheel_sensor.magnets - 1] = last_motor_speed; // store the motorspeed for reference
-
-	// if the wheel is not spinning fast enough, we won't apply any calibration
-	if (last_wheel_speed < config.wheel_sensor.rpm_min) {
-		compensation_active = false;
-		wheel_sensor_magnet_cntr = 0;
-		return last_wheel_speed;
+	else if (cutoff_freq == 1.0f){
+		row = 1;
 	}
-
-	// if calibration is active or we don't have any calibration values yet, we won't apply any calibration
-	if (calibration_active || wheel_sensor_calibration_values[0] == 0) {
-		compensation_active = false;
-		wheel_sensor_magnet_cntr = 0;
-		return last_wheel_speed;
+	else if (cutoff_freq == 2.0f){
+		row = 2;
 	}
-
-	// if motor runs together with the wheel, we can try to detect which magnet is currently triggering the sensor
-	if (clutch_state == CLUTCH_STATE_SYNCED || clutch_state == CLUTCH_STATE_CLOSED_ASSIST || clutch_state == CLUTCH_STATE_CLOSED_BRAKE || clutch_state == CLUTCH_STATE_CLOSED_FLOAT) {
-		// do this only once per turn of the wheel to avoid excessive calculations
-		if (wheel_sensor_magnet_cntr == 0) {
-			for (uint8_t i = 0; i < config.wheel_sensor.magnets; i++) {
-				diff = 0;
-				for (uint8_t j = 0; j < config.wheel_sensor.magnets; j++) {
-					diff += (float)fabs((double)(last_motor_speeds[(i + j) % config.wheel_sensor.magnets] / last_wheel_speeds[(i + j) % config.wheel_sensor.magnets] - wheel_sensor_calibration_values[j]));
-				}
-				//print_log(LOG_GROUP_SENSOR,"%d -> %f\n", i, (double)diff);
-				if (diff < (DIFF_THRESHOLD_TO_APPLY_COMPENSATION * config.wheel_sensor.magnets) && diff < min_diff) {
-					min_diff = diff;
-					new_magnet_cntr = (config.wheel_sensor.magnets - 1 - i) % config.wheel_sensor.magnets;
-					compensation_active = true;
-				}
-			}
-			if (new_magnet_cntr != wheel_sensor_magnet_cntr) {
-				uint8_t shift = (new_magnet_cntr - wheel_sensor_magnet_cntr + config.wheel_sensor.magnets) % config.wheel_sensor.magnets;
-				print_log(LOG_GROUP_SENSOR,"magnetshift: %d\n", shift > (config.wheel_sensor.magnets / 2) ? shift - config.wheel_sensor.magnets : shift);
-				wheel_sensor_magnet_cntr = new_magnet_cntr;
-			}
+	else if (cutoff_freq == 4.0f){
+		row = 3;
 		}
+	else {
+		return 0;
 	}
 
-	// apply calibration value for the currently active magnet
-	if (compensation_active) {
-		float compensated_wheel_speed;
-		compensated_wheel_speed = last_wheel_speed * wheel_sensor_calibration_values[wheel_sensor_magnet_cntr];
-		wheel_sensor_magnet_cntr = (wheel_sensor_magnet_cntr + 1) % config.wheel_sensor.magnets;
-		return compensated_wheel_speed;
+	if (derivator) {
+		b0 = lpf_derivator_matrix[row][0];
+		b1 = lpf_derivator_matrix[row][1];
+		b2 = lpf_derivator_matrix[row][2];
+		a1 = lpf_derivator_matrix[row][3];
+		a2 = lpf_derivator_matrix[row][4];
+		} else {
+		b0 = lpf_matrix[row][0];
+		b1 = lpf_matrix[row][1];
+		b2 = lpf_matrix[row][2];
+		a1 = lpf_matrix[row][3];
+		a2 = lpf_matrix[row][4];
 	}
 
-	return last_wheel_speed;
+	y = b0 * new_value +   // b0 * x[n]
+		b1 * memory[0] +   // b1 * x[n-1]
+		b2 * memory[1] -   // b2 * x[n-2]
+		a1 * memory[2] -   // a1 * y[n-1]
+		a2 * memory[3];    // a2 * y[n-2]
+
+	memory[1] = memory[0];
+	memory[0] = new_value;
+	memory[3] = memory[2];
+	memory[2] = y;
+
+	return y;
 }
+
+// static void calibrate_wheel_sensor(float last_wheel_speed, float last_motor_speed) {
+// 	// wait until motor is spinning up to start calibration
+// 	if (calibration_active && calibration_step == 0 && abs(last_wheel_speed - config.wheel_sensor.calibration_rpm) < 1.0) {
+// 		for (uint8_t i = 0; i < config.wheel_sensor.magnets; i++) {
+// 			wheel_sensor_calibration_values[i] = 0;
+// 		}
+// 		wheel_sensor_calibration_values[0] += last_motor_speed / last_wheel_speed / CALIBRATION_ROUNDS;
+// 		calibration_step = 1;
+// 	}
+// 	else
+// 	// collect calibration values for each magnet (multiple rounds if configured) and average them
+// 	if (calibration_active && calibration_step > 0 && calibration_step < CALIBRATION_ROUNDS * config.wheel_sensor.magnets) {
+// 		wheel_sensor_calibration_values[calibration_step % config.wheel_sensor.magnets] += last_motor_speed / last_wheel_speed / CALIBRATION_ROUNDS;
+// 		calibration_step++;
+// 	}
+
+// 	if (calibration_active && calibration_step >= CALIBRATION_ROUNDS * config.wheel_sensor.magnets) {
+// 		calibration_active = false;
+// 		command_line_speed = -1;
+// 		printf("Wheel sensor calibration completed\n");
+// 		for (uint8_t i = 0; i < config.wheel_sensor.magnets; i++) {
+// 			print_log(LOG_GROUP_SENSOR,"Calibration value for magnet %d: %4.2f\n", i, (double)wheel_sensor_calibration_values[i]);
+// 		}
+// 	}
+// }
+
+// static float compensate_wheel_sensor(float last_wheel_speed, float last_motor_speed) {
+// 	float diff;
+// 	float min_diff = 10;
+// 	uint8_t new_magnet_cntr = 0;
+
+// 	// store the last speeds for each magnet to be able to detect the pattern
+// 	for (uint8_t i = 0; i < config.wheel_sensor.magnets - 1; i++) {
+// 		last_wheel_speeds[i] = last_wheel_speeds[i+1];
+// 		last_motor_speeds[i] = last_motor_speeds[i+1];
+// 	}
+// 	last_wheel_speeds[config.wheel_sensor.magnets - 1] = last_wheel_speed; // store the uncompensated speed
+// 	last_motor_speeds[config.wheel_sensor.magnets - 1] = last_motor_speed; // store the motorspeed for reference
+
+// 	// if the wheel is not spinning fast enough, we won't apply any calibration
+// 	if (last_wheel_speed < config.wheel_sensor.rpm_min) {
+// 		compensation_active = false;
+// 		wheel_sensor_magnet_cntr = 0;
+// 		return last_wheel_speed;
+// 	}
+
+// 	// if calibration is active or we don't have any calibration values yet, we won't apply any calibration
+// 	if (calibration_active || wheel_sensor_calibration_values[0] == 0) {
+// 		compensation_active = false;
+// 		wheel_sensor_magnet_cntr = 0;
+// 		return last_wheel_speed;
+// 	}
+
+// 	// if motor runs together with the wheel, we can try to detect which magnet is currently triggering the sensor
+// 	if (clutch_state == CLUTCH_STATE_SYNCED || clutch_state == CLUTCH_STATE_CLOSED_ASSIST || clutch_state == CLUTCH_STATE_CLOSED_BRAKE || clutch_state == CLUTCH_STATE_CLOSED_FLOAT) {
+// 		// do this only once per turn of the wheel to avoid excessive calculations
+// 		if (wheel_sensor_magnet_cntr == 0) {
+// 			for (uint8_t i = 0; i < config.wheel_sensor.magnets; i++) {
+// 				diff = 0;
+// 				for (uint8_t j = 0; j < config.wheel_sensor.magnets; j++) {
+// 					diff += (float)fabs((double)(last_motor_speeds[(i + j) % config.wheel_sensor.magnets] / last_wheel_speeds[(i + j) % config.wheel_sensor.magnets] - wheel_sensor_calibration_values[j]));
+// 				}
+// 				//print_log(LOG_GROUP_SENSOR,"%d -> %f\n", i, (double)diff);
+// 				if (diff < (DIFF_THRESHOLD_TO_APPLY_COMPENSATION * config.wheel_sensor.magnets) && diff < min_diff) {
+// 					min_diff = diff;
+// 					new_magnet_cntr = (config.wheel_sensor.magnets - 1 - i) % config.wheel_sensor.magnets;
+// 					compensation_active = true;
+// 				}
+// 			}
+// 			if (new_magnet_cntr != wheel_sensor_magnet_cntr) {
+// 				uint8_t shift = (new_magnet_cntr - wheel_sensor_magnet_cntr + config.wheel_sensor.magnets) % config.wheel_sensor.magnets;
+// 				print_log(LOG_GROUP_SENSOR,"magnetshift: %d\n", shift > (config.wheel_sensor.magnets / 2) ? shift - config.wheel_sensor.magnets : shift);
+// 				wheel_sensor_magnet_cntr = new_magnet_cntr;
+// 			}
+// 		}
+// 	}
+
+// 	// apply calibration value for the currently active magnet
+// 	if (compensation_active) {
+// 		float compensated_wheel_speed;
+// 		compensated_wheel_speed = last_wheel_speed * wheel_sensor_calibration_values[wheel_sensor_magnet_cntr];
+// 		wheel_sensor_magnet_cntr = (wheel_sensor_magnet_cntr + 1) % config.wheel_sensor.magnets;
+// 		return compensated_wheel_speed;
+// 	}
+
+// 	return last_wheel_speed;
+// }
 
 static void record_clutch_operation(void)
 {
@@ -2113,6 +2732,22 @@ static void init_plots(void) {
 	if (plots_enabled & (1 << PLOT_TORQUE)) {
 		plot_numbers[PLOT_TORQUE] = plot_number++;
 		commands_plot_add_graph("Pedal Torque");
+	}
+	if (plots_enabled & (1 << PLOT_TORQUE2)) {
+		plot_numbers[PLOT_TORQUE2] = plot_number++;
+		commands_plot_add_graph("Pedal Torque 2");
+	}
+	if (plots_enabled & (1 << PLOT_MOTOR_CURRENT)) {
+		plot_numbers[PLOT_MOTOR_CURRENT] = plot_number++;
+		commands_plot_add_graph("Motor Current");
+	}
+	if (plots_enabled & (1 << PLOT_ASSIST_LEVEL)) {
+		plot_numbers[PLOT_ASSIST_LEVEL] = plot_number++;
+		commands_plot_add_graph("Assist Level");
+	}
+	if (plots_enabled & (1 << PLOT_ACCEL)) {
+		plot_numbers[PLOT_ACCEL] = plot_number++;
+		commands_plot_add_graph("Acceleration (m/s^2)");
 	}
 }
 
