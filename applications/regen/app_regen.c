@@ -1547,7 +1547,8 @@ static void update_wheel_speed(void)
 
 	if (new_timestamp != 0) {
 		// if there was new measurement, then calculate speed from elapsed time
-		period = (new_timestamp - old_timestamp) * (float)config.wheel_sensor.magnets / (float)num_events;
+		//period = (new_timestamp - old_timestamp) * (float)config.wheel_sensor.magnets / (float)num_events;
+		period = (new_timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
 
 		// skip if the measured period is too short, probably a glitch
 		if (period < min_wheel_period) {
@@ -1561,9 +1562,9 @@ static void update_wheel_speed(void)
 		//}
 
 		// try to detect glitches
-		//if (period < old_period / 2.0 && wheel_speed > config.wheel_sensor.avg_above_rpm) {
-		//	return;
-		//}		
+		if (period < old_period / 2.0 && wheel_speed > config.wheel_sensor.avg_above_rpm) {
+			return;
+		}		
 
 		// If calibration is active, use the new measurement to calibrate the sensor
 		//if (calibration_active) {
