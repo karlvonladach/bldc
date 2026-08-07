@@ -41,6 +41,7 @@ extra_res      	 = get_col_values(df, 'extra_res', 			'temp_mos_1',	 	'D')
 acc	        	 = get_col_values(df, 'acc', 		    	'temp_mos_2', 		'E')
 human_power      = get_col_values(df, 'human_power', 		'temp_mos_3',		'F')
 normal_res     	 = get_col_values(df, 'normal_res',        	'roll', 	    	'AM')
+acc_filt     	 = get_col_values(df, 'acc_filt',        	'pitch', 	    	'AN')
 astgain     	 = get_col_values(df, 'astgain',        	'yaw',			 	'AO')
 
 time2 = (time - time[0]) / 1000.0
@@ -162,7 +163,7 @@ print(f"Data loaded: {len(time2)} valid samples.")
 # pedal rpm, wheel rpm, torque_filtered, motor current, human+motor power, acceleration, altitude, extra_res
 plt.figure(figsize=(10, 6))
 plt.plot(time2, pedal_rpm, label='Pedal RPM', linewidth=2, color='orange')
-plt.plot(time2, pedal_rpm_filtered, label='Pedal RPM (Biquad)', linewidth=2, color='orange', linestyle='dotted')
+#plt.plot(time2, pedal_rpm_filtered, label='Pedal RPM (Biquad)', linewidth=2, color='orange', linestyle='dotted')
 plt.plot(time2, wheel_rpm, label='Wheel RPM', linewidth=2, color='blue')
 #plt.plot(time2, wheel_rpm_filtered, label='Wheel RPM (Biquad)', linewidth=2, color='navy', linestyle='dotted')
 #plt.plot(time2, np.gradient(wheel_speed, time2)*mass, label='Acc Calculated x Mass', linewidth=2, color='blue', linestyle='dashed')
@@ -171,16 +172,16 @@ plt.plot(time2, pedal_torque, label='Pedal Torque', linewidth=2, color='green')
 plt.plot(time2, pedal_torque_raw, label='Pedal Torque Raw', linewidth=2, color='green', linestyle='dashed')
 plt.plot(time2, motor_current, label='Motor Current', linewidth=2, color='red')
 plt.plot(time2, human_force, label='Human Force', linewidth=2, color='purple')
-plt.plot(time2, human_force_calculated, label='Human Force (calculated)', linewidth=2, color='purple', linestyle='dotted')
+#plt.plot(time2, human_force_calculated, label='Human Force (calculated)', linewidth=2, color='purple', linestyle='dotted')
 plt.plot(time2, motor_force, label='Motor Force', linewidth=2, color='brown')
 #plt.plot(time2, motor_power/wheel_speed, label='Motor Force 2', linewidth=2, color='brown', linestyle='dashed')
 plt.plot(time2, total_force, label='Total Force', linewidth=2, color='magenta')
-plt.plot(time2, acc*mass, label='Acc x Mass', linewidth=2, color='cyan')
-plt.plot(time2, acc*mass+normal_res, label='Acc x Mass + R_norm', linewidth=2, color='cyan', linestyle='dashed')
+plt.plot(time2, acc, label='Acc x 100', linewidth=2, color='cyan')
+#plt.plot(time2, acc*mass+normal_res, label='Acc x Mass + R_norm', linewidth=2, color='cyan', linestyle='dashed')
 plt.plot(time2, (altitude-140)*10, label='Altitude', linewidth=2, color='black')
 plt.plot(time2, -extra_res, label='-Extra Res', linewidth=2, color='pink')
-plt.plot(time2, -(extra_res_calculated), label='-Extra Res (calculated)', linewidth=2, color='pink', linestyle='dotted')
-plt.plot(time2, -extra_res_filtered, label='-Extra Res (Biquad)', linewidth=2, color='pink', linestyle='dashed')
+#plt.plot(time2, -(extra_res_calculated), label='-Extra Res (calculated)', linewidth=2, color='pink', linestyle='dotted')
+#plt.plot(time2, -extra_res_filtered, label='-Extra Res (Biquad)', linewidth=2, color='pink', linestyle='dashed')
 plt.plot(time2, astgain*100, label='AST Gain', linewidth=2, color='grey')
 
 
@@ -190,40 +191,40 @@ plt.title(filename)
 plt.legend()
 plt.grid(True)
 
-# Figure 2: signals with their gradients + gradient histograms
-pedal_rpm_grad = np.gradient(pedal_rpm, time2)
-speed_grad = np.gradient(speed, time2)
-pedal_torque_raw_grad = np.gradient(pedal_torque_raw, time2)
-acc_grad = np.gradient(acc, time2)
+# # Figure 2: signals with their gradients + gradient histograms
+# pedal_rpm_grad = np.gradient(pedal_rpm, time2)
+# speed_grad = np.gradient(speed, time2)
+# pedal_torque_raw_grad = np.gradient(pedal_torque_raw, time2)
+# acc_grad = np.gradient(acc, time2)
 
-fig2, axes = plt.subplots(4, 2, figsize=(14, 16), sharex='col')
+# fig2, axes = plt.subplots(4, 2, figsize=(14, 16), sharex='col')
 
-signal_rows = [
-	('Pedal RPM', pedal_rpm, pedal_rpm_grad),
-	('Speed', speed, speed_grad),
-	('Pedal Torque Raw', pedal_torque_raw, pedal_torque_raw_grad),
-	('Acceleration', acc, acc_grad),
-]
+# signal_rows = [
+# 	('Pedal RPM', pedal_rpm, pedal_rpm_grad),
+# 	('Speed', speed, speed_grad),
+# 	('Pedal Torque Raw', pedal_torque_raw, pedal_torque_raw_grad),
+# 	('Acceleration', acc, acc_grad),
+# ]
 
-for row, (name, signal, grad) in enumerate(signal_rows):
-	ax_sig = axes[row, 0]
-	ax_hist = axes[row, 1]
+# for row, (name, signal, grad) in enumerate(signal_rows):
+# 	ax_sig = axes[row, 0]
+# 	ax_hist = axes[row, 1]
 
-	ax_sig.plot(time2, signal, label=name, linewidth=2)
-	ax_sig.plot(time2, grad, label=f'{name} Gradient', linewidth=1.5, linestyle='dashed')
-	ax_sig.set_ylabel(name)
-	ax_sig.grid(True)
-	ax_sig.legend()
+# 	ax_sig.plot(time2, signal, label=name, linewidth=2)
+# 	ax_sig.plot(time2, grad, label=f'{name} Gradient', linewidth=1.5, linestyle='dashed')
+# 	ax_sig.set_ylabel(name)
+# 	ax_sig.grid(True)
+# 	ax_sig.legend()
 
-	grad_finite = grad[np.isfinite(grad)]
-	ax_hist.hist(grad_finite, bins=50, alpha=0.8)
-	ax_hist.set_title(f'{name} Gradient Histogram')
-	ax_hist.set_ylabel('Count')
-	ax_hist.grid(True)
+# 	grad_finite = grad[np.isfinite(grad)]
+# 	ax_hist.hist(grad_finite, bins=50, alpha=0.8)
+# 	ax_hist.set_title(f'{name} Gradient Histogram')
+# 	ax_hist.set_ylabel('Count')
+# 	ax_hist.grid(True)
 
-axes[-1, 0].set_xlabel('Time (s)')
-axes[-1, 1].set_xlabel('Gradient Value')
-fig2.suptitle(f'{filename} - Signals and Gradients', fontsize=14)
-fig2.tight_layout(rect=[0, 0.03, 1, 0.98])
+# axes[-1, 0].set_xlabel('Time (s)')
+# axes[-1, 1].set_xlabel('Gradient Value')
+# fig2.suptitle(f'{filename} - Signals and Gradients', fontsize=14)
+# fig2.tight_layout(rect=[0, 0.03, 1, 0.98])
 
 plt.show()
