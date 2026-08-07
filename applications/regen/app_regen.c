@@ -81,6 +81,9 @@ static void terminal_cmd_disable_plot(int argc, const char **argv);
 static void terminal_cmd_help(int argc, const char **argv);
 static void terminal_get_config(int argc, const char **argv);
 static void terminal_set_pin(int argc, const char **argv);
+static void terminal_profile(int argc, const char **argv);
+
+static profile_t* get_profile(void);
 
 static void update_pedal_torque(void);
 static void update_pedal_speed_and_position(float set_brake_position);
@@ -115,11 +118,42 @@ static void apply_ramping(float *value, systime_t *last_time, float target, floa
 //// Config variables
 static custom_config_type config;
 static adc_config config_adc;
+static const profile_t profile_table[7] = {
+	{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f},
+	{0.5f, 0.0f, 0.1f, 0.0f, 0.7f, 0.5f, 5.0f},
+	{0.6f, 0.1f, 0.35f, 0.5f, 2.0f, 0.5f, 7.0f},
+	{0.8f, 0.2f, 0.7f, 1.0f, 4.0f, 0.5f, 7.5f},
+	{1.2f, 0.2f, 0.7f, 1.0f, 4.0f, 1.2f, 7.5f},
+	{0.8f, 0.2f, 0.7f, 1.0f, 4.0f, 0.8f, 13.0f},
+	{1.2f, 0.2f, 0.7f, 1.0f, 4.0f, 1.2f, 13.0f}
+};
+static uint8_t profile_to_use = 3u;
+static profile_t profile_active;
 
 static volatile float max_pedal_period = 0.0;
 static volatile float min_pedal_period = 0.0;
 static volatile float max_wheel_period = 0.0;
 static volatile float min_wheel_period = 0.0;
+
+static profile_t* get_profile(void) {
+	if (profile_to_use == 3u) {
+		profile_active.torque_base_gain = config.ctrl.torque_base_gain;
+		profile_active.torque_extra_rel_gain = config.ctrl.torque_extra_rel_gain;
+		profile_active.torque_extra_abs_gain = config.ctrl.torque_extra_abs_gain;
+		profile_active.torque_acc_gain = config.ctrl.torque_acc_gain;
+		profile_active.torque_max_gain = config.ctrl.torque_max_gain;
+		profile_active.torque_min_gain = config.ctrl.torque_min_gain;
+		profile_active.cutoff_speed = config.ctrl.cutoff_speed;
+	} else {
+		uint8_t index = profile_to_use;
+		if (index >= 7u) {
+			index = 3u;
+		}
+		profile_active = profile_table[index];
+	}
+
+	return &profile_active;
+}
 
 //// Control variables
 static volatile float command_line_speed = -1;
@@ -490,6 +524,12 @@ void app_custom_start(void) {
 			"Set the given pin to logical 0 or 1",
 			"",
 			terminal_set_pin);
+
+	terminal_register_command_callback(
+			"profile",
+			"Set active profile index",
+			"[0-6]",
+			terminal_profile);
 }
 
 // Called when the custom application is stopped. Stop our threads
@@ -504,6 +544,7 @@ void app_custom_stop(void) {
 	terminal_unregister_callback(terminal_cmd_help);
 	terminal_unregister_callback(terminal_get_config);
 	terminal_unregister_callback(terminal_set_pin);
+	terminal_unregister_callback(terminal_profile);
 
 	stop_now = true;
 	while (is_running) {
@@ -1148,6 +1189,8 @@ static void terminal_cmd_help(int argc, const char **argv) {
 	commands_printf("  setpin [pin] [value] - Set a pin value");
 	commands_printf("    Pins: tx, rx");
 	commands_printf("    Values: 0, 1");
+	commands_printf("  profile [1-7|name] - Select active assist profile (4/base uses live config values)");
+	commands_printf("    Names: charge, ultraeco, eco, base, boost, fast, fast boost");
 	commands_printf("  calibrate - Calibrate wheel sensor to compensate magnet misalignments");
 	commands_printf("  reset-calib - Reset wheel sensor calibration values");
 }
@@ -1190,6 +1233,45 @@ static void terminal_set_pin(int argc, const char **argv) {
 	} else {
 		commands_printf("This command requires two arguments. Usage:\r\n  set_pin [pin] [0/1]");
 		commands_printf("Valid pins:\r\n  tx\r\n  rx\r\n");
+	}
+}
+
+static void terminal_profile(int argc, const char **argv) {
+	if (argc == 2) {
+		uint8_t profile = 255;
+		int profile_num = 0;
+
+		if (sscanf(argv[1], "%d", &profile_num) == 1) {
+			if (profile_num >= 1 && profile_num <= 7) {
+				profile = (uint8_t)(profile_num - 1);
+			}
+		} else if (strcmp(argv[1], "charge") == 0) {
+			profile = 0;
+		} else if (strcmp(argv[1], "ultraeco") == 0) {
+			profile = 1;
+		} else if (strcmp(argv[1], "eco") == 0) {
+			profile = 2;
+		} else if (strcmp(argv[1], "base") == 0) {
+			profile = 3;
+		} else if (strcmp(argv[1], "boost") == 0) {
+			profile = 4;
+		} else if (strcmp(argv[1], "fast") == 0) {
+			profile = 5;
+		} else if (strcmp(argv[1], "fast boost") == 0) {
+			profile = 6;
+		}
+
+		if (profile <= 6) {
+			profile_to_use = profile;
+			commands_printf("Profile set to %u", (unsigned int)(profile + 1));
+		} else {
+			commands_printf("Invalid profile. Valid numeric values: 1-7");
+			commands_printf("Valid names: charge, ultraeco, eco, base, boost, fast, fast boost");
+		}
+	} else {
+		commands_printf("Current profile: %u", (unsigned int)(profile_to_use + 1));
+		commands_printf("Usage: profile [1-7|name]");
+		commands_printf("Names: charge, ultraeco, eco, base, boost, fast, fast boost");
 	}
 }
 
@@ -1945,6 +2027,7 @@ static void update_clutch_state(void)
 
 static void update_assistance_level()
 {
+	profile_t *profile = get_profile();
 	float motor_current_measured;
 	float motor_force;
 	//float human_force;
@@ -1990,19 +2073,19 @@ static void update_assistance_level()
 
 	utils_truncate_number((float *)&extra_resistance_rel, -config.ctrl.resistance_ratio_max, config.ctrl.resistance_ratio_max);
 	
-	torque_gain = config.ctrl.torque_base_gain +
-				(bike_speed_estimated < 1.0 ? 0 : config.ctrl.torque_extra_rel_gain) * extra_resistance_rel +
-				(bike_speed_estimated < 1.0 ? 0 : config.ctrl.torque_extra_abs_gain) * extra_resistance / config.ctrl.effective_mass +
-				config.ctrl.torque_acc_gain * ((bike_accel_filtered > 0) ? bike_accel_filtered : 0);
+	torque_gain = profile->torque_base_gain +
+				(bike_speed_estimated < 1.0 ? 0 : profile->torque_extra_rel_gain) * extra_resistance_rel +
+				(bike_speed_estimated < 1.0 ? 0 : profile->torque_extra_abs_gain) * extra_resistance / config.ctrl.effective_mass +
+				profile->torque_acc_gain * ((bike_accel_filtered > 0) ? bike_accel_filtered : 0);
 	
-	utils_truncate_number((float *)&torque_gain, config.ctrl.torque_min_gain, config.ctrl.torque_max_gain);
+	utils_truncate_number((float *)&torque_gain, profile->torque_min_gain, profile->torque_max_gain);
 
 	// Ramp up around 0 speed and ramp down at regulatory speed limit
 	if (bike_speed_estimated >= 0 &&bike_speed_estimated < config.ctrl.ramp_up_speed_interval) {
 		torque_gain *= bike_speed_estimated / config.ctrl.ramp_up_speed_interval;
-	} else if (bike_speed_estimated >= (config.ctrl.cutoff_speed - config.ctrl.ramp_down_speed_interval) && bike_speed_estimated < config.ctrl.cutoff_speed) {
-		torque_gain *= 1.0 - (bike_speed_estimated - (config.ctrl.cutoff_speed - config.ctrl.ramp_down_speed_interval)) / (config.ctrl.ramp_down_speed_interval);
-	} else if (bike_speed_estimated >= config.ctrl.cutoff_speed) {
+	} else if (bike_speed_estimated >= (profile->cutoff_speed - config.ctrl.ramp_down_speed_interval) && bike_speed_estimated < profile->cutoff_speed) {
+		torque_gain *= 1.0 - (bike_speed_estimated - (profile->cutoff_speed - config.ctrl.ramp_down_speed_interval)) / (config.ctrl.ramp_down_speed_interval);
+	} else if (bike_speed_estimated >= profile->cutoff_speed) {
 		torque_gain = 0.0;
 	}
 }
@@ -2199,6 +2282,7 @@ static void update_extra_resistance_ekf(float F_motor)
 
 static void update_motor_control()
 {
+	profile_t *profile = get_profile();
 	char log_text[64];
 	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 	float torque_boosted;
@@ -2249,7 +2333,7 @@ static void update_motor_control()
 					torque_boosted = pedal_torque_filtered_rel > 0 ? expf(config.ctrl.torque_exponent * logf(pedal_torque_filtered_rel)) : 0;
 					// TODO: speed up with look-up table
 				}
-	    		motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_filtered_rel > 0) ? (config.ctrl.torque_base_gain * torque_boosted) : 0;
+	    		motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_filtered_rel > 0) ? (profile->torque_base_gain * torque_boosted) : 0;
 				utils_truncate_number((float*)&motor_current_rel, 0.0, 1.0);
 				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel*100);
 				mc_interface_set_current_rel(motor_current_rel);
@@ -2261,7 +2345,7 @@ static void update_motor_control()
 					torque_boosted = pedal_torque_filtered_rel > 0 ? expf(config.ctrl.torque_exponent * logf(pedal_torque_filtered_rel)) : 0;
 					// TODO: speed up with look-up table
 				}
-				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_filtered_rel > 0) ? (config.ctrl.torque_base_gain * (torque_boosted + config.ctrl.cadence_gain * pedal_speed_rel * torque_boosted)/2) : 0;
+				motor_current_rel = (pedal_speed >= config.pedal_sensor.rpm_start && pedal_torque_filtered_rel > 0) ? (profile->torque_base_gain * (torque_boosted + config.ctrl.cadence_gain * pedal_speed_rel * torque_boosted)/2) : 0;
 				utils_truncate_number((float*)&motor_current_rel, 0.0, 1.0);
 				plot_points(PLOT_MOTOR_CURRENT, timestamp, motor_current_rel*100);
 				mc_interface_set_current_rel(motor_current_rel);

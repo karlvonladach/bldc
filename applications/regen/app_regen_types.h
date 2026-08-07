@@ -198,6 +198,16 @@ typedef struct {
 	uint32_t    update_rate_hz;
 } custom_config_type;
 
+typedef struct {
+    float torque_base_gain;
+    float torque_extra_rel_gain;
+    float torque_extra_abs_gain;
+    float torque_acc_gain;
+    float torque_max_gain;
+    float torque_min_gain;
+    float cutoff_speed;
+} profile_t;
+
 // Config parameter types
 typedef enum {
     CONFIG_TYPE_FLOAT,

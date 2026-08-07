@@ -35,9 +35,9 @@
 //#define APPCONF_APP_TO_USE				APP_CUSTOM
 
 #define APP_CUSTOM_CONF_CTRL_TYPE                CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO
-#define APP_CUSTOM_CONF_CTRL_TORQUE_BASE_GAIN      1.0f  // base torque gain
-#define APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_REL_GAIN 0.0f  // coefficient of additional torque gain based on calculated (extra resistance / normal resistance)
-#define APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_ABS_GAIN 0.0f  // coefficient of additional torque gain based on calculated extra resistance
+#define APP_CUSTOM_CONF_CTRL_TORQUE_BASE_GAIN      0.8f  // base torque gain
+#define APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_REL_GAIN 0.2f  // coefficient of additional torque gain based on calculated (extra resistance / normal resistance)
+#define APP_CUSTOM_CONF_CTRL_TORQUE_EXTRA_ABS_GAIN 0.7f  // coefficient of additional torque gain based on calculated extra resistance
 #define APP_CUSTOM_CONF_CTRL_TORQUE_ACC_GAIN       1.0f  // coefficient of additional torque gain based on current acceleration
 #define APP_CUSTOM_CONF_CTRL_CADENCE_GAIN          1.0f  // coefficient of additional torque gain based on pedal cadence
 #define APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN       4.0f  // maximum total torque gain to prevent excessive torque
