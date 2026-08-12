@@ -184,6 +184,7 @@ static volatile float bike_speed_filtered = 0;   // m/s
 static volatile float bike_accel = 0;	    // m/s²
 static volatile float bike_accel_filtered = 0;   // m/s²
 static volatile float human_power_w = 0;    // Watts
+static volatile float human_energy_Wh = 0;   // Joules
 static volatile float normal_resistance = 0;
 static volatile float extra_resistance = 0; // Newton
 static volatile float extra_resistance_rel = 0;
@@ -636,10 +637,12 @@ void app_custom_get_rtdata(float* data) {
 	data[10] = bike_accel_estimated * 100;
 	data[11] = human_power_w;
 	data[12] = pedal_torque_filtered * 100;
+	data[13] = human_energy_Wh;
 }
 
 static THD_FUNCTION(my_thread, arg) {
 	(void)arg;
+	static float last_timestamp = 0;
 	float timestamp = 0;
 	float wheel_inactivity_time = 0;
 
@@ -731,6 +734,12 @@ static THD_FUNCTION(my_thread, arg) {
 		} else {
 			wheel_inactivity_time = 0;
 		}
+
+		if (last_timestamp > 0) {
+			// accumulate human energy
+			human_energy_Wh += human_power_w * (timestamp - last_timestamp) / 3600.0f;
+		}
+		last_timestamp = timestamp;
 	}
 }
 
