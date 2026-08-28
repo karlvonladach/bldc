@@ -52,6 +52,7 @@
 #define CALIBRATION_ROUNDS			           10u
 #define DIFF_THRESHOLD_TO_APPLY_COMPENSATION    0.1f
 #define MAX_PERIODS_TO_AVG					    8u
+#define MAX_UART_DATA_LEN                       2u
 
 // Macros
 #define APP_NOW_SEC ((float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY)
@@ -107,6 +108,8 @@ static void init_plots(void);
 static void plot_points(plot_index_t plot, float x, float y);
 static void print_log(log_group_t log_group, const char* format, ...);
 static void apply_ramping(float *value, systime_t *last_time, float target, float ramp_time_pos, float ramp_time_neg);
+
+static void uart_parser_feed(uint8_t byte);
 
 // Private variables
 //// Config variables
@@ -550,7 +553,8 @@ void app_custom_get_rtdata(float* data) {
 
 void app_custom_process_byte(unsigned char byte) {
 	//sdWrite(&HW_UART_P_DEV, &byte, 1);
-	commands_printf("SD:%02X\r\n", byte);
+	//commands_printf("SD:%02X\r\n", byte);
+	uart_parser_feed(byte);
 }
 
 static THD_FUNCTION(my_thread, arg) {
@@ -894,12 +898,19 @@ static void terminal_log(int argc, const char **argv) {
             } else {
                 log_groups_enabled &= ~(1 << LOG_GROUP_ERROR);
             }
+		} else 
+		if (strcmp(argv[1],"uart") == 0){
+			if (en) {
+                log_groups_enabled |= (1 << LOG_GROUP_UART);
+            } else {
+                log_groups_enabled &= ~(1 << LOG_GROUP_UART);
+            }
 		} else {
-			commands_printf("Unknown group.\r\nValid groups:\r\n  sensor\r\n  motor\r\n  clutch\r\n  error\r\n");
+			commands_printf("Unknown group.\r\nValid groups:\r\n  sensor\r\n  motor\r\n  clutch\r\n  error\r\n uart\r\n");
 		}
 	} else {
 		commands_printf("This command requires two arguments. Usage:\r\n  log [log_group] [0/1]");
-		commands_printf("Valid groups:\r\n  sensor\r\n  motor\r\n  clutch\r\n  error\r\n");
+		commands_printf("Valid groups:\r\n  sensor\r\n  motor\r\n  clutch\r\n  error\r\n  uart\r\n");
 	}
 }
 
@@ -2508,4 +2519,147 @@ static void apply_ramping(float *value, systime_t *last_time, float target, floa
 			*value = target;
 		}
 	}
+}
+
+static uint8_t is_valid_start_byte(uint8_t b)
+{
+    return (b == PT_START) || (b == PT_READ) || (b == PT_WRITE);
+}
+ 
+static uint8_t get_data_len(uint8_t packet_type, uint8_t msg_type)
+{
+    if (packet_type == PT_WRITE) {
+        if (msg_type == MT_PAS_LEVEL) return 1;
+        if (msg_type == MT_UNKNOWN_1F) return 2;
+    }
+    return 0;
+}
+
+static void dispatch_packet(uint8_t packet_type, uint8_t msg_type,
+                             const uint8_t *data, uint8_t len, uart_error_t error)
+{
+	(void)len;
+
+    switch (msg_type) {
+        case MT_START:        
+			print_log(LOG_GROUP_UART, "pkt: start"); 															
+			//handle_start(packet_type);                   
+			break;
+        case MT_VERSION:      
+			print_log(LOG_GROUP_UART, "pkt: %s version %s", 
+				(packet_type == PT_WRITE) ? "write" : "read", 
+				(error == UART_ERROR_NONE) ? "" : (error == UART_ERROR_CHECKSUM_MISSING) ? "[checksum missing]" : "[checksum invalid]"); 
+			//handle_version(packet_type, data, len);      
+			break;
+        case MT_PAS_LEVEL:    
+			print_log(LOG_GROUP_UART, "pkt: %s pas_level: %02X", 
+				(packet_type == PT_WRITE) ? "write" : "read", data[0],
+				(error == UART_ERROR_NONE) ? "" : (error == UART_ERROR_CHECKSUM_MISSING) ? "[checksum missing]" : "[checksum invalid]"); 	
+			//handle_pas_level(packet_type, data, len);    
+			break;
+        case MT_SPEED:        
+			print_log(LOG_GROUP_UART, "pkt: %s speed %s", 
+				(packet_type == PT_WRITE) ? "write" : "read", 
+				(error == UART_ERROR_NONE) ? "" : (error == UART_ERROR_CHECKSUM_MISSING) ? "[checksum missing]" : "[checksum invalid]"); 		
+			//handle_speed(packet_type, data, len);        
+			break;
+        case MT_BATTERY_SOC:  
+			print_log(LOG_GROUP_UART, "pkt: %s battery_soc %s", 
+				(packet_type == PT_WRITE) ? "write" : "read", 
+				(error == UART_ERROR_NONE) ? "" : (error == UART_ERROR_CHECKSUM_MISSING) ? "[checksum missing]" : "[checksum invalid]"); 	
+			//handle_battery_soc(packet_type, data, len);  
+			break;
+        case MT_MOVING:       
+			print_log(LOG_GROUP_UART, "pkt: %s moving %s", 
+				(packet_type == PT_WRITE) ? "write" : "read", 
+				(error == UART_ERROR_NONE) ? "" : (error == UART_ERROR_CHECKSUM_MISSING) ? "[checksum missing]" : "[checksum invalid]"); 		
+			//handle_moving(packet_type, data, len);       
+			break;
+        case MT_WHEEL_RPM:    
+			print_log(LOG_GROUP_UART, "pkt: %s wheel_rpm %s", 
+				(packet_type == PT_WRITE) ? "write" : "read", 
+				(error == UART_ERROR_NONE) ? "" : (error == UART_ERROR_CHECKSUM_MISSING) ? "[checksum missing]" : "[checksum invalid]"); 	
+			//handle_wheel_rpm(packet_type, data, len);    
+			break;
+        case MT_PEDAL_MOVING: 
+			print_log(LOG_GROUP_UART, "pkt: %s pedal_moving %s", 
+				(packet_type == PT_WRITE) ? "write" : "read", 
+				(error == UART_ERROR_NONE) ? "" : (error == UART_ERROR_CHECKSUM_MISSING) ? "[checksum missing]" : "[checksum invalid]"); 	
+			//handle_pedal_moving(packet_type, data, len); 
+			break;
+        case MT_AMPERES:      
+			print_log(LOG_GROUP_UART, "pkt: %s amperes %s", 
+				(packet_type == PT_WRITE) ? "write" : "read", 
+				(error == UART_ERROR_NONE) ? "" : (error == UART_ERROR_CHECKSUM_MISSING) ? "[checksum missing]" : "[checksum invalid]"); 
+			//handle_amperes(packet_type, data, len);      
+			break;
+        default:
+            print_log(LOG_GROUP_UART, "pkt: %s unknown (%02X) %s", 
+				(packet_type == PT_WRITE) ? "write" : "read", 
+				msg_type,
+				(error == UART_ERROR_NONE) ? "" : (error == UART_ERROR_CHECKSUM_MISSING) ? "[checksum missing]" : "[checksum invalid]"); 
+			for (uint8_t i = 0; i < len; i++) {
+				print_log(LOG_GROUP_UART, "  data[%d]: %02X", i, data[i]);
+			}
+			//handle_unknown(packet_type, msg_type, data, len);
+            break;
+    }
+}
+
+static void uart_parser_feed(uint8_t byte)
+{
+	static parser_state_t state = ST_WAIT_START; 
+	static uint8_t cur_packet_type;
+	static uint8_t cur_msg_type;
+	static uint8_t cur_data[MAX_UART_DATA_LEN];
+	static uint8_t cur_data_len;
+	static uint8_t cur_data_idx;
+	static uint8_t cur_checksum_acc;
+
+    switch (state) {
+ 
+    case ST_WAIT_START:
+        if (is_valid_start_byte(byte)) {
+            cur_packet_type   = byte;
+            cur_checksum_acc  = byte;
+            state = ST_WAIT_TYPE;
+        }
+        /* else: stray byte, stay in ST_WAIT_START */
+        break;
+ 
+    case ST_WAIT_TYPE:
+        cur_msg_type      = byte;
+        cur_checksum_acc  = (uint8_t)(cur_checksum_acc + byte);
+        cur_data_len      = get_data_len(cur_packet_type, cur_msg_type);
+        cur_data_idx      = 0;
+        state = (cur_data_len == 0) ? ST_WAIT_CHECKSUM : ST_WAIT_DATA;
+        break;
+ 
+    case ST_WAIT_DATA:
+        cur_data[cur_data_idx++] = byte;
+        cur_checksum_acc = (uint8_t)(cur_checksum_acc + byte);
+        if (cur_data_idx >= cur_data_len) {
+            state = ST_WAIT_CHECKSUM;
+        }
+        break;
+ 
+    case ST_WAIT_CHECKSUM:
+        if (byte == cur_checksum_acc) {
+            /* valid packet -> dispatch */
+            dispatch_packet(cur_packet_type, cur_msg_type, cur_data, cur_data_len, UART_ERROR_NONE);
+            state = ST_WAIT_START;
+        } else if (is_valid_start_byte(byte)) {
+            /* checksum missing: current packet dropped, this byte
+               is the start of the next packet */
+			dispatch_packet(cur_packet_type, cur_msg_type, cur_data, cur_data_len, UART_ERROR_CHECKSUM_MISSING);
+            cur_packet_type  = byte;
+            cur_checksum_acc = byte;
+            state = ST_WAIT_TYPE;
+        } else {
+            /* wrong checksum: current packet dropped, byte consumed */
+            dispatch_packet(cur_packet_type, cur_msg_type, cur_data, cur_data_len, UART_ERROR_CHECKSUM_INVALID);
+            state = ST_WAIT_START;
+        }
+        break;
+    }
 }
