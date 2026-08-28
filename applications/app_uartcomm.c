@@ -240,7 +240,11 @@ static THD_FUNCTION(packet_process_thread, arg) {
 				if (uart_is_running[port_number]) {
 					msg_t res = sdGetTimeout(serialPortDriverRx[port_number], TIME_IMMEDIATE);
 					if (res != MSG_TIMEOUT) {
-						packet_process_byte(res, &packet_state[port_number]);
+						if (port_number != 1) {
+							packet_process_byte(res, &packet_state[port_number]);
+						} else {
+							app_custom_process_byte(res);
+						}
 						rx = true;
 					}
 				}

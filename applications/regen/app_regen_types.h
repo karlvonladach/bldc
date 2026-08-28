@@ -20,11 +20,31 @@
 #ifndef APP_REGEN_TYPES_H_
 #define APP_REGEN_TYPES_H_
 
+#define PT_START 0x00
+#define PT_READ  0x11
+#define PT_WRITE 0x16
+ 
+#define MT_START            0x00
+#define MT_VERSION          0x90
+#define MT_PAS_LEVEL        0x0B
+#define MT_SPEED            0x22
+#define MT_BATTERY_SOC      0x11
+#define MT_MOVING           0x31
+#define MT_UNKNOWN_1F       0x1F
+#define MT_WHEEL_RPM        0x20
+#define MT_PEDAL_MOVING     0x08
+#define MT_UNKNOWN_30       0x30
+#define MT_AMPERES          0x0A
+#define MT_UNKNOWN_21       0x21
+#define MT_UNKNOWN_64       0x64
+#define MT_UNKNOWN_63       0x63
+
 typedef enum {
     LOG_GROUP_SENSOR = 0,
     LOG_GROUP_MOTOR,
     LOG_GROUP_CLUTCH,
     LOG_GROUP_ERROR,
+    LOG_GROUP_UART,
     NUM_LOG_GROUPS
 } log_group_t;
 
@@ -96,6 +116,31 @@ typedef enum {
     TORQUE_SENSOR_TYPE_ADC_THROTTLE,
     TORQUE_SENSOR_TYPE_ADC_PEDAL
 } torque_sensor_type;
+
+typedef enum {
+    ST_WAIT_START,
+    ST_WAIT_TYPE,
+    ST_WAIT_DATA,
+    ST_WAIT_CHECKSUM
+} parser_state_t;
+
+typedef enum {
+	UART_ERROR_NONE = 0,
+	UART_ERROR_CHECKSUM_MISSING,
+	UART_ERROR_CHECKSUM_INVALID,
+	UART_ERROR_TIMEOUT,
+	UART_ERROR_UNKNOWN
+} uart_error_t;
+
+typedef enum {
+	PAS_LEVEL_0 = 0x00,
+	PAS_LEVEL_1 = 0x0B,
+	PAS_LEVEL_2 = 0x0D,
+	PAS_LEVEL_3 = 0x15,
+	PAS_LEVEL_4 = 0x17,
+	PAS_LEVEL_5 = 0x03,
+	PAS_LEVEL_WALK = 0x06,
+} pas_level_t;
 
 typedef struct {
 	custom_control_type ctrl_type;
