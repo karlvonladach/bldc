@@ -2941,7 +2941,16 @@ static void dispatch_packet(uint8_t packet_type, uint8_t msg_type,
 			print_log(LOG_GROUP_UART, "pkt: %s pas_level: %02X", 
 				(packet_type == PT_WRITE) ? "write" : "read", data[0],
 				(error == UART_ERROR_NONE) ? "" : (error == UART_ERROR_CHECKSUM_MISSING) ? "[checksum missing]" : "[checksum invalid]"); 	
-			//handle_pas_level(packet_type, data, len);    
+			    switch (data[0]) {
+					case PAS_LEVEL_0: profile_to_use = 0; break;
+					case PAS_LEVEL_1: profile_to_use = 1; break;
+					case PAS_LEVEL_2: profile_to_use = 2; break;
+					case PAS_LEVEL_3: profile_to_use = 3; break;
+					case PAS_LEVEL_4: profile_to_use = 4; break;
+					case PAS_LEVEL_5: profile_to_use = 5; break;
+					//TODO: handle PAS_LEVEL_WALK
+					default: profile_to_use = 0; break;
+				}
 			break;
         case MT_SPEED:        
 			print_log(LOG_GROUP_UART, "pkt: %s speed %s", 
