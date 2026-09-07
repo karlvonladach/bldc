@@ -35,6 +35,7 @@
 #include "commands.h"
 #include "timeout.h"
 #include "serial.h"
+#include "buffer.h"
 
 #include <math.h>
 #include <string.h>
@@ -84,6 +85,9 @@ static void terminal_cmd_help(int argc, const char **argv);
 static void terminal_get_config(int argc, const char **argv);
 static void terminal_set_pin(int argc, const char **argv);
 static void terminal_profile(int argc, const char **argv);
+
+static void process_custom_app_data(unsigned char *data, unsigned int len);
+static void send_custom_app_data(void);
 
 static profile_t* get_profile(void);
 
@@ -183,6 +187,7 @@ static volatile float wheel_accel_filtered = 0;
 static volatile float wheel_speed_pred = 0;
 static volatile float motor_speed  = 0;     //MWRPM
 static volatile float motor_current_rel = 0;
+static volatile float motor_current_measured = 0;
 static volatile float bike_speed = 0;       // m/s
 static volatile float bike_speed_filtered = 0;   // m/s
 static volatile float bike_accel = 0;	    // m/s²
@@ -457,6 +462,9 @@ void app_custom_start(void) {
 	chThdCreateStatic(my_thread_wa, sizeof(my_thread_wa),
 			NORMALPRIO, my_thread, NULL);
 
+	// Set the handler for processing custom app messages coming from UART / Bluetooth
+	commands_set_app_data_handler(process_custom_app_data);
+
 	// Terminal commands for the VESC Tool terminal can be registered.
 	terminal_register_command_callback(
 			"set-speed",
@@ -653,6 +661,7 @@ void app_custom_process_byte(unsigned char byte) {
 static THD_FUNCTION(my_thread, arg) {
 	(void)arg;
 	static float last_timestamp = 0;
+	static float last_report_timestamp = 0;
 	float timestamp = 0;
 	float wheel_inactivity_time = 0;
 
@@ -750,6 +759,11 @@ static THD_FUNCTION(my_thread, arg) {
 			human_energy_Wh += human_power_w * (timestamp - last_timestamp) / 3600.0f;
 		}
 		last_timestamp = timestamp;
+
+		if (timestamp - last_report_timestamp >= 0.1) {
+			send_custom_app_data();
+			last_report_timestamp = timestamp;
+		}
 	}
 }
 
@@ -1299,6 +1313,111 @@ static void terminal_profile(int argc, const char **argv) {
 		commands_printf("Usage: profile [1-7|name]");
 		commands_printf("Names: charge, ultraeco, eco, base, boost, fast, fast boost");
 	}
+}
+
+static void process_custom_app_data(unsigned char *data, unsigned int len) {
+	(void)len;
+
+	int32_t ind = 0;
+	custom_app_msg_t msg = data[ind++];
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+
+	switch (msg) {
+		case REGEN_MSG_GET_STATE: {
+			uint8_t dataTx[37];
+			ind = 0;
+			dataTx[ind++] = msg;
+			
+			// Pedal RPM
+			buffer_append_float32(dataTx, pedal_speed_estimated, 1e2, &ind);
+			// Wheel RPM
+			buffer_append_float32(dataTx, wheel_speed_estimated, 1e2, &ind);
+			// Motor RPM on wheel
+			buffer_append_float32(dataTx, motor_speed, 1e2, &ind);
+			// Bike speed (m/s)
+			buffer_append_float32(dataTx, bike_speed_estimated,  1e2, &ind);
+			// Pedal torque (Nm)
+			buffer_append_float32(dataTx, pedal_torque_filtered_rel * config.torque_sensor.nm_max, 1e2, &ind);
+			// Motor torque (Nm)
+			buffer_append_float32(dataTx, motor_current_measured * config.ctrl.motor_torque_constant * 
+										  conf->si_gear_ratio * config.ctrl.motor_gear_efficiency, 1e2, &ind);
+			// Calculated assist level
+			buffer_append_float32(dataTx, torque_gain, 1e2, &ind);
+			// Brake position
+			buffer_append_float32(dataTx, pedal_brake_position_rel, 1e2, &ind);
+			// Extra resistance
+			buffer_append_float32(dataTx, extra_resistance, 1e2, &ind);
+
+			commands_send_app_data(dataTx, ind);
+		} break;
+
+		case REGEN_MSG_SET_BOOST: {
+			uint8_t basic_boost = data[ind++];
+			uint8_t extra_boost = data[ind++];
+			uint8_t accel_boost = data[ind++];
+			switch (basic_boost) {
+				case 0: config.ctrl.torque_base_gain = 0.0; break;
+				case 1: config.ctrl.torque_base_gain = 0.4; break;
+				case 2: config.ctrl.torque_base_gain = 0.6; break;
+				case 3: config.ctrl.torque_base_gain = 0.8; break;
+				case 4: config.ctrl.torque_base_gain = 1.0; break;
+				case 5: config.ctrl.torque_base_gain = 1.2; break;
+				default: config.ctrl.torque_base_gain = 0.0; break;
+			}
+			switch (extra_boost) {
+				case 0: config.ctrl.torque_extra_rel_gain = 0.0;   config.ctrl.torque_extra_abs_gain = 0.0; break;
+				case 1: config.ctrl.torque_extra_rel_gain = 0.05;  config.ctrl.torque_extra_abs_gain = 0.1; break;
+				case 2: config.ctrl.torque_extra_rel_gain = 0.1;   config.ctrl.torque_extra_abs_gain = 0.2; break;
+				case 3: config.ctrl.torque_extra_rel_gain = 0.15;  config.ctrl.torque_extra_abs_gain = 0.3; break;
+				case 4: config.ctrl.torque_extra_rel_gain = 0.2;   config.ctrl.torque_extra_abs_gain = 0.4; break;
+				case 5: config.ctrl.torque_extra_rel_gain = 0.25;  config.ctrl.torque_extra_abs_gain = 0.5; break;
+				default: config.ctrl.torque_extra_rel_gain = 0.0;  config.ctrl.torque_extra_abs_gain = 0.0; break;
+			}
+			switch (accel_boost) {
+				case 0: config.ctrl.torque_acc_gain = 0.0; break;
+				case 1: config.ctrl.torque_acc_gain = 0.2; break;
+				case 2: config.ctrl.torque_acc_gain = 0.4; break;
+				case 3: config.ctrl.torque_acc_gain = 0.6; break;
+				case 4: config.ctrl.torque_acc_gain = 0.8; break;
+				case 5: config.ctrl.torque_acc_gain = 1.0; break;
+				default: config.ctrl.torque_acc_gain = 0.0; break;
+			}
+		} break;
+
+		default: {
+			// Handle unknown messages
+		} break;
+	}
+}
+
+static void send_custom_app_data(void)
+{
+	uint8_t dataTx[37];
+	int32_t ind = 0;
+	dataTx[ind++] = REGEN_MSG_STATUS_REPORT;
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+			
+	// Pedal RPM
+	buffer_append_float32(dataTx, pedal_speed_estimated, 1e2, &ind);
+	// Wheel RPM
+	buffer_append_float32(dataTx, wheel_speed_estimated, 1e2, &ind);
+	// Motor RPM on wheel
+	buffer_append_float32(dataTx, motor_speed, 1e2, &ind);
+	// Bike speed (m/s)
+	buffer_append_float32(dataTx, bike_speed_estimated,  1e2, &ind);
+	// Pedal torque (Nm)
+	buffer_append_float32(dataTx, pedal_torque_filtered_rel * config.torque_sensor.nm_max, 1e2, &ind);
+	// Motor torque (Nm)
+	buffer_append_float32(dataTx, motor_current_measured * config.ctrl.motor_torque_constant * 
+									conf->si_gear_ratio * config.ctrl.motor_gear_efficiency, 1e2, &ind);
+	// Calculated assist level
+	buffer_append_float32(dataTx, torque_gain, 1e2, &ind);
+	// Brake position
+	buffer_append_float32(dataTx, pedal_brake_position_rel, 1e2, &ind);
+	// Extra resistance
+	buffer_append_float32(dataTx, extra_resistance, 1e2, &ind);
+
+	commands_send_app_data(dataTx, ind);
 }
 
 static void update_pedal_torque(void)
@@ -2054,7 +2173,6 @@ static void update_clutch_state(void)
 static void update_assistance_level()
 {
 	profile_t *profile = get_profile();
-	float motor_current_measured;
 	float motor_force;
 	//float human_force;
 	//float extra_resistance_raw;

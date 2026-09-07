@@ -142,6 +142,12 @@ typedef enum {
 	PAS_LEVEL_WALK = 0x06,
 } pas_level_t;
 
+typedef enum {
+    REGEN_MSG_GET_STATE = 0,
+    REGEN_MSG_SET_BOOST,
+    REGEN_MSG_STATUS_REPORT
+} custom_app_msg_t;
+
 typedef struct {
 	custom_control_type ctrl_type;
     float torque_base_gain;
