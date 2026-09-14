@@ -637,7 +637,7 @@ void app_custom_get_rtdata(float* data) {
 	data[4] = pedal_torque * 100;
 	data[5] = clutch_state;
 	data[6] = wheel_speed;
-#elif defined(HW60_IS_MK1)
+#else //#elif defined(HW60_IS_MK1)
 	data[3] = pedal_speed;
 	data[4] = pedal_torque * 100;
 	data[5] = wheel_speed;
