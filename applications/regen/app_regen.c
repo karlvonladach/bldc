@@ -185,6 +185,8 @@ static volatile float wheel_speed_filtered_rel = 0;
 static volatile float wheel_accel  = 0;     //WRPM/s
 static volatile float wheel_accel_filtered = 0;
 static volatile float wheel_speed_pred = 0;
+static volatile uint32_t wheel_revolutions = 0;
+static volatile float moving_time = 0;
 static volatile float motor_speed  = 0;     //MWRPM
 static volatile float motor_current_rel = 0;
 static volatile float motor_current_measured = 0;
@@ -661,7 +663,6 @@ void app_custom_process_byte(unsigned char byte) {
 static THD_FUNCTION(my_thread, arg) {
 	(void)arg;
 	static float last_timestamp = 0;
-	static float last_report_timestamp = 0;
 	float timestamp = 0;
 	float wheel_inactivity_time = 0;
 
@@ -755,15 +756,14 @@ static THD_FUNCTION(my_thread, arg) {
 		}
 
 		if (last_timestamp > 0) {
+			// measure moving time
+			if (wheel_speed_estimated > 0) {
+				moving_time += (timestamp - last_timestamp);
+			}
 			// accumulate human energy
 			human_energy_Wh += human_power_w * (timestamp - last_timestamp) / 3600.0f;
 		}
 		last_timestamp = timestamp;
-
-		if (timestamp - last_report_timestamp >= 0.1) {
-			send_custom_app_data();
-			last_report_timestamp = timestamp;
-		}
 	}
 }
 
@@ -1320,35 +1320,12 @@ static void process_custom_app_data(unsigned char *data, unsigned int len) {
 
 	int32_t ind = 0;
 	custom_app_msg_t msg = data[ind++];
-	const volatile mc_configuration *conf = mc_interface_get_configuration();
+
+	commands_printf("Rcvd msg: %d %d %d...\r\n", data[0], data[1], data[2]);
 
 	switch (msg) {
 		case REGEN_MSG_GET_STATE: {
-			uint8_t dataTx[37];
-			ind = 0;
-			dataTx[ind++] = msg;
-			
-			// Pedal RPM
-			buffer_append_float32(dataTx, pedal_speed_estimated, 1e2, &ind);
-			// Wheel RPM
-			buffer_append_float32(dataTx, wheel_speed_estimated, 1e2, &ind);
-			// Motor RPM on wheel
-			buffer_append_float32(dataTx, motor_speed, 1e2, &ind);
-			// Bike speed (m/s)
-			buffer_append_float32(dataTx, bike_speed_estimated,  1e2, &ind);
-			// Pedal torque (Nm)
-			buffer_append_float32(dataTx, pedal_torque_filtered_rel * config.torque_sensor.nm_max, 1e2, &ind);
-			// Motor torque (Nm)
-			buffer_append_float32(dataTx, motor_current_measured * config.ctrl.motor_torque_constant * 
-										  conf->si_gear_ratio * config.ctrl.motor_gear_efficiency, 1e2, &ind);
-			// Calculated assist level
-			buffer_append_float32(dataTx, torque_gain, 1e2, &ind);
-			// Brake position
-			buffer_append_float32(dataTx, pedal_brake_position_rel, 1e2, &ind);
-			// Extra resistance
-			buffer_append_float32(dataTx, extra_resistance, 1e2, &ind);
-
-			commands_send_app_data(dataTx, ind);
+			send_custom_app_data();
 		} break;
 
 		case REGEN_MSG_SET_BOOST: {
@@ -1392,7 +1369,7 @@ static void process_custom_app_data(unsigned char *data, unsigned int len) {
 
 static void send_custom_app_data(void)
 {
-	uint8_t dataTx[37];
+	uint8_t dataTx[69];
 	int32_t ind = 0;
 	dataTx[ind++] = REGEN_MSG_STATUS_REPORT;
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
@@ -1417,7 +1394,24 @@ static void send_custom_app_data(void)
 	// Extra resistance
 	buffer_append_float32(dataTx, extra_resistance, 1e2, &ind);
 
+	// System uptime in seconds
+	buffer_append_float32(dataTx, (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY, 1e2, &ind);
+	// Trip moving time in seconds
+	buffer_append_float32(dataTx, moving_time, 1e2, &ind);
+	// Trip distance (km)
+	buffer_append_float32(dataTx, wheel_revolutions * M_PI * conf->si_wheel_diameter / 1000.0f, 1e2, &ind);
+	// Total distance (odometer)
+	buffer_append_uint64(dataTx, mc_interface_get_odometer(), &ind);
+	// Total energy consumed (Wh)
+	buffer_append_float32(dataTx, mc_interface_get_watt_hours(false), 1e2, &ind);
+	// Total energy regenerated (Wh)
+	buffer_append_float32(dataTx, mc_interface_get_watt_hours_charged(false), 1e2, &ind);
+	// Battery level (0.0 - 1.0)
+	buffer_append_float32(dataTx, mc_interface_get_battery_level(NULL), 1e2, &ind);
+
 	commands_send_app_data(dataTx, ind);
+
+	commands_printf("Sent msg: %d %d %d...\r\n", dataTx[0], dataTx[1], dataTx[2]);
 }
 
 static void update_pedal_torque(void)
@@ -1715,6 +1709,7 @@ static void update_wheel_speed(void)
 	static uint8_t HALL3_level_old =  1;
 	static float old_timestamp = 0;
 	static bool interrupt_mode  = false;
+	static uint8_t measurement_cntr = 0;
 	float new_timestamp = 0;
 	float period, avg_period;
 	float current_timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
@@ -1773,6 +1768,13 @@ static void update_wheel_speed(void)
 	HALL3_level_old = HALL3_level;
 
 	if (new_timestamp != 0) {
+
+		measurement_cntr++;
+		if (measurement_cntr >= config.wheel_sensor.magnets) {
+			measurement_cntr = 0;
+			wheel_revolutions++;
+		}
+
 		// if there was new measurement, then calculate speed from elapsed time
 		//period = (new_timestamp - old_timestamp) * (float)config.wheel_sensor.magnets / (float)num_events;
 		period = (new_timestamp - old_timestamp) * (float)config.wheel_sensor.magnets;
