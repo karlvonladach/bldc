@@ -145,7 +145,9 @@ typedef enum {
 typedef enum {
     REGEN_MSG_GET_STATE = 0,
     REGEN_MSG_SET_BOOST,
-    REGEN_MSG_STATUS_REPORT
+    REGEN_MSG_STATUS_REPORT,
+    REGEN_MSG_STATUS_REPORT_HIGH_FREQUENCY,
+    REGEN_MSG_STATUS_REPORT_LOW_FREQUENCY
 } custom_app_msg_t;
 
 typedef struct {

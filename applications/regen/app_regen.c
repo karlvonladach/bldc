@@ -87,7 +87,9 @@ static void terminal_set_pin(int argc, const char **argv);
 static void terminal_profile(int argc, const char **argv);
 
 static void process_custom_app_data(unsigned char *data, unsigned int len);
-static void send_custom_app_data(void);
+static void send_status_basic(void);
+static void send_status_high_frequency(void);
+static void send_status_low_frequency(void);
 
 static profile_t* get_profile(void);
 
@@ -1319,11 +1321,19 @@ static void process_custom_app_data(unsigned char *data, unsigned int len) {
 	int32_t ind = 0;
 	custom_app_msg_t msg = data[ind++];
 
-	commands_printf("Rcvd msg: %d %d %d...\r\n", data[0], data[1], data[2]);
+	print_log(LOG_GROUP_UART, "Rcvd msg: %d %d %d...\r\n", data[0], data[1], data[2]);
 
 	switch (msg) {
 		case REGEN_MSG_GET_STATE: {
-			send_custom_app_data();
+			send_status_basic();
+		} break;
+
+		case REGEN_MSG_STATUS_REPORT_HIGH_FREQUENCY: {
+			send_status_high_frequency();
+		} break;
+
+		case REGEN_MSG_STATUS_REPORT_LOW_FREQUENCY: {
+			send_status_low_frequency();
 		} break;
 
 		case REGEN_MSG_SET_BOOST: {
@@ -1365,7 +1375,7 @@ static void process_custom_app_data(unsigned char *data, unsigned int len) {
 	}
 }
 
-static void send_custom_app_data(void)
+static void send_status_basic(void)
 {
 	uint8_t dataTx[69];
 	int32_t ind = 0;
@@ -1409,7 +1419,98 @@ static void send_custom_app_data(void)
 
 	commands_send_app_data(dataTx, ind);
 
-	commands_printf("Sent msg: %d %d %d...\r\n", dataTx[0], dataTx[1], dataTx[2]);
+	print_log(LOG_GROUP_UART, "Sent msg: %d %d %d...\r\n", dataTx[0], dataTx[1], dataTx[2]);
+}
+
+static void send_status_high_frequency(void)
+{
+	uint8_t dataTx[60];
+	int32_t ind = 0;
+	dataTx[ind++] = REGEN_MSG_STATUS_REPORT_HIGH_FREQUENCY;
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+
+	// uptime
+	buffer_append_float32(dataTx, (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY, 1e2, &ind);
+	// input voltage
+	buffer_append_float16(dataTx, mc_interface_get_input_voltage_filtered(), 1e1, &ind);
+	// duty cycle
+	buffer_append_float16(dataTx, mc_interface_get_duty_cycle_now(), 1e3, &ind);
+	// current in
+	buffer_append_float32(dataTx, mc_interface_get_tot_current_in_filtered(), 1e2, &ind);
+	// motor current
+	buffer_append_float32(dataTx, motor_current_measured, 1e2, &ind);
+	// motor torque
+	buffer_append_float32(dataTx, motor_current_measured * config.ctrl.motor_torque_constant * 
+									conf->si_gear_ratio * config.ctrl.motor_gear_efficiency, 1e2, &ind);
+	// pedal torque
+	buffer_append_float16(dataTx, pedal_torque_filtered_rel * config.torque_sensor.nm_max, 1e1, &ind);
+	// pedal torque raw
+	buffer_append_float16(dataTx, pedal_torque_estimated * config.torque_sensor.nm_max, 1e1, &ind);
+	// pedal rpm
+	buffer_append_float32(dataTx, pedal_speed_estimated, 1e2, &ind);
+	// wheel rpm
+	buffer_append_float32(dataTx, wheel_speed_estimated, 1e2, &ind);
+	// motor rpm
+	buffer_append_float32(dataTx, motor_speed, 1e2, &ind);
+	// clutch state
+	dataTx[ind++] = clutch_state;
+	// assist level
+	buffer_append_float16(dataTx, torque_gain, 1e2, &ind);
+	// brake pos
+	dataTx[ind++] = (int)(pedal_brake_position_rel * 100);
+	// extra res
+	buffer_append_float32(dataTx, extra_resistance, 1e2, &ind);
+	// acceleration
+	buffer_append_float32(dataTx, bike_accel_filtered, 1e2, &ind);
+	// bike speed
+	buffer_append_float32(dataTx, bike_speed_estimated, 1e2, &ind);
+	// fault code
+	dataTx[ind++] = mc_interface_get_fault();
+
+	commands_send_app_data(dataTx, ind);
+
+}
+
+static void send_status_low_frequency(void)
+{
+	uint8_t dataTx[70];
+	int32_t ind = 0;
+	dataTx[ind++] = REGEN_MSG_STATUS_REPORT_LOW_FREQUENCY;
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+
+	// moving time
+	buffer_append_float32(dataTx, moving_time, 1e2, &ind);
+
+	// battery level (pcnt)
+	buffer_append_float16(dataTx, mc_interface_get_battery_level(NULL), 1e2, &ind);
+	// motor temp
+	buffer_append_float16(dataTx, mc_interface_temp_motor_filtered(), 1e1, &ind);
+	// mosfet temp
+	buffer_append_float16(dataTx, mc_interface_temp_fet_filtered(), 1e1, &ind);
+
+	// amp hours used
+	buffer_append_float32(dataTx, mc_interface_get_amp_hours(false), 1e4, &ind);
+	// amp hours charged
+	buffer_append_float32(dataTx, mc_interface_get_amp_hours_charged(false), 1e4, &ind);
+	// watt hours used
+	buffer_append_float32(dataTx, mc_interface_get_watt_hours(false), 1e4, &ind);
+	// watt hours charged
+	buffer_append_float32(dataTx, mc_interface_get_watt_hours_charged(false), 1e4, &ind);
+	// human energe (Wh)
+	buffer_append_float32(dataTx, human_energy_Wh, 1e4, &ind);
+	// trip distance (km)
+	buffer_append_float32(dataTx, wheel_revolutions * M_PI * conf->si_wheel_diameter / 1000.0f, 1e3, &ind);
+	
+	// total distance (m)
+	buffer_append_uint64(dataTx, odometer, &ind);
+	// total runtime (sec)
+	buffer_append_uint64(dataTx, runtime, &ind);
+	// total energy consumed (Wh)
+	buffer_append_uint64(dataTx, wh_tot, &ind);
+	// total energy regenerated (Wh)
+	buffer_append_uint64(dataTx, wh_tot_charged, &ind);
+
+	commands_send_app_data(dataTx, ind);
 }
 
 static void update_pedal_torque(void)
