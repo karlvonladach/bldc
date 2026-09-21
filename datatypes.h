@@ -1441,6 +1441,12 @@ typedef struct __attribute__((packed)) {
 	// HW-specific data
 	uint32_t hw_config_init_flag;
 	uint8_t hw_config[128];
+
+	uint32_t custom_app_init_flag;
+	uint64_t custom_odometer;
+	uint64_t custom_runtime;
+	uint64_t custom_wh_tot;
+	uint64_t custom_wh_charged_tot;
 } backup_data;
 
 #endif /* DATATYPES_H_ */

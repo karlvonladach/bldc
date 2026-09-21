@@ -127,11 +127,19 @@ __attribute__((section(".text2"))) void conf_general_init(void) {
 		if (g_backup.hw_config_init_flag == BACKUP_VAR_INIT_CODE) {
 			memcpy((void*)backup_tmp.hw_config, (uint8_t*)g_backup.hw_config, sizeof(g_backup.hw_config));
 		}
+
+		if (g_backup.custom_app_init_flag == BACKUP_VAR_INIT_CODE) {
+			backup_tmp.custom_odometer = g_backup.custom_odometer;
+			backup_tmp.custom_runtime = g_backup.custom_runtime;
+			backup_tmp.custom_wh_tot = g_backup.custom_wh_tot;
+			backup_tmp.custom_wh_charged_tot = g_backup.custom_wh_charged_tot;
+		}
 	}
 
 	backup_tmp.odometer_init_flag = BACKUP_VAR_INIT_CODE;
 	backup_tmp.runtime_init_flag = BACKUP_VAR_INIT_CODE;
 	backup_tmp.hw_config_init_flag = BACKUP_VAR_INIT_CODE;
+	backup_tmp.custom_app_init_flag = BACKUP_VAR_INIT_CODE;
 
 	g_backup = backup_tmp;
 	conf_general_store_backup_data();

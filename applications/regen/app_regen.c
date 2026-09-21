@@ -99,6 +99,7 @@ static void update_clutch_state(void);
 static void update_assistance_level(void);
 static void update_extra_resistance_ekf(float F_motor);
 static void update_motor_control(void);
+static void update_stats(void);
 
 static float notch_filter(float new_value, float *memory, float timeout, bool dual_mode);
 static float biquad_filter(float new_value, float *memory, float cutoff_freq, bool derivator);
@@ -185,8 +186,6 @@ static volatile float wheel_speed_filtered_rel = 0;
 static volatile float wheel_accel  = 0;     //WRPM/s
 static volatile float wheel_accel_filtered = 0;
 static volatile float wheel_speed_pred = 0;
-static volatile uint32_t wheel_revolutions = 0;
-static volatile float moving_time = 0;
 static volatile float motor_speed  = 0;     //MWRPM
 static volatile float motor_current_rel = 0;
 static volatile float motor_current_measured = 0;
@@ -195,12 +194,20 @@ static volatile float bike_speed_filtered = 0;   // m/s
 static volatile float bike_accel = 0;	    // m/s²
 static volatile float bike_accel_filtered = 0;   // m/s²
 static volatile float human_power_w = 0;    // Watts
-static volatile float human_energy_Wh = 0;   // Joules
 static volatile float normal_resistance = 0;
 static volatile float extra_resistance = 0; // Newton
 static volatile float extra_resistance_rel = 0;
 static volatile float torque_gain = 0;
 static volatile clutch_state_type clutch_state = CLUTCH_STATE_OPEN;
+
+// Statistics
+static volatile uint32_t wheel_revolutions = 0; // since reboot
+static volatile float    moving_time = 0;		// seconds, since reboot
+static volatile float    human_energy_Wh = 0;   // Wh, since reboot
+static volatile uint64_t odometer = 0;          // meters, total
+static volatile uint64_t runtime = 0;           // seconds, total
+static volatile uint64_t wh_tot = 0;            // Wh, total
+static volatile uint64_t wh_tot_charged = 0;    // Wh, total
 
 // EKF state for extra resistance estimation (row-major 5x5 covariance)
 // State vector: x = [bike_speed (m/s), extra_resistance (N), pedal_torque (Nm), pedal_omega (rad/s), bike_accel (m/s^2)]
@@ -662,7 +669,6 @@ void app_custom_process_byte(unsigned char byte) {
 
 static THD_FUNCTION(my_thread, arg) {
 	(void)arg;
-	static float last_timestamp = 0;
 	float timestamp = 0;
 	float wheel_inactivity_time = 0;
 
@@ -755,15 +761,7 @@ static THD_FUNCTION(my_thread, arg) {
 			wheel_inactivity_time = 0;
 		}
 
-		if (last_timestamp > 0) {
-			// measure moving time
-			if (wheel_speed_estimated > 0) {
-				moving_time += (timestamp - last_timestamp);
-			}
-			// accumulate human energy
-			human_energy_Wh += human_power_w * (timestamp - last_timestamp) / 3600.0f;
-		}
-		last_timestamp = timestamp;
+		update_stats();
 	}
 }
 
@@ -2519,6 +2517,48 @@ static void update_motor_control()
 	if (cnt++ % (config.update_rate_hz / 10) == 0){
 		print_log(LOG_GROUP_MOTOR,"[%4.2f] %s", (double)timestamp, log_text);
 	}
+}
+
+static void update_stats() {
+	const volatile mc_configuration *conf = mc_interface_get_configuration();
+	float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	static float last_timestamp = 0;
+
+	static uint64_t odometer_last = 0;
+	static uint64_t runtime_last = 0;
+	static uint64_t wh_tot_last = 0;
+	static uint64_t wh_tot_charged_last = 0;
+
+	// Handle time wrap around
+	if (timestamp < last_timestamp) {
+		last_timestamp = 0;
+	}
+
+	if (last_timestamp > 0) {
+		// measure moving time
+		if (wheel_speed_estimated > 0) {
+			moving_time += (timestamp - last_timestamp);
+		}
+		// accumulate human energy
+		human_energy_Wh += human_power_w * (timestamp - last_timestamp) / 3600.0f;
+	}
+	last_timestamp = timestamp;
+
+	odometer = wheel_revolutions * M_PI * conf->si_wheel_diameter;
+	g_backup.custom_odometer += odometer - odometer_last;
+	odometer_last = odometer;
+
+	runtime = (int)moving_time;
+	g_backup.custom_runtime += runtime - runtime_last;
+	runtime_last = runtime;
+
+	wh_tot = mc_interface_get_watt_hours(FALSE);
+	g_backup.custom_wh_tot += wh_tot - wh_tot_last;
+	wh_tot_last = wh_tot;
+
+	wh_tot_charged = mc_interface_get_watt_hours_charged(FALSE);
+	g_backup.custom_wh_charged_tot += wh_tot_charged - wh_tot_charged_last;
+	wh_tot_charged_last = wh_tot_charged;
 }
 
 static float notch_filter(float new_value, float *memory, float timeout, bool dual_mode) {
