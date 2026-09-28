@@ -2341,11 +2341,11 @@ static void update_assistance_level()
 	utils_truncate_number((float *)&torque_gain, profile->torque_min_gain, profile->torque_max_gain);
 
 	// Ramp up around 0 speed and ramp down at regulatory speed limit
-	if (bike_speed_estimated >= 0 &&bike_speed_estimated < config.ctrl.ramp_up_speed_interval) {
+	if (bike_speed_estimated >= 0 && bike_speed_estimated < config.ctrl.ramp_up_speed_interval) {
 		torque_gain *= bike_speed_estimated / config.ctrl.ramp_up_speed_interval;
-	} else if (bike_speed_estimated >= (profile->cutoff_speed - config.ctrl.ramp_down_speed_interval) && bike_speed_estimated < profile->cutoff_speed) {
-		torque_gain *= 1.0 - (bike_speed_estimated - (profile->cutoff_speed - config.ctrl.ramp_down_speed_interval)) / (config.ctrl.ramp_down_speed_interval);
-	} else if (bike_speed_estimated >= profile->cutoff_speed) {
+	} else if (bike_speed_estimated >= (profile->cutoff_speed) && bike_speed_estimated < (profile->cutoff_speed + config.ctrl.ramp_down_speed_interval)) {
+		torque_gain *= 1.0 - (bike_speed_estimated - (profile->cutoff_speed)) / (config.ctrl.ramp_down_speed_interval);
+	} else if (bike_speed_estimated >= profile->cutoff_speed + config.ctrl.ramp_down_speed_interval) {
 		torque_gain = 0.0;
 	}
 }
