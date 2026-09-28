@@ -1345,6 +1345,7 @@ static void process_custom_app_data(unsigned char *data, unsigned int len) {
 			uint8_t basic_boost = data[ind++];
 			uint8_t extra_boost = data[ind++];
 			uint8_t accel_boost = data[ind++];
+			uint8_t speed_limit = data[ind++];
 			switch (basic_boost) {
 				case 0: config.ctrl.torque_base_gain = 0.0; break;
 				case 1: config.ctrl.torque_base_gain = 0.4; break;
@@ -1371,6 +1372,15 @@ static void process_custom_app_data(unsigned char *data, unsigned int len) {
 				case 4: config.ctrl.torque_acc_gain = 0.8; break;
 				case 5: config.ctrl.torque_acc_gain = 1.0; break;
 				default: config.ctrl.torque_acc_gain = 0.0; break;
+			}
+			switch (speed_limit) {
+				case 0: config.ctrl.cutoff_speed =  0.0 / 3.6f; config.ctrl.ramp_up_speed_interval = 7.2 / 3.6f; config.ctrl.ramp_down_speed_interval = 1.0 / 3.6f; break;
+				case 1: config.ctrl.cutoff_speed =  5.0 / 3.6f; config.ctrl.ramp_up_speed_interval = 7.2 / 3.6f; config.ctrl.ramp_down_speed_interval = 1.0 / 3.6f; break;
+				case 2: config.ctrl.cutoff_speed = 15.0 / 3.6f; config.ctrl.ramp_up_speed_interval = 7.2 / 3.6f; config.ctrl.ramp_down_speed_interval = 1.0 / 3.6f; break;
+				case 3: config.ctrl.cutoff_speed = 25.0 / 3.6f; config.ctrl.ramp_up_speed_interval = 7.2 / 3.6f; config.ctrl.ramp_down_speed_interval = 1.0 / 3.6f; break;
+				case 4: config.ctrl.cutoff_speed = 45.0 / 3.6f; config.ctrl.ramp_up_speed_interval = 7.2 / 3.6f; config.ctrl.ramp_down_speed_interval = 1.0 / 3.6f; break;
+				case 5: config.ctrl.cutoff_speed = 60.0 / 3.6f; config.ctrl.ramp_up_speed_interval = 7.2 / 3.6f; config.ctrl.ramp_down_speed_interval = 1.0 / 3.6f; break;
+				default: config.ctrl.cutoff_speed = 25.0 / 3.6f; config.ctrl.ramp_up_speed_interval = 7.2 / 3.6f; config.ctrl.ramp_down_speed_interval = 1.0 / 3.6f; break;
 			}
 		} break;
 
