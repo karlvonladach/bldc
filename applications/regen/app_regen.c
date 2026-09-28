@@ -763,6 +763,11 @@ static THD_FUNCTION(my_thread, arg) {
 			wheel_inactivity_time = 0;
 		}
 
+		//always release brake when going backward
+		if (motor_speed < -0.5 && pedal_brake_position > 0) {
+			update_pedal_speed_and_position(0);
+		}
+
 		update_stats();
 	}
 }
