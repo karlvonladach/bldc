@@ -43,10 +43,10 @@
 #define APP_CUSTOM_CONF_CTRL_TORQUE_MAX_GAIN       4.0f  // maximum total torque gain to prevent excessive torque
 #define APP_CUSTOM_CONF_CTRL_TORQUE_MIN_GAIN       0.5f  // minimum total torque gain
 #define APP_CUSTOM_CONF_CTRL_TORQUE_EXPONENT       0.9f  // nonlinearity coeff for torque control, where 1.0 is linear, < 1.0 gives more torque at low pedal inputs, and > 1.0 gives more torque at high pedal inputs
-#define APP_CUSTOM_CONF_CTRL_RAMP_UP              (7.2f/3.6f) // m/s - ramp up speed interval for torque control
-#define APP_CUSTOM_CONF_CTRL_RAMP_DOWN            (7.2f/3.6f) // m/s - ramp down speed interval for torque control
+#define APP_CUSTOM_CONF_CTRL_RAMP_UP              (1.0f/3.6f) // m/s - ramp up speed interval for torque control
+#define APP_CUSTOM_CONF_CTRL_RAMP_DOWN            (1.0f/3.6f) // m/s - ramp down speed interval for torque control
 #if defined(HW_UBOX_SINGLE_80)
-#define APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED        (27.0f/3.6f) // m/s - speed above which torque control is disabled
+#define APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED        (25.0f/3.6f) // m/s - speed above which torque control is disabled
 #else //#elif defined(HW60_IS_MK1)
 #define APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED        (80.0f/3.6f) // m/s - speed above which torque control is disabled
 #endif
@@ -164,7 +164,7 @@
 #define APP_CUSTOM_CONF_CLUTCH_MIN_RPM_CLOSE          45.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_OPEN          400.0f  // WRPM
 #define APP_CUSTOM_CONF_CLUTCH_MAX_RPM_CLOSE         350.0f  // WRPM
-#define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR              0     // 1/0 = invert/no invert
+#define APP_CUSTOM_CONF_CLUTCH_INVERT_DIR              1     // 1/0 = invert/no invert
 #define APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT             6     // max errors in defined period before disabling clutch
 #define CLUTCH_OPERATION_BUFFER_SIZE                  10     // must be larger than APP_CUSTOM_CONF_CLUTCH_ERROR_LIMIT
 #define APP_CUSTOM_CONF_CLUTCH_ERROR_PERIOD           10.0f  // seconds - period for counting clutch errors
