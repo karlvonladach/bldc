@@ -171,6 +171,7 @@ typedef struct {
     float ramp_up_speed_interval;
     float ramp_down_speed_interval;
     float cutoff_speed;
+    float cutoff_hysteresis_interval;
 } motor_control_config_type;
 
 typedef struct {

@@ -50,6 +50,7 @@
 #else //#elif defined(HW60_IS_MK1)
 #define APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED        (80.0f/3.6f) // m/s - speed above which torque control is disabled
 #endif
+#define APP_CUSTOM_CONF_CTRL_CUTOFF_HYST_INT      (2.0f/3.6f) // m/s - speed interval for cutoff hysteresis
 
 #if defined(HW_UBOX_SINGLE_80)
 #define APP_CUSTOM_CONF_MOTOR_TORQUE_CONSTANT      0.029f// Nm/A - motor torque constant, used for calculating assist level in human watts
@@ -267,5 +268,6 @@
 #define APP_CUSTOM_CONF_CTRL_RAMP_UP_ADDR                    85
 #define APP_CUSTOM_CONF_CTRL_RAMP_DOWN_ADDR                  86
 #define APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED_ADDR               87
+#define APP_CUSTOM_CONF_CTRL_CUTOFF_HYST_INT_ADDR            88
 
 #endif /* APP_REGEN_CONF_H_ */

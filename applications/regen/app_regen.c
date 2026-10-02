@@ -293,6 +293,8 @@ static const config_param_t config_table[] = {
 	 {.float_default = APP_CUSTOM_CONF_CTRL_RAMP_DOWN}, NULL},
 	{"ascutend", "[m/s] Speed above which assist is disabled", CONFIG_TYPE_FLOAT, &config.ctrl.cutoff_speed, APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED_ADDR,
 	 {.float_default = APP_CUSTOM_CONF_CTRL_CUTOFF_SPEED}, NULL},
+	{"ashystint", "[m/s] Speed interval for cutoff hysteresis", CONFIG_TYPE_FLOAT, &config.ctrl.cutoff_hysteresis_interval, APP_CUSTOM_CONF_CTRL_CUTOFF_HYST_INT_ADDR,
+	 {.float_default = APP_CUSTOM_CONF_CTRL_CUTOFF_HYST_INT}, NULL},
 
     {"velsrate", "[Hz] Velocity sampling rate", CONFIG_TYPE_UINT32, &config.velocity_sampling_rate, APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE_ADDR,
 	 {.uint32_default = APP_CUSTOM_CONF_VELOCITY_SAMPLING_RATE}, NULL},
@@ -2295,6 +2297,9 @@ static void update_assistance_level()
 	//static float wheel_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
 	static float bike_accel_notch_filter_memory[NOTCH_FILTER_MEMORY_SIZE] = {0};
 	static float bike_accel_bq_filter_memory[BIQUAD_FILTER_MEMORY_SIZE] = {0};
+	static float bike_speed_estimated_last = 0;
+	static float assist_ramp_factor = 0;
+	const float ramp_slope = 1.0f / config.ctrl.ramp_down_speed_interval;
 	const volatile mc_configuration *conf = mc_interface_get_configuration();
 
 	if (config.ctrl.ctrl_type != CUSTOM_CTRL_TYPE_CURRENT_PEDAL_SPEED_AND_TORQUE_AUTO) {
@@ -2342,12 +2347,36 @@ static void update_assistance_level()
 
 	// Ramp up around 0 speed and ramp down at regulatory speed limit
 	if (bike_speed_estimated >= 0 && bike_speed_estimated < config.ctrl.ramp_up_speed_interval) {
-		torque_gain *= bike_speed_estimated / config.ctrl.ramp_up_speed_interval;
-	} else if (bike_speed_estimated >= (profile->cutoff_speed) && bike_speed_estimated < (profile->cutoff_speed + config.ctrl.ramp_down_speed_interval)) {
-		torque_gain *= 1.0 - (bike_speed_estimated - (profile->cutoff_speed)) / (config.ctrl.ramp_down_speed_interval);
+		assist_ramp_factor = bike_speed_estimated / config.ctrl.ramp_up_speed_interval;
+	} else if (bike_speed_estimated >= config.ctrl.ramp_up_speed_interval && bike_speed_estimated < (profile->cutoff_speed - config.ctrl.cutoff_hysteresis_interval/2.0f)) {
+		assist_ramp_factor = 1.0;
+	} else if (bike_speed_estimated >= (profile->cutoff_speed - config.ctrl.cutoff_hysteresis_interval/2.0f) && bike_speed_estimated < (profile->cutoff_speed + config.ctrl.ramp_down_speed_interval + config.ctrl.cutoff_hysteresis_interval/2.0f)) {
+		float speed_diff = bike_speed_estimated - bike_speed_estimated_last;
+		bike_speed_estimated_last = bike_speed_estimated;
+
+		if (speed_diff != 0) {
+			float target_factor;
+			if (speed_diff > 0) {
+            	// Going Up: Transition happens above cutoff_speed + hyst_int/2
+            	target_factor = 1.0 - ramp_slope * (bike_speed_estimated - (profile->cutoff_speed + config.ctrl.cutoff_hysteresis_interval/2.0f));
+			} else {
+            	// Going Down: Transition happens above cutoff_speed - hyst_int/2
+            	target_factor = 1.0 - ramp_slope * (bike_speed_estimated - (profile->cutoff_speed - config.ctrl.cutoff_hysteresis_interval/2.0f));
+			}
+			utils_truncate_number(&target_factor, 0.0, 1.0);
+			
+			// Reversal rule: Output can only decrease when going UP,
+        	// and can only increase when going DOWN.
+       		if (speed_diff > 0) {
+            	assist_ramp_factor = MIN(assist_ramp_factor, target_factor);
+			} else {
+            	assist_ramp_factor = MAX(assist_ramp_factor, target_factor);
+			}
+		}
 	} else if (bike_speed_estimated >= profile->cutoff_speed + config.ctrl.ramp_down_speed_interval) {
-		torque_gain = 0.0;
+		assist_ramp_factor = 0.0;
 	}
+	torque_gain *= assist_ramp_factor;
 }
 
 static void update_extra_resistance_ekf(float F_motor)
